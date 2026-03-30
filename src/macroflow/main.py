@@ -165,18 +165,18 @@ def _build_placeholder_window(
     font.setPointSize(20)
     font.setBold(True)
     title_label.setFont(font)
-    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
     desc_label = QLabel(
         "Windows 매크로 녹화·재생 도구\n\n"
         "UI 개발 중입니다 (M3 예정).\n"
         "핵심 엔진(recorder / player / macro_file)은 준비되었습니다."
     )
-    desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
+    desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     desc_label.setWordWrap(True)
 
     log_label = QLabel(f"로그: {log_file}")
-    log_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # type: ignore[attr-defined]
+    log_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     log_label.setWordWrap(True)
     log_font = QFont()
     log_font.setPointSize(8)
