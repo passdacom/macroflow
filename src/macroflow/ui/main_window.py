@@ -30,10 +30,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from PyQt6.QtWidgets import QTabWidget
+
 from macroflow.types import MacroData
 
 from .editor import EventEditorWidget
 from .overlay import OverlayWindow
+from .sequencer import MacroSequencerWidget
 
 logger = logging.getLogger(__name__)
 
@@ -122,13 +125,19 @@ class MainWindow(QMainWindow):
 
         # ── 하위 위젯 ─────────────────────────────────────────────────────────
         self._editor = EventEditorWidget()
+        self._sequencer = MacroSequencerWidget()
         self._overlay = OverlayWindow()
 
         # ── UI 구성 ───────────────────────────────────────────────────────────
         self._setup_window()
         self._setup_menubar()
         self._setup_toolbar()
-        self.setCentralWidget(self._editor)
+
+        tabs = QTabWidget()
+        tabs.addTab(self._editor, "매크로 에디터")
+        tabs.addTab(self._sequencer, "시퀀서")
+        self.setCentralWidget(tabs)
+
         self._setup_statusbar()
 
         # ── 신호 연결 ─────────────────────────────────────────────────────────
@@ -361,24 +370,59 @@ class MainWindow(QMainWindow):
         result = _show_play_dialog(self)
         if result is None:
             return
-        speed, _repeat_count, _interval_ms = result
+        speed, repeat_count, interval_ms = result
 
-        from macroflow import player
-
-        def _on_complete() -> None:
-            self._sig_play_complete.emit()
-
-        def _on_error(exc: Exception) -> None:
-            self._sig_play_error.emit(str(exc))
-
-        player.play(self._macro, speed=speed, on_complete=_on_complete, on_error=_on_error)
         self._state = "playing"
         self._overlay.start_playing(speed)
         self._poll_timer.start()
         self._update_toolbar()
         self._sb_state.setText(f"▶ 재생 중 ({speed:.1f}x)")
         self._sb_count.setText(f"이벤트: {len(self._macro.events)}")
-        logger.info(f"재생 시작 speed={speed}")
+        logger.info(f"재생 시작 speed={speed} repeat={repeat_count} interval={interval_ms}ms")
+
+        macro = self._macro
+
+        def _repeat_worker() -> None:
+            from macroflow import player
+            for i in range(repeat_count):
+                if player._stop_flag.is_set():  # type: ignore[attr-defined]
+                    break
+
+                done_event = threading.Event()
+                error_holder: list[str] = []
+
+                def _on_complete() -> None:
+                    done_event.set()
+
+                def _on_error(exc: Exception) -> None:
+                    error_holder.append(str(exc))
+                    done_event.set()
+
+                player.play(macro, speed=speed, on_complete=_on_complete, on_error=_on_error)
+
+                # 재생 완료 대기
+                while not done_event.is_set():
+                    if player._stop_flag.is_set():  # type: ignore[attr-defined]
+                        return
+                    time.sleep(0.05)
+
+                if error_holder:
+                    self._sig_play_error.emit(error_holder[0])
+                    return
+
+                # 마지막 반복이 아니면 interval 대기
+                if i < repeat_count - 1 and interval_ms > 0:
+                    deadline = time.monotonic() + interval_ms / 1000.0
+                    while time.monotonic() < deadline:
+                        if player._stop_flag.is_set():  # type: ignore[attr-defined]
+                            return
+                        time.sleep(0.05)
+
+            self._sig_play_complete.emit()
+
+        threading.Thread(
+            target=_repeat_worker, daemon=True, name="RepeatPlayWorker"
+        ).start()
 
     def _stop_playback(self) -> None:
         from macroflow import player

@@ -139,9 +139,13 @@ def _execute_event(
     elif isinstance(event, WindowTriggerEvent):
         _wait_for_window(event)
 
-    elif isinstance(event, (ConditionEvent, LoopEvent)):
-        # script_engine.py에서 처리 (M5 이후)
-        logger.warning(f"ConditionEvent/LoopEvent not yet implemented: {event.type}")
+    elif isinstance(event, ConditionEvent):
+        from macroflow.script_engine import execute_condition
+        execute_condition(event, _stop_flag, lambda e: _execute_event(e, settings, state))
+
+    elif isinstance(event, LoopEvent):
+        from macroflow.script_engine import execute_loop
+        execute_loop(event, _stop_flag, lambda e: _execute_event(e, settings, state))
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
