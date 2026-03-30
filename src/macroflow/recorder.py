@@ -37,6 +37,10 @@ from macroflow.win32 import (
 
 logger = logging.getLogger(__name__)
 
+# ── 핫키 VK 코드 — 이 키들은 raw_events에 기록하지 않는다 ─────────────────────
+# spec: 단축키 자체(F6 key_down/key_up)는 raw_events에 기록하지 않음
+_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76})  # F6, F7
+
 # ── Win32 메시지 상수 (hooks.py와 동기화) ─────────────────────────────────────
 _WM_MOUSEMOVE: int = 0x0200
 _WM_LBUTTONDOWN: int = 0x0201
@@ -149,6 +153,9 @@ def _convert_raw(
 
     elif kind == "k":
         vk_code, _scan, _flags = data
+        # 핫키(F6, F7)는 기록하지 않는다
+        if vk_code in _FILTERED_VK_CODES:
+            return None
         if wParam in (_WM_KEYDOWN, _WM_SYSKEYDOWN):
             return KeyEvent(
                 id=eid, type="key_down",
@@ -260,3 +267,8 @@ def stop_recording() -> MacroData:
 def is_recording() -> bool:
     """현재 녹화 중인지 여부를 반환한다."""
     return _recording
+
+
+def get_event_count() -> int:
+    """현재까지 캡처된 이벤트 수를 반환한다 (녹화 중 폴링용)."""
+    return len(_event_buffer)

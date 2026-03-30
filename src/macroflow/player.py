@@ -64,6 +64,8 @@ class _PlayState:
 _playback_thread: threading.Thread | None = None
 _stop_flag: threading.Event = threading.Event()
 _pause_flag: threading.Event = threading.Event()
+_current_event_idx: int = 0
+_total_events: int = 0
 
 
 # ── 이벤트 실행 ───────────────────────────────────────────────────────────────
@@ -230,11 +232,16 @@ def _play_loop(
         on_complete: 재생 완료 시 콜백.
         on_error: 오류 발생 시 콜백.
     """
+    global _current_event_idx, _total_events
     play_start_ns = time.perf_counter_ns()
     last_event_end_ns = play_start_ns
     state = _PlayState()
+    _total_events = len(macro.events)
+    _current_event_idx = 0
 
-    for event in macro.events:
+    for idx, event in enumerate(macro.events):
+        _current_event_idx = idx
+
         # 일시정지 대기
         while _pause_flag.is_set() and not _stop_flag.is_set():
             time.sleep(0.05)
@@ -330,3 +337,10 @@ def resume() -> None:
 def is_playing() -> bool:
     """현재 재생 중인지 여부를 반환한다."""
     return _playback_thread is not None and _playback_thread.is_alive()
+
+
+def get_progress() -> float:
+    """현재 재생 진행률 (0.0~1.0)을 반환한다."""
+    if _total_events == 0:
+        return 0.0
+    return _current_event_idx / _total_events

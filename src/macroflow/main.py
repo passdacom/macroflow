@@ -14,7 +14,6 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 # ── 로그 디렉터리 / 파일 설정 ─────────────────────────────────────────────────
 # PyQt6보다 먼저 설정해야 import 오류도 파일에 기록된다.
@@ -80,16 +79,9 @@ def main() -> None:
 
     # ── PyQt6 임포트 ───────────────────────────────────────────────────────
     try:
-        from PyQt6.QtCore import Qt
-        from PyQt6.QtGui import QFont
-        from PyQt6.QtWidgets import (
-            QApplication,
-            QLabel,
-            QMainWindow,
-            QStatusBar,
-            QVBoxLayout,
-            QWidget,
-        )
+        from PyQt6.QtWidgets import QApplication
+
+        from macroflow.ui import MainWindow
         logger.info("PyQt6 import OK")
     except ImportError:
         msg = (
@@ -117,9 +109,7 @@ def main() -> None:
         app.setApplicationVersion("0.1.0")
         logger.info("QApplication created")
 
-        window = _build_placeholder_window(log_file, QMainWindow, QWidget,
-                                            QVBoxLayout, QLabel, QStatusBar,
-                                            Qt, QFont)
+        window = MainWindow()
         window.show()
         logger.info("Main window shown")
 
@@ -136,65 +126,6 @@ def main() -> None:
         logger.exception("UI initialization failed")
         _fatal_dialog("MacroFlow — UI 오류", msg)
         sys.exit(1)
-
-
-def _build_placeholder_window(
-    log_file: Path,
-    QMainWindow: type,
-    QWidget: type,
-    QVBoxLayout: type,
-    QLabel: type,
-    QStatusBar: type,
-    Qt: Any,
-    QFont: type,
-) -> Any:
-    """M3 UI 구현 전 임시 플레이스홀더 창을 반환한다."""
-    from macroflow import __version__
-
-    window = QMainWindow()
-    window.setWindowTitle(f"MacroFlow v{__version__}")
-    window.setMinimumSize(480, 300)
-
-    central = QWidget()
-    layout = QVBoxLayout(central)
-    layout.setSpacing(12)
-    layout.setContentsMargins(32, 32, 32, 32)
-
-    title_label = QLabel("MacroFlow")
-    font = QFont()
-    font.setPointSize(20)
-    font.setBold(True)
-    title_label.setFont(font)
-    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-    desc_label = QLabel(
-        "Windows 매크로 녹화·재생 도구\n\n"
-        "UI 개발 중입니다 (M3 예정).\n"
-        "핵심 엔진(recorder / player / macro_file)은 준비되었습니다."
-    )
-    desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    desc_label.setWordWrap(True)
-
-    log_label = QLabel(f"로그: {log_file}")
-    log_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    log_label.setWordWrap(True)
-    log_font = QFont()
-    log_font.setPointSize(8)
-    log_label.setFont(log_font)
-
-    layout.addStretch()
-    layout.addWidget(title_label)
-    layout.addWidget(desc_label)
-    layout.addWidget(log_label)
-    layout.addStretch()
-
-    window.setCentralWidget(central)
-
-    status_bar = QStatusBar()
-    status_bar.showMessage("준비 완료 — F6: 녹화 시작/중지  |  F7: 재생 시작/중지  |  ESC×3: 긴급 중지")
-    window.setStatusBar(status_bar)
-
-    return window
 
 
 if __name__ == "__main__":
