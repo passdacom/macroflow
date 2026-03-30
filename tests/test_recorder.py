@@ -146,11 +146,14 @@ class TestRecorderIntegration:
     def test_start_stop_returns_macro_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """start/stop 후 MacroData가 반환되어야 한다."""
         import macroflow.win32 as w32
+        import macroflow.recorder as _rec_mod
 
         monkeypatch.setattr(w32, "start_hook", lambda q: None)
         monkeypatch.setattr(w32, "stop_hook", lambda: None)
         monkeypatch.setattr(w32, "get_logical_screen_size", lambda: (1920, 1080))
         monkeypatch.setattr(w32, "pixel_to_ratio", lambda x, y: (x / 1920, y / 1080))
+        # recorder.py는 get_logical_screen_size를 직접 import하므로 해당 참조도 패치
+        monkeypatch.setattr(_rec_mod, "get_logical_screen_size", lambda: (1920, 1080))
 
         rec.start_recording()
         assert rec.is_recording()
