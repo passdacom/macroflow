@@ -15,7 +15,6 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-
 # ── 로그 디렉터리 / 파일 설정 ─────────────────────────────────────────────────
 # PyQt6보다 먼저 설정해야 import 오류도 파일에 기록된다.
 
