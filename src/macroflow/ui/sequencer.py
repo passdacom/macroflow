@@ -13,7 +13,6 @@ drag-drop-sequencer.md 스펙 기반.
 from __future__ import annotations
 
 import logging
-import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any

@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-import random as _random
+import random as _random_module
 import threading
 import time
 from collections.abc import Callable
@@ -508,9 +508,7 @@ def execute_condition(
         time.sleep(ms / 1000.0)
 
     def _random() -> float:
-        return _random_module()
-
-    _random_module = _random.random
+        return _random_module.random()
 
     # 제한된 샌드박스: __builtins__ 완전 차단, 허용 함수만 노출
     sandbox_globals: dict[str, Any] = {

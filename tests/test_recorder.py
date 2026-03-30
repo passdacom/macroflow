@@ -145,8 +145,8 @@ class TestRecorderIntegration:
 
     def test_start_stop_returns_macro_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """start/stop 후 MacroData가 반환되어야 한다."""
-        import macroflow.win32 as w32
         import macroflow.recorder as _rec_mod
+        import macroflow.win32 as w32
 
         monkeypatch.setattr(w32, "start_hook", lambda q: None)
         monkeypatch.setattr(w32, "stop_hook", lambda: None)

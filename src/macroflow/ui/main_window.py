@@ -23,10 +23,8 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSpinBox,
-    QWidget,
+    QTabWidget,
 )
-
-from PyQt6.QtWidgets import QTabWidget
 
 from macroflow.types import MacroData
 
@@ -367,12 +365,12 @@ class MainWindow(QMainWindow):
                 done_event = threading.Event()
                 error_holder: list[str] = []
 
-                def _on_complete() -> None:
-                    done_event.set()
+                def _on_complete(_ev: threading.Event = done_event) -> None:
+                    _ev.set()
 
-                def _on_error(exc: Exception) -> None:
-                    error_holder.append(str(exc))
-                    done_event.set()
+                def _on_error(exc: Exception, _ev: threading.Event = done_event, _eh: list[str] = error_holder) -> None:
+                    _eh.append(str(exc))
+                    _ev.set()
 
                 player.play(macro, speed=speed, on_complete=_on_complete, on_error=_on_error)
 

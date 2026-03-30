@@ -65,6 +65,8 @@ module = [
     "macroflow.ui.main_window",
     "macroflow.ui.editor",
     "macroflow.ui.overlay",
+    "macroflow.ui.sequencer",
     "macroflow.ui",
+    "macroflow.script_engine",
 ]
 ignore_errors = true
