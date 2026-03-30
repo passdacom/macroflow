@@ -58,3 +58,13 @@ module = [
     "macroflow.win32.sendinput",
 ]
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+# PyQt6 stubs가 Optional 반환 타입을 과도하게 사용 — UI 레이어는 Windows 실행 환경에서 검사
+module = [
+    "macroflow.ui.main_window",
+    "macroflow.ui.editor",
+    "macroflow.ui.overlay",
+    "macroflow.ui",
+]
+ignore_errors = true
