@@ -1,17 +1,24 @@
 """MacroFlow 이벤트 에디터 위젯.
 
-QTableWidget으로 MacroData.events를 표시하고
-딜레이 수정·이벤트 삭제·마우스이동 제거·원본 복원 기능을 제공한다.
+그룹 표시: mouse_down+up → 클릭, key_down+up → 키 입력.
+Undo/Redo, 마우스 이동 숨김 토글, 더블클릭 편집 지원.
 """
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import logging
+from collections import deque
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QBrush, QColor, QFont
+from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
+    QFormLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
@@ -24,7 +31,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from macroflow.macro_file import delete_mouse_moves, reset_to_raw, set_delay_all
+from macroflow.macro_file import (
+    delete_mouse_moves,
+    edit_key_value,
+    edit_position,
+    reset_to_raw,
+    set_delay_all,
+    set_delay_single,
+)
 from macroflow.types import (
     AnyEvent,
     ColorTriggerEvent,
@@ -40,63 +54,275 @@ from macroflow.types import (
 
 logger = logging.getLogger(__name__)
 
-# ── 이벤트 타입별 색상 ──────────────────────────────────────────────────────────
-_TYPE_COLORS: dict[str, QColor] = {
-    "mouse_down":     QColor(60,  110, 200),
-    "mouse_up":       QColor(80,  140, 220),
-    "mouse_move":     QColor(90,  90,  90),
-    "key_down":       QColor(60,  145, 85),
-    "key_up":         QColor(90,  170, 110),
+_MAX_UNDO = 50
+
+# ── 행 종류별 색상 ──────────────────────────────────────────────────────────────
+
+_KIND_COLORS: dict[str, QColor] = {
+    "click":          QColor(60, 110, 200),
+    "right_click":    QColor(80, 60, 180),
+    "drag":           QColor(40, 80, 160),
+    "right_drag":     QColor(60, 40, 140),
+    "key_press":      QColor(60, 145, 85),
+    "mouse_move":     QColor(90, 90, 90),
     "wait":           QColor(190, 120, 50),
-    "color_trigger":  QColor(140, 80,  170),
-    "window_trigger": QColor(140, 80,  170),
+    "color_trigger":  QColor(140, 80, 170),
+    "window_trigger": QColor(140, 80, 170),
     "condition":      QColor(170, 140, 40),
     "loop":           QColor(170, 140, 40),
+    "orphan":         QColor(160, 60, 60),
 }
 
-_COLUMNS = ["#", "타입", "시간(ms)", "X%", "Y%", "키/버튼", "딜레이(ms)"]
+_COLUMNS = ["#", "타입", "내용", "시간(ms)", "딜레이(ms)"]
 
 
-def _cell(text: str, editable: bool = False) -> QTableWidgetItem:
+# ── 표시 행 데이터 ─────────────────────────────────────────────────────────────
+
+@dataclasses.dataclass
+class _DisplayRow:
+    """에디터 테이블의 한 행을 나타낸다."""
+
+    kind: str                 # 색상/편집 동작 결정
+    label: str                # 타입 열 텍스트
+    detail: str               # 내용 열 텍스트
+    time_ms: float            # 시간(ms) 열 값
+    delay_str: str            # 딜레이(ms) 열 텍스트
+    event_indices: list[int]  # 이 행이 나타내는 이벤트 인덱스들
+    primary_idx: int          # 딜레이/편집 기준 이벤트 인덱스
+
+
+def _delay_str(event: AnyEvent) -> str:
+    return str(event.delay_override_ms) if event.delay_override_ms is not None else ""
+
+
+def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
+    """events 리스트를 표시용 _DisplayRow 리스트로 변환한다.
+
+    연속된 mouse_down+up → 클릭/드래그 한 행으로 그룹화.
+    연속된 key_down+up → 키 입력 한 행으로 그룹화.
+    show_moves=False 이면 mouse_move는 행 목록에서 제외.
+    """
+    rows: list[_DisplayRow] = []
+    consumed: set[int] = set()
+
+    for i, event in enumerate(events):
+        if i in consumed:
+            continue
+
+        # ── 마우스 버튼 down ──────────────────────────────────────────────────
+        if isinstance(event, MouseButtonEvent) and event.type == "mouse_down":
+            move_indices: list[int] = []
+            up_idx: int | None = None
+
+            for j in range(i + 1, len(events)):
+                if j in consumed:
+                    continue
+                e2 = events[j]
+                if isinstance(e2, MouseMoveEvent):
+                    move_indices.append(j)
+                elif (
+                    isinstance(e2, MouseButtonEvent)
+                    and e2.type == "mouse_up"
+                    and e2.button == event.button
+                ):
+                    up_idx = j
+                    break
+
+            btn_ko = "왼쪽" if event.button == "left" else "오른쪽"
+            x_s = f"{event.x_ratio * 100:.1f}%"
+            y_s = f"{event.y_ratio * 100:.1f}%"
+
+            if up_idx is not None:
+                all_indices = [i] + move_indices + [up_idx]
+                consumed.update(all_indices)
+                if len(move_indices) > 3:
+                    kind = "drag" if event.button == "left" else "right_drag"
+                    label = f"드래그({btn_ko})"
+                else:
+                    kind = "click" if event.button == "left" else "right_click"
+                    label = f"클릭({btn_ko})"
+                rows.append(_DisplayRow(
+                    kind, label, f"({x_s}, {y_s})",
+                    event.timestamp_ns / 1_000_000,
+                    _delay_str(event), all_indices, i,
+                ))
+            else:
+                consumed.add(i)
+                rows.append(_DisplayRow(
+                    "orphan", f"눌림({btn_ko})", f"({x_s}, {y_s})",
+                    event.timestamp_ns / 1_000_000,
+                    _delay_str(event), [i], i,
+                ))
+
+        # ── 마우스 버튼 up (미소비) ───────────────────────────────────────────
+        elif isinstance(event, MouseButtonEvent) and event.type == "mouse_up":
+            consumed.add(i)
+            btn_ko = "왼쪽" if event.button == "left" else "오른쪽"
+            x_s = f"{event.x_ratio * 100:.1f}%"
+            y_s = f"{event.y_ratio * 100:.1f}%"
+            rows.append(_DisplayRow(
+                "orphan", f"뗌({btn_ko})", f"({x_s}, {y_s})",
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 마우스 이동 ───────────────────────────────────────────────────────
+        elif isinstance(event, MouseMoveEvent):
+            consumed.add(i)
+            if show_moves:
+                x_s = f"{event.x_ratio * 100:.1f}%"
+                y_s = f"{event.y_ratio * 100:.1f}%"
+                rows.append(_DisplayRow(
+                    "mouse_move", "마우스 이동", f"({x_s}, {y_s})",
+                    event.timestamp_ns / 1_000_000,
+                    _delay_str(event), [i], i,
+                ))
+
+        # ── 키 누름 ───────────────────────────────────────────────────────────
+        elif isinstance(event, KeyEvent) and event.type == "key_down":
+            up_idx = None
+            for j in range(i + 1, len(events)):
+                if j in consumed:
+                    continue
+                e2 = events[j]
+                if (
+                    isinstance(e2, KeyEvent)
+                    and e2.type == "key_up"
+                    and e2.vk_code == event.vk_code
+                ):
+                    up_idx = j
+                    break
+
+            if up_idx is not None:
+                consumed.add(i)
+                consumed.add(up_idx)
+                rows.append(_DisplayRow(
+                    "key_press", "키 입력", event.key,
+                    event.timestamp_ns / 1_000_000,
+                    _delay_str(event), [i, up_idx], i,
+                ))
+            else:
+                consumed.add(i)
+                rows.append(_DisplayRow(
+                    "key_press", "키 누름", event.key,
+                    event.timestamp_ns / 1_000_000,
+                    _delay_str(event), [i], i,
+                ))
+
+        # ── 키 뗌 (미소비) ────────────────────────────────────────────────────
+        elif isinstance(event, KeyEvent) and event.type == "key_up":
+            consumed.add(i)
+            rows.append(_DisplayRow(
+                "key_press", "키 뗌", event.key,
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 대기 ─────────────────────────────────────────────────────────────
+        elif isinstance(event, WaitEvent):
+            consumed.add(i)
+            rows.append(_DisplayRow(
+                "wait", "대기", f"{event.duration_ms}ms",
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 색 트리거 ─────────────────────────────────────────────────────────
+        elif isinstance(event, ColorTriggerEvent):
+            consumed.add(i)
+            x_s = f"{event.x_ratio * 100:.1f}%"
+            y_s = f"{event.y_ratio * 100:.1f}%"
+            rows.append(_DisplayRow(
+                "color_trigger", "색 트리거",
+                f"({x_s}, {y_s}) {event.target_color}",
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 창 트리거 ─────────────────────────────────────────────────────────
+        elif isinstance(event, WindowTriggerEvent):
+            consumed.add(i)
+            rows.append(_DisplayRow(
+                "window_trigger", "창 트리거",
+                event.window_title_contains,
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 조건 분기 ─────────────────────────────────────────────────────────
+        elif isinstance(event, ConditionEvent):
+            consumed.add(i)
+            rows.append(_DisplayRow(
+                "condition", "조건 분기",
+                event.expression[:30],
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 반복 ─────────────────────────────────────────────────────────────
+        elif isinstance(event, LoopEvent):
+            consumed.add(i)
+            rows.append(_DisplayRow(
+                "loop", "반복", f"×{event.count}",
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+    return rows
+
+
+def _cell(text: str) -> QTableWidgetItem:
     item = QTableWidgetItem(text)
-    if not editable:
-        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
     return item
 
 
-def _event_detail(event: AnyEvent) -> tuple[str, str, str, str]:
-    """(x%, y%, key_button, time_ms) 문자열 반환."""
-    x_s = y_s = key_btn = ""
-    if isinstance(event, (MouseButtonEvent, MouseMoveEvent)):
-        x_s = f"{event.x_ratio * 100:.1f}"
-        y_s = f"{event.y_ratio * 100:.1f}"
-        if isinstance(event, MouseButtonEvent):
-            key_btn = event.button
-    elif isinstance(event, KeyEvent):
-        key_btn = event.key
-    elif isinstance(event, WaitEvent):
-        key_btn = f"{event.duration_ms}ms"
-    elif isinstance(event, ColorTriggerEvent):
-        x_s = f"{event.x_ratio * 100:.1f}"
-        y_s = f"{event.y_ratio * 100:.1f}"
-        key_btn = event.target_color
-    elif isinstance(event, WindowTriggerEvent):
-        key_btn = event.window_title_contains
-    elif isinstance(event, ConditionEvent):
-        key_btn = event.expression[:20]
-    elif isinstance(event, LoopEvent):
-        key_btn = f"×{event.count}"
-    return x_s, y_s, key_btn
+# ── 키 이름 → VK 코드 매핑 ────────────────────────────────────────────────────
 
+_NAME_TO_VK: dict[str, int] = {
+    "backspace": 0x08, "tab": 0x09, "enter": 0x0D, "shift": 0x10,
+    "ctrl": 0x11, "alt": 0x12, "pause": 0x13, "capslock": 0x14,
+    "escape": 0x1B, "esc": 0x1B, "space": 0x20,
+    "pageup": 0x21, "pagedown": 0x22, "end": 0x23, "home": 0x24,
+    "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28,
+    "insert": 0x2D, "delete": 0x2E, "del": 0x2E,
+    **{str(d): 0x30 + d for d in range(10)},
+    **{chr(ord("a") + k): 0x41 + k for k in range(26)},
+    **{f"f{n}": 0x70 + n - 1 for n in range(1, 13)},
+}
+
+
+def _key_name_to_vk(key_name: str, fallback_vk: int) -> int:
+    """키 이름 문자열을 VK 코드로 변환한다. 알 수 없으면 fallback_vk 반환."""
+    return _NAME_TO_VK.get(key_name.lower(), fallback_vk)
+
+
+# ── 위젯 ──────────────────────────────────────────────────────────────────────
 
 class EventEditorWidget(QWidget):
-    """이벤트 목록을 표·편집하는 위젯."""
+    """이벤트 목록을 그룹 표시·편집하는 위젯.
+
+    그룹 표시 규칙:
+      - mouse_down + (moves) + mouse_up → 클릭/드래그 한 행
+      - key_down + key_up (같은 vk_code) → 키 입력 한 행
+      - mouse_move는 기본 숨김 (토글 버튼으로 표시 가능)
+
+    편집 기능:
+      - 더블클릭: 키 값·위치·딜레이 변경
+      - 컨텍스트 메뉴: 딜레이·키·위치·삭제
+      - Undo/Redo (Ctrl+Z / Ctrl+Y)
+      - Delete 키: 선택 행 삭제
+    """
 
     macro_changed = pyqtSignal(object)  # MacroData
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._macro: MacroData | None = None
+        self._rows: list[_DisplayRow] = []
+        self._show_moves: bool = False
+        self._undo_stack: deque[list[AnyEvent]] = deque(maxlen=_MAX_UNDO)
+        self._redo_stack: list[list[AnyEvent]] = []
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -108,20 +334,46 @@ class EventEditorWidget(QWidget):
         toolbar = QToolBar("편집 도구", self)
         toolbar.setMovable(False)
 
-        self._act_del_moves = QAction("마우스 이동 제거", self)
-        self._act_del_moves.setToolTip("events에서 mouse_move 이벤트를 모두 삭제합니다.")
+        self._act_toggle_moves = QAction("이동 표시", self)
+        self._act_toggle_moves.setToolTip("마우스 이동 이벤트 표시/숨김 (비파괴)")
+        self._act_toggle_moves.setCheckable(True)
+        self._act_toggle_moves.setChecked(False)
+        self._act_toggle_moves.triggered.connect(self._toggle_moves)
+        self._act_toggle_moves.setEnabled(False)
+        toolbar.addAction(self._act_toggle_moves)
+
+        self._act_del_moves = QAction("이동 삭제", self)
+        self._act_del_moves.setToolTip("mouse_move 이벤트를 events에서 영구 삭제합니다")
         self._act_del_moves.triggered.connect(self._delete_mouse_moves)
         self._act_del_moves.setEnabled(False)
         toolbar.addAction(self._act_del_moves)
 
-        self._act_set_delay = QAction("딜레이 일괄 설정", self)
-        self._act_set_delay.setToolTip("모든 이벤트의 딜레이를 동일한 값으로 설정합니다.")
+        toolbar.addSeparator()
+
+        self._act_set_delay = QAction("딜레이 일괄", self)
+        self._act_set_delay.setToolTip("모든 이벤트의 딜레이를 동일한 값으로 설정합니다")
         self._act_set_delay.triggered.connect(self._set_delay_all)
         self._act_set_delay.setEnabled(False)
         toolbar.addAction(self._act_set_delay)
 
+        toolbar.addSeparator()
+
+        self._act_undo = QAction("↩ 취소", self)
+        self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
+        self._act_undo.triggered.connect(self._undo)
+        self._act_undo.setEnabled(False)
+        toolbar.addAction(self._act_undo)
+
+        self._act_redo = QAction("↪ 재실행", self)
+        self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
+        self._act_redo.triggered.connect(self._redo)
+        self._act_redo.setEnabled(False)
+        toolbar.addAction(self._act_redo)
+
+        toolbar.addSeparator()
+
         self._act_reset = QAction("원본 복원", self)
-        self._act_reset.setToolTip("raw_events 기준으로 events를 초기화합니다.")
+        self._act_reset.setToolTip("raw_events 기준으로 events를 초기화합니다")
         self._act_reset.triggered.connect(self._reset_to_raw)
         self._act_reset.setEnabled(False)
         toolbar.addAction(self._act_reset)
@@ -140,11 +392,9 @@ class EventEditorWidget(QWidget):
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
 
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
@@ -160,130 +410,92 @@ class EventEditorWidget(QWidget):
         self._summary.setFont(font)
         layout.addWidget(self._summary)
 
+        # 단축키
+        QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self._undo)
+        QShortcut(QKeySequence("Ctrl+Y"), self).activated.connect(self._redo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self).activated.connect(self._redo)
+        QShortcut(QKeySequence("Delete"), self).activated.connect(self._delete_selected)
+
     # ── 공개 인터페이스 ───────────────────────────────────────────────────────
 
     def load_macro(self, macro: MacroData) -> None:
         """MacroData를 테이블에 로드한다."""
         self._macro = macro
-        self._refresh_table()
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._refresh()
+        self._act_toggle_moves.setEnabled(True)
         self._act_del_moves.setEnabled(True)
         self._act_set_delay.setEnabled(True)
         self._act_reset.setEnabled(True)
+        self._act_undo.setEnabled(False)
+        self._act_redo.setEnabled(False)
 
     def current_macro(self) -> MacroData | None:
         """현재 로드된 MacroData를 반환한다."""
         return self._macro
 
+    def highlight_event(self, event_idx: int) -> None:
+        """재생 중 해당 이벤트 인덱스에 대응하는 행을 하이라이트한다."""
+        for row_idx, row in enumerate(self._rows):
+            if event_idx in row.event_indices:
+                self._table.selectRow(row_idx)
+                self._table.scrollTo(self._table.model().index(row_idx, 0))
+                return
+
     # ── 테이블 갱신 ───────────────────────────────────────────────────────────
 
-    def _refresh_table(self) -> None:
+    def _refresh(self) -> None:
         if self._macro is None:
             self._table.setRowCount(0)
+            self._rows = []
             self._summary.setText("이벤트 없음")
             return
 
         events = self._macro.events
-        self._table.setRowCount(len(events))
+        self._rows = _build_rows(events, self._show_moves)
+        self._table.setRowCount(len(self._rows))
 
-        for row, event in enumerate(events):
-            x_s, y_s, key_btn = _event_detail(event)
-            ts_ms = f"{event.timestamp_ns / 1_000_000:.0f}"
-            delay_s = str(event.delay_override_ms) if event.delay_override_ms is not None else ""
+        for row_idx, row in enumerate(self._rows):
+            color = _KIND_COLORS.get(row.kind, QColor(80, 80, 80))
 
             items = [
-                _cell(str(row + 1)),
-                _cell(event.type),
-                _cell(ts_ms),
-                _cell(x_s),
-                _cell(y_s),
-                _cell(key_btn),
-                _cell(delay_s, editable=True),
+                _cell(str(row_idx + 1)),
+                _cell(row.label),
+                _cell(row.detail),
+                _cell(f"{row.time_ms:.0f}"),
+                _cell(row.delay_str),
             ]
 
-            # 타입 셀 색상
-            color = _TYPE_COLORS.get(event.type, QColor(80, 80, 80))
             items[1].setBackground(QBrush(color))
             items[1].setForeground(QBrush(QColor(255, 255, 255)))
 
             for col, item in enumerate(items):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row, col, item)
+                self._table.setItem(row_idx, col, item)
 
         total = len(events)
         raw_total = len(self._macro.raw_events)
+        move_count = sum(1 for e in events if e.type == "mouse_move")
+        display_count = len(self._rows)
         edited_tag = " [편집됨]" if self._macro.is_edited else ""
-        mouse_moves = sum(1 for e in events if e.type == "mouse_move")
         self._summary.setText(
-            f"총 {total}개 이벤트 (raw: {raw_total})  |  "
-            f"마우스 이동: {mouse_moves}개{edited_tag}"
+            f"표시: {display_count}개  (원본: {total}개, raw: {raw_total}개)"
+            f"  |  이동: {move_count}개{edited_tag}"
         )
 
-    # ── 컨텍스트 메뉴 / 더블클릭 ─────────────────────────────────────────────
+    # ── Undo / Redo ───────────────────────────────────────────────────────────
 
-    def _context_menu(self, pos: object) -> None:
-        from PyQt6.QtCore import QPoint
-        rows = self._selected_rows()
-        if not rows or self._macro is None:
-            return
-
-        menu = QMenu(self)
-
-        if len(rows) == 1:
-            act_edit_delay = menu.addAction("딜레이 설정...")
-            act_edit_delay.triggered.connect(lambda: self._edit_delay_row(rows[0]))
-
-        act_delete = menu.addAction(f"이벤트 삭제 ({len(rows)}개)")
-        act_delete.triggered.connect(lambda: self._delete_rows(rows))
-
-        global_pos = self._table.viewport().mapToGlobal(
-            pos if isinstance(pos, QPoint) else QPoint(0, 0)
-        )
-        menu.exec(global_pos)
-
-    def _on_double_click(self, row: int, col: int) -> None:
-        if col == 6:  # 딜레이 셀 더블클릭
-            self._edit_delay_row(row)
-
-    # ── 편집 동작 ─────────────────────────────────────────────────────────────
-
-    def _selected_rows(self) -> list[int]:
-        return sorted({idx.row() for idx in self._table.selectedIndexes()})
-
-    def _edit_delay_row(self, row: int) -> None:
-        if self._macro is None or row >= len(self._macro.events):
-            return
-        event = self._macro.events[row]
-        current = event.delay_override_ms if event.delay_override_ms is not None else 0
-
-        val, ok = QInputDialog.getInt(
-            self, "딜레이 설정",
-            f"이벤트 #{row + 1} ({event.type}) 딜레이 (ms):\n0 입력 시 원래 타이밍으로 복원",
-            current, 0, 60000, 10,
-        )
-        if not ok:
-            return
-
-        from macroflow.macro_file import set_delay_single
-        try:
-            new_macro = set_delay_single(
-                self._macro, event.id, val if val > 0 else None
-            )
-        except KeyError:
-            QMessageBox.warning(self, "오류", "이벤트를 찾을 수 없습니다.")
-            return
-
-        self._macro = new_macro
-        self._refresh_table()
-        self.macro_changed.emit(self._macro)
-
-    def _delete_rows(self, rows: list[int]) -> None:
+    def _push_undo(self) -> None:
         if self._macro is None:
             return
-        events = list(self._macro.events)
-        for row in sorted(rows, reverse=True):
-            if 0 <= row < len(events):
-                events.pop(row)
-        from macroflow.types import MacroData
+        self._undo_stack.append(copy.deepcopy(self._macro.events))
+        self._redo_stack.clear()
+        self._act_undo.setEnabled(True)
+        self._act_redo.setEnabled(False)
+
+    def _apply_events(self, events: list[AnyEvent]) -> None:
+        assert self._macro is not None
         self._macro = MacroData(
             meta=self._macro.meta,
             settings=self._macro.settings,
@@ -291,16 +503,231 @@ class EventEditorWidget(QWidget):
             events=events,
             is_edited=True,
         )
-        self._refresh_table()
+        self._refresh()
         self.macro_changed.emit(self._macro)
+
+    def _undo(self) -> None:
+        if not self._undo_stack or self._macro is None:
+            return
+        self._redo_stack.append(copy.deepcopy(self._macro.events))
+        events = self._undo_stack.pop()
+        self._act_undo.setEnabled(bool(self._undo_stack))
+        self._act_redo.setEnabled(True)
+        self._apply_events(events)
+
+    def _redo(self) -> None:
+        if not self._redo_stack or self._macro is None:
+            return
+        self._undo_stack.append(copy.deepcopy(self._macro.events))
+        events = self._redo_stack.pop()
+        self._act_undo.setEnabled(True)
+        self._act_redo.setEnabled(bool(self._redo_stack))
+        self._apply_events(events)
+
+    # ── 컨텍스트 메뉴 / 더블클릭 ─────────────────────────────────────────────
+
+    def _context_menu(self, pos: object) -> None:
+        rows = self._selected_row_indices()
+        if not rows or self._macro is None:
+            return
+
+        menu = QMenu(self)
+
+        if len(rows) == 1:
+            row = self._rows[rows[0]]
+            primary = self._macro.events[row.primary_idx]
+
+            act_edit_delay = menu.addAction("딜레이 설정...")
+            act_edit_delay.triggered.connect(lambda: self._edit_delay(rows[0]))
+
+            if row.kind == "key_press" and isinstance(primary, KeyEvent):
+                act_edit_key = menu.addAction("키 값 변경...")
+                act_edit_key.triggered.connect(lambda: self._edit_key(rows[0]))
+
+            if row.kind in ("click", "right_click", "drag", "right_drag", "orphan", "mouse_move"):
+                act_edit_pos = menu.addAction("위치 변경...")
+                act_edit_pos.triggered.connect(lambda: self._edit_position(rows[0]))
+
+            menu.addSeparator()
+
+        act_delete = menu.addAction(f"행 삭제 ({len(rows)}개)")
+        act_delete.triggered.connect(lambda: self._delete_rows(rows))
+
+        if isinstance(pos, QPoint):
+            global_pos = self._table.viewport().mapToGlobal(pos)
+        else:
+            global_pos = self._table.viewport().mapToGlobal(QPoint(0, 0))
+        menu.exec(global_pos)
+
+    def _on_double_click(self, row: int, col: int) -> None:
+        if row >= len(self._rows) or self._macro is None:
+            return
+        display_row = self._rows[row]
+        if col == 4:  # 딜레이 셀
+            self._edit_delay(row)
+        elif col == 2:  # 내용 셀
+            primary = self._macro.events[display_row.primary_idx]
+            if display_row.kind == "key_press" and isinstance(primary, KeyEvent):
+                self._edit_key(row)
+            elif display_row.kind in ("click", "right_click", "drag", "right_drag", "orphan", "mouse_move"):
+                self._edit_position(row)
+
+    # ── 편집 동작 ─────────────────────────────────────────────────────────────
+
+    def _selected_row_indices(self) -> list[int]:
+        return sorted({idx.row() for idx in self._table.selectedIndexes()})
+
+    def _edit_delay(self, row: int) -> None:
+        if self._macro is None or row >= len(self._rows):
+            return
+        display_row = self._rows[row]
+        primary = self._macro.events[display_row.primary_idx]
+        current = primary.delay_override_ms if primary.delay_override_ms is not None else 0
+
+        val, ok = QInputDialog.getInt(
+            self, "딜레이 설정",
+            f"행 #{row + 1} 딜레이 (ms):\n0 입력 시 원래 타이밍으로 복원",
+            current, 0, 60000, 10,
+        )
+        if not ok:
+            return
+        self._push_undo()
+        try:
+            new_macro = set_delay_single(self._macro, primary.id, val if val > 0 else None)
+        except KeyError:
+            self._undo_stack.pop()
+            QMessageBox.warning(self, "오류", "이벤트를 찾을 수 없습니다.")
+            return
+        self._macro = new_macro
+        self._refresh()
+        self.macro_changed.emit(self._macro)
+
+    def _edit_key(self, row: int) -> None:
+        """키 입력 행의 키 값을 변경한다."""
+        if self._macro is None or row >= len(self._rows):
+            return
+        display_row = self._rows[row]
+        primary = self._macro.events[display_row.primary_idx]
+        if not isinstance(primary, KeyEvent):
+            return
+
+        new_key, ok = QInputDialog.getText(
+            self, "키 값 변경",
+            f"현재 키: {primary.key}\n"
+            "새 키 이름을 입력하세요 (예: a, 1, enter, space, ctrl, f1):",
+            text=primary.key,
+        )
+        if not ok or not new_key.strip():
+            return
+
+        new_key = new_key.strip().lower()
+        new_vk = _key_name_to_vk(new_key, primary.vk_code)
+
+        self._push_undo()
+        try:
+            new_macro = edit_key_value(self._macro, primary.id, new_key, new_vk)
+        except (KeyError, TypeError):
+            self._undo_stack.pop()
+            QMessageBox.warning(self, "오류", "키 값 변경에 실패했습니다.")
+            return
+        self._macro = new_macro
+        self._refresh()
+        self.macro_changed.emit(self._macro)
+
+        # key_up 이벤트도 동일하게 업데이트
+        if len(display_row.event_indices) == 2:
+            up_event = self._macro.events[display_row.event_indices[1]]
+            if isinstance(up_event, KeyEvent):
+                try:
+                    updated = edit_key_value(self._macro, up_event.id, new_key, new_vk)
+                    self._macro = updated
+                    self._refresh()
+                    self.macro_changed.emit(self._macro)
+                except (KeyError, TypeError):
+                    pass
+
+    def _edit_position(self, row: int) -> None:
+        """마우스 이벤트의 위치를 변경한다."""
+        if self._macro is None or row >= len(self._rows):
+            return
+        display_row = self._rows[row]
+        primary = self._macro.events[display_row.primary_idx]
+        if not isinstance(primary, (MouseButtonEvent, MouseMoveEvent)):
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("위치 변경")
+        dialog.setFixedWidth(260)
+
+        form = QFormLayout()
+        x_spin = QDoubleSpinBox()
+        x_spin.setRange(0.0, 100.0)
+        x_spin.setDecimals(1)
+        x_spin.setSuffix(" %")
+        x_spin.setValue(primary.x_ratio * 100)
+        form.addRow("X 위치:", x_spin)
+
+        y_spin = QDoubleSpinBox()
+        y_spin.setRange(0.0, 100.0)
+        y_spin.setDecimals(1)
+        y_spin.setSuffix(" %")
+        y_spin.setValue(primary.y_ratio * 100)
+        form.addRow("Y 위치:", y_spin)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        v = QVBoxLayout(dialog)
+        v.addLayout(form)
+        v.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_x = x_spin.value() / 100.0
+        new_y = y_spin.value() / 100.0
+
+        self._push_undo()
+        try:
+            new_macro = edit_position(self._macro, primary.id, new_x, new_y)
+        except (KeyError, TypeError):
+            self._undo_stack.pop()
+            QMessageBox.warning(self, "오류", "위치 변경에 실패했습니다.")
+            return
+        self._macro = new_macro
+        self._refresh()
+        self.macro_changed.emit(self._macro)
+
+    def _delete_selected(self) -> None:
+        rows = self._selected_row_indices()
+        if rows:
+            self._delete_rows(rows)
+
+    def _delete_rows(self, rows: list[int]) -> None:
+        if self._macro is None:
+            return
+        indices_to_remove: set[int] = set()
+        for r in rows:
+            if r < len(self._rows):
+                indices_to_remove.update(self._rows[r].event_indices)
+        self._push_undo()
+        events = [e for i, e in enumerate(self._macro.events) if i not in indices_to_remove]
+        self._apply_events(events)
+
+    def _toggle_moves(self) -> None:
+        self._show_moves = self._act_toggle_moves.isChecked()
+        self._refresh()
 
     def _delete_mouse_moves(self) -> None:
         if self._macro is None:
             return
+        self._push_undo()
         self._macro = delete_mouse_moves(self._macro)
-        self._refresh_table()
+        self._refresh()
         self.macro_changed.emit(self._macro)
-        logger.info("Mouse moves deleted")
 
     def _set_delay_all(self) -> None:
         if self._macro is None:
@@ -312,10 +739,10 @@ class EventEditorWidget(QWidget):
         )
         if not ok:
             return
+        self._push_undo()
         self._macro = set_delay_all(self._macro, val)
-        self._refresh_table()
+        self._refresh()
         self.macro_changed.emit(self._macro)
-        logger.info(f"All delays set to {val}ms")
 
     def _reset_to_raw(self) -> None:
         if self._macro is None:
@@ -327,7 +754,7 @@ class EventEditorWidget(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        self._push_undo()
         self._macro = reset_to_raw(self._macro)
-        self._refresh_table()
+        self._refresh()
         self.macro_changed.emit(self._macro)
-        logger.info("Macro reset to raw")

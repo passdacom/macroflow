@@ -300,3 +300,73 @@ def reset_to_raw(macro: MacroData) -> MacroData:
         events=copy.deepcopy(macro.raw_events),
         is_edited=False,
     )
+
+
+def edit_key_value(
+    macro: MacroData, event_id: str, new_key: str, new_vk_code: int
+) -> MacroData:
+    """events에서 특정 id의 KeyEvent key·vk_code를 수정한다.
+
+    Args:
+        macro: 원본 MacroData.
+        event_id: 수정할 이벤트 id (8자리 hex).
+        new_key: 새 키 이름 문자열 (예: "a", "enter").
+        new_vk_code: 새 Windows Virtual Key Code.
+
+    Returns:
+        해당 이벤트가 수정된 새 MacroData (is_edited=True).
+
+    Raises:
+        KeyError: 해당 id를 가진 이벤트가 없는 경우.
+        TypeError: 해당 이벤트가 KeyEvent가 아닌 경우.
+    """
+    updated = copy.deepcopy(macro.events)
+    for event in updated:
+        if event.id == event_id:
+            if not isinstance(event, KeyEvent):
+                raise TypeError(f"Event {event_id!r} is not a KeyEvent")
+            event.key = new_key
+            event.vk_code = new_vk_code
+            return MacroData(
+                meta=macro.meta,
+                settings=macro.settings,
+                raw_events=macro.raw_events,
+                events=updated,
+                is_edited=True,
+            )
+    raise KeyError(f"Event id not found: {event_id!r}")
+
+
+def edit_position(
+    macro: MacroData, event_id: str, new_x_ratio: float, new_y_ratio: float
+) -> MacroData:
+    """events에서 특정 id의 마우스 이벤트 좌표를 수정한다.
+
+    Args:
+        macro: 원본 MacroData.
+        event_id: 수정할 이벤트 id (8자리 hex).
+        new_x_ratio: 새 X 좌표 비율 (0.0~1.0).
+        new_y_ratio: 새 Y 좌표 비율 (0.0~1.0).
+
+    Returns:
+        해당 이벤트가 수정된 새 MacroData (is_edited=True).
+
+    Raises:
+        KeyError: 해당 id를 가진 이벤트가 없는 경우.
+        TypeError: 해당 이벤트가 마우스 이벤트가 아닌 경우.
+    """
+    updated = copy.deepcopy(macro.events)
+    for event in updated:
+        if event.id == event_id:
+            if not isinstance(event, (MouseButtonEvent, MouseMoveEvent)):
+                raise TypeError(f"Event {event_id!r} is not a mouse event")
+            event.x_ratio = new_x_ratio
+            event.y_ratio = new_y_ratio
+            return MacroData(
+                meta=macro.meta,
+                settings=macro.settings,
+                raw_events=macro.raw_events,
+                events=updated,
+                is_edited=True,
+            )
+    raise KeyError(f"Event id not found: {event_id!r}")

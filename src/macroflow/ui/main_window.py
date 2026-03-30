@@ -18,15 +18,11 @@ from PyQt6.QtCore import QByteArray, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEvent
 from PyQt6.QtWidgets import (
     QComboBox,
-    QDialog,
-    QDialogButtonBox,
     QFileDialog,
-    QFormLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QSpinBox,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -46,58 +42,6 @@ _HOTKEY_PLAY = 2
 _VK_F6 = 0x75
 _VK_F7 = 0x76
 _WM_HOTKEY = 0x0312
-
-
-# ── 재생 설정 다이얼로그 ────────────────────────────────────────────────────────
-
-def _show_play_dialog(parent: QWidget) -> tuple[float, int, int] | None:
-    """속도·반복·딜레이를 입력받는 모달 다이얼로그.
-
-    Returns:
-        (speed, repeat_count, interval_ms) 또는 취소 시 None.
-    """
-    dialog = QDialog(parent)
-    dialog.setWindowTitle("재생 설정")
-    dialog.setModal(True)
-    dialog.setFixedWidth(280)
-
-    form = QFormLayout()
-
-    speed_combo = QComboBox()
-    speed_combo.addItems(["0.5x  (절반 속도)", "1.0x  (원본 속도)", "2.0x  (2배 속도)", "5.0x  (5배 속도)"])
-    speed_combo.setCurrentIndex(1)
-    form.addRow("재생 속도:", speed_combo)
-
-    repeat_spin = QSpinBox()
-    repeat_spin.setMinimum(1)
-    repeat_spin.setMaximum(9999)
-    repeat_spin.setValue(1)
-    repeat_spin.setSuffix(" 회")
-    form.addRow("반복 횟수:", repeat_spin)
-
-    interval_spin = QSpinBox()
-    interval_spin.setMinimum(0)
-    interval_spin.setMaximum(60000)
-    interval_spin.setValue(500)
-    interval_spin.setSuffix(" ms")
-    form.addRow("반복 간 대기:", interval_spin)
-
-    buttons = QDialogButtonBox(
-        QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-    )
-    buttons.accepted.connect(dialog.accept)
-    buttons.rejected.connect(dialog.reject)
-
-    layout = QVBoxLayout(dialog)
-    layout.addLayout(form)
-    layout.addWidget(buttons)
-
-    if dialog.exec() != QDialog.DialogCode.Accepted:
-        return None
-
-    speed_values = [0.5, 1.0, 2.0, 5.0]
-    speed = speed_values[speed_combo.currentIndex()]
-    return speed, repeat_spin.value(), interval_spin.value()
 
 
 # ── 메인 창 ───────────────────────────────────────────────────────────────────
@@ -203,7 +147,6 @@ class MainWindow(QMainWindow):
         tb = self.addToolBar("메인 도구")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        tb.setIconSize(tb.iconSize())
 
         self._act_record = QAction("● 녹화", self)
         self._act_record.setToolTip("F6  —  녹화 시작/중지")
@@ -212,7 +155,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self._act_record)
 
         self._act_play = QAction("▶ 재생", self)
-        self._act_play.setToolTip("F7  —  재생 시작/중지 (매크로가 로드되어 있어야 합니다)")
+        self._act_play.setToolTip("F7  —  재생 시작/중지")
         self._act_play.triggered.connect(self._toggle_playback)
         tb.addAction(self._act_play)
 
@@ -220,6 +163,39 @@ class MainWindow(QMainWindow):
         self._act_stop.setToolTip("녹화 또는 재생을 즉시 중지합니다")
         self._act_stop.triggered.connect(self._emergency_stop)
         tb.addAction(self._act_stop)
+
+        tb.addSeparator()
+
+        # 재생 속도
+        tb.addWidget(QLabel(" 속도:"))
+        self._speed_combo = QComboBox()
+        self._speed_combo.addItems(["0.5x", "1.0x", "2.0x", "5.0x"])
+        self._speed_combo.setCurrentIndex(1)
+        self._speed_combo.setToolTip("재생 속도 배율")
+        self._speed_combo.setFixedWidth(64)
+        tb.addWidget(self._speed_combo)
+
+        # 반복 횟수
+        tb.addWidget(QLabel("  반복:"))
+        self._repeat_spin = QSpinBox()
+        self._repeat_spin.setMinimum(1)
+        self._repeat_spin.setMaximum(9999)
+        self._repeat_spin.setValue(1)
+        self._repeat_spin.setSuffix("회")
+        self._repeat_spin.setToolTip("반복 재생 횟수")
+        self._repeat_spin.setFixedWidth(72)
+        tb.addWidget(self._repeat_spin)
+
+        # 반복 간격
+        tb.addWidget(QLabel("  간격:"))
+        self._interval_spin = QSpinBox()
+        self._interval_spin.setMinimum(0)
+        self._interval_spin.setMaximum(60000)
+        self._interval_spin.setValue(500)
+        self._interval_spin.setSuffix("ms")
+        self._interval_spin.setToolTip("반복 재생 간 대기 시간 (ms)")
+        self._interval_spin.setFixedWidth(80)
+        tb.addWidget(self._interval_spin)
 
         tb.addSeparator()
 
@@ -367,10 +343,10 @@ class MainWindow(QMainWindow):
         if not self._macro:
             return
 
-        result = _show_play_dialog(self)
-        if result is None:
-            return
-        speed, repeat_count, interval_ms = result
+        speed_values = [0.5, 1.0, 2.0, 5.0]
+        speed = speed_values[self._speed_combo.currentIndex()]
+        repeat_count = self._repeat_spin.value()
+        interval_ms = self._interval_spin.value()
 
         self._state = "playing"
         self._overlay.start_playing(speed)
