@@ -12,10 +12,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "pytest-qt>=4.4",
     "ruff>=0.4",
     "mypy>=1.10",
     "pyinstaller>=6.0",
+]
+# M3(UI) 구현 후 사용: uv sync --extra ui-test
+# CI에서는 xvfb-run 또는 QT_QPA_PLATFORM=offscreen 설정 필요
+ui-test = [
+    "pytest-qt>=4.4",
+    "PyQt6>=6.6.0",
 ]
 
 [project.scripts]
@@ -44,8 +49,6 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-# pytest-qt는 M3(PyQt6 UI) 구현 전까지 비활성화 — headless CI에서 libEGL 없음
-addopts = "-p no:qt"
 
 [[tool.mypy.overrides]]
 # Win32 ctypes 코드는 Linux 환경에서 mypy 검사 불가 — 실제 검사는 Windows에서 수행
