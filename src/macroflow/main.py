@@ -14,6 +14,7 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # ── 로그 디렉터리 / 파일 설정 ─────────────────────────────────────────────────
 # PyQt6보다 먼저 설정해야 import 오류도 파일에 기록된다.
@@ -139,14 +140,14 @@ def main() -> None:
 
 def _build_placeholder_window(
     log_file: Path,
-    QMainWindow: type,  # type: ignore[valid-type]
-    QWidget: type,      # type: ignore[valid-type]
-    QVBoxLayout: type,  # type: ignore[valid-type]
-    QLabel: type,       # type: ignore[valid-type]
-    QStatusBar: type,   # type: ignore[valid-type]
-    Qt: object,
-    QFont: type,        # type: ignore[valid-type]
-) -> object:
+    QMainWindow: type,
+    QWidget: type,
+    QVBoxLayout: type,
+    QLabel: type,
+    QStatusBar: type,
+    Qt: Any,
+    QFont: type,
+) -> Any:
     """M3 UI 구현 전 임시 플레이스홀더 창을 반환한다."""
     from macroflow import __version__
 
