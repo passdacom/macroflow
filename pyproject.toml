@@ -1,0 +1,55 @@
+[project]
+name = "macroflow"
+version = "0.1.0"
+description = "Windows 전용 마우스/키보드 매크로 녹화·재생 도구 (팀 내부 배포용)"
+requires-python = ">=3.11"
+dependencies = [
+    "PyQt6>=6.6.0",
+    # ctypes는 표준 라이브러리 — 별도 설치 불필요
+    # pynput은 의도적으로 제외 (Win32 LL Hook 직접 사용)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+macroflow = "macroflow.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/macroflow"]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]   # pyflakes + isort + pyupgrade + bugbear
+ignore = ["E501"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[[tool.mypy.overrides]]
+# Win32 ctypes 코드는 Linux 환경에서 mypy 검사 불가 — 실제 검사는 Windows에서 수행
+module = [
+    "macroflow.win32.hooks",
+    "macroflow.win32.dpi",
+    "macroflow.win32.sendinput",
+]
+ignore_errors = true

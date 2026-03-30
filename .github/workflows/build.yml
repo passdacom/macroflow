@@ -1,0 +1,79 @@
+name: Build MacroFlow
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-test:
+    name: Lint & Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run ruff
+        run: uv run ruff check .
+
+      - name: Run mypy
+        run: uv run mypy src/
+
+      - name: Run pytest
+        run: uv run pytest tests/ -v
+
+  build-exe:
+    name: Build Windows EXE
+    needs: lint-test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Build EXE
+        run: uv run pyinstaller build/macroflow-win.spec
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacroFlow-exe
+          path: dist/MacroFlow.exe
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: build-exe
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download EXE artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MacroFlow-exe
+          path: dist/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-build.${{ github.run_number }}
+          name: "MacroFlow v0.1.0 Build ${{ github.run_number }}"
+          files: dist/MacroFlow.exe
+          generate_release_notes: true
+          make_latest: true

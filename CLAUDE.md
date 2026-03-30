@@ -1,0 +1,186 @@
+# CLAUDE.md — MacroFlow 에이전트 컨텍스트
+
+> 이 파일은 Claude Code 에이전트가 매 세션 시작 시 가장 먼저 읽는 파일입니다.
+> 코드 작성 전에 반드시 전체를 숙지하세요.
+
+---
+
+## 1. 프로젝트 한 줄 요약
+
+**MacroFlow** — 마우스·키보드 동작을 녹화하고 재생하는 **Windows 전용** 데스크톱 매크로 앱.
+팀 내부 배포 전용. 비기술자도 단일 `.exe` 실행만으로 사용 가능해야 한다.
+
+---
+
+## 2. 기술 스택
+
+| 구분 | 선택 | 비고 |
+|---|---|---|
+| 언어 | Python 3.11+ | 3.10 이하 사용 금지 |
+| 이벤트 캡처 | **ctypes + Win32 LL Hook** | pynput Listener 사용 금지 (이벤트 순서 보장 불가) |
+| 이벤트 재생 | **ctypes + SendInput API** | pynput 재생 제어 사용 금지 |
+| GUI | PyQt6 6.6+ | PyQt5 문법 사용 금지 |
+| 빌드/배포 | PyInstaller 6.x (onefile) | Windows 단일 .exe 배포 |
+| 테스트 | pytest 8.x + pytest-qt | |
+| 코드 품질 | ruff + mypy | CI에서 강제 |
+| 패키지 관리 | uv | pip 직접 사용 금지 |
+
+> **왜 pynput 대신 ctypes 직접 호출인가?**
+> pynput은 마우스·키보드를 별도 스레드로 처리하여 빠른 입력 시 이벤트 순서가
+> 역전될 수 있다. Windows Low-Level Hook (WH_KEYBOARD_LL, WH_MOUSE_LL)을
+> 단일 메시지 펌프 스레드에서 직접 처리하면 OS 레벨에서 순서가 보장된다.
+> 재생도 SendInput을 직접 호출해야 키/마우스 이벤트가 원자적으로 처리된다.
+
+---
+
+## 3. 디렉토리 구조
+
+```
+macro-harness/
+├── CLAUDE.md
+├── ARCHITECTURE.md
+├── SECURITY.md
+├── pyproject.toml
+├── src/
+│   └── macroflow/
+│       ├── __init__.py
+│       ├── main.py
+│       ├── recorder.py         ← LL Hook 기반 이벤트 캡처
+│       ├── player.py           ← SendInput 기반 재생 엔진
+│       ├── macro_file.py       ← JSON 직렬화/역직렬화
+│       ├── script_engine.py    ← 조건 분기·변수 처리
+│       ├── win32/
+│       │   ├── hooks.py        ← WH_KEYBOARD_LL, WH_MOUSE_LL ctypes 래퍼
+│       │   ├── sendinput.py    ← SendInput ctypes 래퍼
+│       │   └── dpi.py          ← DPI 스케일링 처리
+│       └── ui/
+│           ├── main_window.py
+│           ├── sequencer.py
+│           └── editor.py
+├── tests/
+├── docs/
+│   ├── design-docs/
+│   │   ├── core-beliefs.md     ← ★ 설계 원칙 및 과거 실패 학습
+│   │   └── index.md
+│   ├── exec-plans/
+│   │   ├── active/
+│   │   │   └── mvp-phase1.md
+│   │   ├── completed/
+│   │   └── tech-debt-tracker.md
+│   ├── generated/
+│   │   └── macro-json-schema.md
+│   ├── product-specs/
+│   │   ├── json-format-spec.md
+│   │   ├── macro-recorder.md
+│   │   ├── macro-player.md
+│   │   ├── scripting-engine.md
+│   │   ├── drag-drop-sequencer.md
+│   │   └── index.md
+│   └── references/
+│       ├── win32-hooks-llms.txt
+│       └── pyqt6-llms.txt
+└── build/
+    └── macroflow-win.spec
+```
+
+---
+
+## 4. 코딩 컨벤션
+
+- Type hints 필수: 모든 함수 시그니처
+- Docstring 필수: Google style, 모든 public 클래스·함수
+- ruff 통과 필수: `uv run ruff check .`
+- mypy strict: `uv run mypy src/` 오류 0건
+
+네이밍: 클래스 PascalCase / 함수·변수 snake_case / 상수 UPPER_SNAKE_CASE
+
+---
+
+## 5. 핵심 커맨드
+
+```bash
+uv sync                                        # 환경 설치
+uv run python -m macroflow                     # 앱 실행
+uv run pytest tests/ -v                        # 테스트
+uv run ruff check . && uv run mypy src/        # 품질 검사
+uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
+```
+
+---
+
+## 6. 에이전트 행동 규칙
+
+### 반드시 할 것
+- 새 기능 시작 전 docs/product-specs/ 해당 스펙 파일 먼저 읽기
+- docs/design-docs/core-beliefs.md 숙지 — 과거 실패 패턴 반복 금지
+- JSON 포맷 변경 시 json-format-spec.md 먼저 업데이트
+- Win32 API 호출은 src/macroflow/win32/ 하위에만 작성
+- 테스트 없이 recorder.py / player.py / macro_file.py 변경 금지
+
+### 절대 하지 말 것
+- pynput Listener 사용 — 이벤트 순서 보장 불가
+- pynput Controller 로 재생 — SendInput 사용할 것
+- 녹화 시점에 클릭/드래그 분류 — RAW 이벤트 저장, 재생 시 판별
+- time.sleep() 을 타이밍 기준으로 사용 — 절대 타임스탬프 기준 재생
+- eval() / exec() 를 script_engine.py 샌드박스 외부에서 사용
+- PyQt5 호환 문법 사용
+
+---
+
+## 7. 알려진 기술적 지뢰 (과거 실패에서 학습)
+
+> 자세한 내용: docs/design-docs/core-beliefs.md
+
+| 지뢰 | 증상 | 해결책 |
+|---|---|---|
+| pynput 멀티스레드 이벤트 역전 | 빠른 타이핑 시 순서 꼬임 | Win32 LL Hook 단일 메시지 펌프 |
+| 녹화 시점 클릭/드래그 분류 | 클릭↔드래그 오인식 | RAW 저장 + 재생 시 임계값 판별 |
+| time.sleep() 누적 오차 | 긴 매크로 타이밍 드리프트 | 절대 타임스탬프 기준 + 드리프트 보정 |
+| DPI 스케일링 미처리 | 다른 PC에서 좌표 어긋남 | 좌표 비율 정규화 + DPI Aware 선언 |
+| 미세 이동 중 클릭 | 클릭이 드래그로 오인식 | 거리 임계값 8px + 시간 임계값 300ms |
+
+---
+
+## 8. 현재 진행 상태
+
+- [x] 하네스 구조 설계 완료
+- [x] CLAUDE.md 작성 완료 (Windows 전용 확정)
+- [x] core-beliefs.md 작성 완료
+- [x] ARCHITECTURE.md 작성
+- [x] json-format-spec.md 확정
+- [x] macro-recorder.md 완료
+- [x] macro-player.md 완료
+- [x] scripting-engine.md 완료
+- [x] drag-drop-sequencer.md 완료
+- [ ] src/ 초기 코드 스캐폴딩
+
+**현재 단계**: 문서 작성 단계. 코드 작성 시작 전.
+
+---
+
+## 10. GitHub Actions CI/CD
+
+### 빌드 트리거
+- `main` 브랜치 push 시 자동 빌드
+- Windows runner(`windows-latest`)에서 PyInstaller로 단일 `.exe` 생성
+- GitHub Releases에 자동 업로드
+
+### 릴리즈 태그 형식
+```
+v{version}-build.{run_number}
+예: v0.1.0-build.12
+```
+
+### 팀원 다운로드 방법
+1. GitHub 저장소 → Releases 탭
+2. 최신 릴리즈의 `MacroFlow.exe` 다운로드
+3. 더블클릭 실행 (설치 불필요)
+4. 첫 실행 시 SmartScreen 경고 → "추가 정보" → "실행" 클릭
+
+### ⚠️ 회사 방화벽 GitHub 차단 시 대안
+github.com 접속이 안 되면 아래 중 하나로 대체:
+- **Gitea self-hosted**: 사내 서버에 Git + CI 직접 구축
+- **네트워크 드라이브 배포**: CI 빌드 후 exe를 사내 공유 폴더에 자동 복사
+- **이메일 배포**: GitHub Actions에서 메일로 exe 첨부 발송
+
+> 확인 필요: 회사 PC에서 github.com 접속 가능 여부 → MVP 진입 전 테스트
