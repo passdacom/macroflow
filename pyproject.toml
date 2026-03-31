@@ -1,6 +1,6 @@
 [project]
 name = "macroflow"
-version = "0.1.0"
+version = "0.2.0"
 description = "Windows 전용 마우스/키보드 매크로 녹화·재생 도구 (팀 내부 배포용)"
 requires-python = ">=3.11"
 dependencies = [
