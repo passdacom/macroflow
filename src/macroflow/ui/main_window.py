@@ -279,7 +279,10 @@ class MainWindow(QMainWindow):
                     self._toggle_recording()
                     return True, 0
                 if msg.wParam == _HOTKEY_PLAY:
-                    self._toggle_playback()
+                    if self._state == "recording":
+                        self._insert_color_trigger()
+                    else:
+                        self._toggle_playback()
                     return True, 0
         return False, 0
 
@@ -426,6 +429,21 @@ class MainWindow(QMainWindow):
         self._sb_state.setText("재생 오류")
         QMessageBox.warning(self, "재생 오류", msg)
         logger.error(f"재생 오류: {msg}")
+
+    def _insert_color_trigger(self) -> None:
+        """녹화 중 F7: 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다."""
+        from macroflow import recorder
+        from macroflow.win32 import get_cursor_pos, get_pixel_color, pixel_to_ratio
+
+        x, y = get_cursor_pos()
+        r, g, b = get_pixel_color(x, y)
+        color_hex = f"#{r:02X}{g:02X}{b:02X}"
+        x_ratio, y_ratio = pixel_to_ratio(x, y)
+
+        recorder.inject_color_trigger(x_ratio, y_ratio, color_hex)
+
+        self._sb_state.setText(f"● 녹화 중  |  색상 체크 삽입: {color_hex}  ({x}, {y})")
+        logger.info(f"색상 체크 삽입: {color_hex} @ pixel ({x}, {y})")
 
     def _emergency_stop(self) -> None:
         logger.info("긴급 중지")

@@ -154,6 +154,10 @@ _user32.ReleaseDC.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.HDC]
 _gdi32.GetPixel.restype = ctypes.wintypes.DWORD
 _gdi32.GetPixel.argtypes = [ctypes.wintypes.HDC, ctypes.c_int, ctypes.c_int]
 
+# GetCursorPos
+_user32.GetCursorPos.restype = ctypes.wintypes.BOOL
+_user32.GetCursorPos.argtypes = [ctypes.POINTER(_POINT)]
+
 
 # ── 내부 상태 ─────────────────────────────────────────────────────────────────
 _event_queue: deque[tuple[str, int, int, tuple[int, int, int]]] | None = None
@@ -281,6 +285,17 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int]:
     color: int = _gdi32.GetPixel(hdc, x, y)
     _user32.ReleaseDC(None, hdc)
     return (color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF)
+
+
+def get_cursor_pos() -> tuple[int, int]:
+    """현재 마우스 커서의 화면 좌표(픽셀)를 반환한다.
+
+    Returns:
+        (x, y) 픽셀 좌표 튜플.
+    """
+    pt = _POINT()
+    _user32.GetCursorPos(ctypes.byref(pt))
+    return (pt.x, pt.y)
 
 
 def find_window(title_contains: str) -> int | None:

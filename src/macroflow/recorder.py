@@ -22,6 +22,7 @@ from datetime import datetime
 from macroflow import __version__
 from macroflow.types import (
     AnyEvent,
+    ColorTriggerEvent,
     KeyEvent,
     MacroData,
     MacroMeta,
@@ -302,6 +303,35 @@ def stop_recording() -> MacroData:
         raw_events=raw_events,
         events=events,
     )
+
+
+def inject_color_trigger(x_ratio: float, y_ratio: float, color_hex: str) -> None:
+    """녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.
+
+    녹화 중이 아니면 무시된다.
+
+    Args:
+        x_ratio: 감지할 픽셀의 X 좌표 비율 (0.0~1.0).
+        y_ratio: 감지할 픽셀의 Y 좌표 비율 (0.0~1.0).
+        color_hex: 기다릴 목표 색상 (#RRGGBB 형식).
+    """
+    if not _recording:
+        return
+    ts_ns = time.perf_counter_ns() - _rec_start_ns
+    event = ColorTriggerEvent(
+        id=secrets.token_hex(4),
+        type="color_trigger",
+        timestamp_ns=ts_ns,
+        x_ratio=x_ratio,
+        y_ratio=y_ratio,
+        target_color=color_hex,
+        tolerance=10,
+        timeout_ms=10000,
+        check_interval_ms=50,
+        on_timeout="skip",
+    )
+    _event_buffer.append(event)
+    logger.info(f"ColorTriggerEvent 삽입: {color_hex} @ ({x_ratio:.3f}, {y_ratio:.3f})")
 
 
 def is_recording() -> bool:

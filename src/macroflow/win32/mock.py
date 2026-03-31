@@ -42,6 +42,17 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int]:
     return _mock_pixel_color
 
 
+# ── 커서 위치 ─────────────────────────────────────────────
+
+_mock_cursor_pos: tuple[int, int] = (0, 0)
+
+
+def get_cursor_pos() -> tuple[int, int]:
+    """GetCursorPos Mock — 설정된 커서 위치 반환."""
+    logger.debug(f"[Mock] get_cursor_pos() → {_mock_cursor_pos}")
+    return _mock_cursor_pos
+
+
 # ── 창 감지 ──────────────────────────────────────────────
 
 def find_window(title_contains: str) -> int | None:

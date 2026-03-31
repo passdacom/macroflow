@@ -9,7 +9,7 @@ import sys
 
 if sys.platform == "win32":
     from .dpi import get_logical_screen_size, pixel_to_ratio, ratio_to_pixel
-    from .hooks import find_window, get_pixel_color, start_hook, stop_hook
+    from .hooks import find_window, get_cursor_pos, get_pixel_color, start_hook, stop_hook
     from .sendinput import (
         send_key,
         send_mouse_button,
@@ -21,6 +21,7 @@ else:
     # 비-Windows 환경: Mock 자동 주입 (개발·테스트용)
     from .mock import (
         find_window,
+        get_cursor_pos,
         get_logical_screen_size,
         get_pixel_color,
         pixel_to_ratio,
@@ -35,6 +36,7 @@ else:
     )
 
 __all__ = [
+    "get_cursor_pos",
     "get_pixel_color",
     "start_hook",
     "stop_hook",
