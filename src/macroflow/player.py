@@ -326,6 +326,7 @@ def stop() -> None:
     _pause_flag.clear()
     if _playback_thread is not None:
         _playback_thread.join(timeout=3.0)
+    _stop_flag.clear()  # 다음 play() 호출을 위해 플래그 초기화
 
 
 def pause() -> None:

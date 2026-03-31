@@ -16,6 +16,7 @@ import secrets
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime
 
 from macroflow import __version__
@@ -40,6 +41,10 @@ logger = logging.getLogger(__name__)
 # ── 핫키 VK 코드 — 이 키들은 raw_events에 기록하지 않는다 ─────────────────────
 # spec: 단축키 자체(F6 key_down/key_up)는 raw_events에 기록하지 않음
 _FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76})  # F6, F7
+
+# ── ESC×3 긴급 중지 상수 ─────────────────────────────────────────────────────
+_VK_ESCAPE: int = 0x1B
+_ESC_WINDOW_SEC: float = 0.5  # 3번 ESC를 0.5초 이내에 누르면 긴급 중지
 
 # ── Win32 메시지 상수 (hooks.py와 동기화) ─────────────────────────────────────
 _WM_MOUSEMOVE: int = 0x0200
@@ -109,6 +114,8 @@ _event_buffer: list[AnyEvent] = []
 _rec_start_ns: int = 0
 _screen_w: int = 1920
 _screen_h: int = 1080
+_esc_press_times: deque[float] = deque(maxlen=3)
+_on_emergency_stop: Callable[[], None] | None = None
 
 
 def _convert_raw(
@@ -172,11 +179,35 @@ def _convert_raw(
     return None
 
 
+def _check_esc_triple(raw: tuple[str, int, int, tuple[int, int, int]]) -> bool:
+    """ESC key_down 3번 연속(0.5초 이내) 감지 시 True를 반환한다."""
+    kind, _ts_ns, wParam, data = raw
+    if kind != "k":
+        return False
+    vk_code = data[0]
+    if vk_code != _VK_ESCAPE:
+        return False
+    if wParam not in (_WM_KEYDOWN, _WM_SYSKEYDOWN):
+        return False
+    _esc_press_times.append(time.monotonic())
+    if (len(_esc_press_times) == 3
+            and _esc_press_times[-1] - _esc_press_times[0] <= _ESC_WINDOW_SEC):
+        _esc_press_times.clear()
+        return True
+    return False
+
+
 def _consumer_loop() -> None:
     """deque에서 원시 이벤트를 소비하여 _event_buffer에 쌓는다."""
     while not _stop_consumer.is_set():
         if _raw_queue and len(_raw_queue) > 0:
             raw = _raw_queue.popleft()
+            # ESC×3 긴급 중지 감지 (포커스 무관)
+            if _check_esc_triple(raw):
+                logger.info("ESC×3 긴급 중지 감지 (LL Hook)")
+                if _on_emergency_stop is not None:
+                    _on_emergency_stop()
+                continue
             event = _convert_raw(raw)
             if event is not None:
                 _event_buffer.append(event)
@@ -193,19 +224,27 @@ def _consumer_loop() -> None:
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
 
-def start_recording() -> None:
+def start_recording(
+    on_emergency_stop: Callable[[], None] | None = None,
+) -> None:
     """LL Hook을 등록하고 이벤트 캡처를 시작한다.
+
+    Args:
+        on_emergency_stop: ESC×3 감지 시 호출할 콜백.
+            consumer 스레드에서 호출되므로 Qt Signal 등 스레드 안전한 방법을 사용할 것.
 
     이미 녹화 중이면 무시된다.
     """
     global _recording, _raw_queue, _consumer_thread
     global _stop_consumer, _event_buffer, _rec_start_ns
-    global _screen_w, _screen_h
+    global _screen_w, _screen_h, _on_emergency_stop
 
     if _recording:
         logger.warning("Already recording — start_recording() ignored")
         return
 
+    _on_emergency_stop = on_emergency_stop
+    _esc_press_times.clear()
     _screen_w, _screen_h = get_logical_screen_size()
     _event_buffer = []
     _raw_queue = deque()
@@ -231,11 +270,12 @@ def stop_recording() -> MacroData:
     Raises:
         RuntimeError: 녹화 중이 아닌 상태에서 호출.
     """
-    global _recording, _consumer_thread
+    global _recording, _consumer_thread, _on_emergency_stop
 
     if not _recording:
         raise RuntimeError("stop_recording() called while not recording")
 
+    _on_emergency_stop = None
     stop_hook()
     _stop_consumer.set()
 

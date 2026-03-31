@@ -56,7 +56,7 @@ def _fatal_dialog(title: str, message: str) -> None:
     if sys.platform == "win32":
         import ctypes
         MB_ICONERROR = 0x10
-        ctypes.windll.user32.MessageBoxW(0, message, title, MB_ICONERROR)  # type: ignore[attr-defined]
+        ctypes.windll.user32.MessageBoxW(0, message, title, MB_ICONERROR)
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────

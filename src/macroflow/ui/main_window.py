@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
     _sig_recording_done = pyqtSignal(object)  # MacroData
     _sig_play_complete = pyqtSignal()
     _sig_play_error = pyqtSignal(str)
+    _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
 
     def __init__(self) -> None:
         super().__init__()
@@ -86,6 +87,7 @@ class MainWindow(QMainWindow):
         self._sig_recording_done.connect(self._on_recording_done)
         self._sig_play_complete.connect(self._on_play_complete)
         self._sig_play_error.connect(self._on_play_error)
+        self._sig_emergency_stop.connect(self._emergency_stop)
         self._editor.macro_changed.connect(self._on_macro_changed)
 
         # ── 폴링 타이머 (250ms) ───────────────────────────────────────────────
@@ -291,7 +293,7 @@ class MainWindow(QMainWindow):
 
     def _start_recording(self) -> None:
         from macroflow import recorder
-        recorder.start_recording()
+        recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
         self._state = "recording"
         self._overlay.start_recording()
         self._poll_timer.start()
