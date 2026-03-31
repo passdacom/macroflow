@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import logging
 import sys
 import time
 
 assert sys.platform == "win32", "sendinput.py는 Windows에서만 실행 가능합니다"
 
 from .dpi import get_logical_screen_size  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 _user32 = ctypes.windll.user32
 
@@ -90,6 +93,14 @@ class _INPUT(ctypes.Structure):
 
 _INPUT_SIZE = ctypes.sizeof(_INPUT)
 
+# SendInput argtypes/restype — 반환값은 실제로 전송된 이벤트 수 (UINT)
+_user32.SendInput.restype = ctypes.wintypes.UINT
+_user32.SendInput.argtypes = [
+    ctypes.wintypes.UINT,              # cInputs
+    ctypes.POINTER(_INPUT),            # pInputs
+    ctypes.c_int,                      # cbSize
+]
+
 
 # ── 좌표 변환 헬퍼 ────────────────────────────────────────────────────────────
 
@@ -114,7 +125,12 @@ def _mouse_input(x: int, y: int, flags: int) -> _INPUT:
 
 def _send(*inputs: _INPUT) -> None:
     arr = (_INPUT * len(inputs))(*inputs)
-    _user32.SendInput(len(inputs), arr, _INPUT_SIZE)
+    sent: int = _user32.SendInput(len(inputs), arr, _INPUT_SIZE)
+    if sent != len(inputs):
+        logger.warning(
+            "SendInput: 요청 %d개 중 %d개만 전송됨 (UIPI 차단 또는 권한 문제 가능성)",
+            len(inputs), sent,
+        )
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────

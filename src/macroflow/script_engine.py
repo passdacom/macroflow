@@ -400,6 +400,21 @@ class FlowEngine:
     def _run_macro_node(self, node: MacroNode) -> str | None:
         """매크로 JSON 파일을 동기적으로 재생하고 다음 노드 ID를 반환한다."""
         macro_path = self._base_dir / node.macro_path
+        # Path Traversal 방지: 경로가 반드시 base_dir 하위에 있어야 함
+        try:
+            if not macro_path.resolve().is_relative_to(self._base_dir.resolve()):
+                msg = f"보안: 허용되지 않은 경로 접근 차단 ({node.macro_path!r})"
+                logger.error(msg)
+                if self._on_node_done:
+                    self._on_node_done(node.id, False, msg)
+                raise FlowError(msg)
+        except ValueError as e:
+            # Windows에서 드라이브가 다를 때 is_relative_to가 ValueError 발생 가능
+            msg = f"보안: 경로 검증 실패 ({node.macro_path!r})"
+            logger.error(msg)
+            if self._on_node_done:
+                self._on_node_done(node.id, False, msg)
+            raise FlowError(msg) from e
         if not macro_path.exists():
             msg = f"매크로 파일 없음: {macro_path}"
             if self._on_node_done:
@@ -511,11 +526,12 @@ def execute_condition(
         return _random_module.random()
 
     # 제한된 샌드박스: __builtins__ 완전 차단, 허용 함수만 노출
+    # random은 모듈 전체가 아닌 random() 함수 하나만 노출 (모듈 속성 접근 차단)
     sandbox_globals: dict[str, Any] = {
         "__builtins__": {},
         "pixel_color": _pixel_color,
         "wait": _wait,
-        "random": _random_module,
+        "random": _random,
         "True": True,
         "False": False,
     }

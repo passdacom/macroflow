@@ -112,6 +112,7 @@ _raw_queue: deque[tuple[str, int, int, tuple[int, int, int]]] | None = None
 _consumer_thread: threading.Thread | None = None
 _stop_consumer: threading.Event = threading.Event()
 _event_buffer: list[AnyEvent] = []
+_event_buffer_lock: threading.Lock = threading.Lock()  # _event_buffer 동시 접근 보호
 _rec_start_ns: int = 0
 _screen_w: int = 1920
 _screen_h: int = 1080
@@ -211,7 +212,8 @@ def _consumer_loop() -> None:
                 continue
             event = _convert_raw(raw)
             if event is not None:
-                _event_buffer.append(event)
+                with _event_buffer_lock:
+                    _event_buffer.append(event)
         else:
             time.sleep(0.001)  # 1ms 폴링
 
@@ -220,7 +222,8 @@ def _consumer_loop() -> None:
         raw = _raw_queue.popleft()
         event = _convert_raw(raw)
         if event is not None:
-            _event_buffer.append(event)
+            with _event_buffer_lock:
+                _event_buffer.append(event)
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -285,9 +288,11 @@ def stop_recording() -> MacroData:
         _consumer_thread = None
 
     _recording = False
-    logger.debug(f"Recording stopped — {len(_event_buffer)} events captured")
+    with _event_buffer_lock:
+        captured = list(_event_buffer)
+    logger.debug(f"Recording stopped — {len(captured)} events captured")
 
-    raw_events: list[AnyEvent] = list(_event_buffer)
+    raw_events: list[AnyEvent] = captured
     events: list[AnyEvent] = copy.deepcopy(raw_events)
 
     return MacroData(
@@ -330,7 +335,8 @@ def inject_color_trigger(x_ratio: float, y_ratio: float, color_hex: str) -> None
         check_interval_ms=50,
         on_timeout="skip",
     )
-    _event_buffer.append(event)
+    with _event_buffer_lock:
+        _event_buffer.append(event)
     logger.info(f"ColorTriggerEvent 삽입: {color_hex} @ ({x_ratio:.3f}, {y_ratio:.3f})")
 
 

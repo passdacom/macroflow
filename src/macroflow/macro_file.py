@@ -161,16 +161,23 @@ def load(path: str) -> MacroData:
     if not p.exists():
         raise FileNotFoundError(f"Macro file not found: {path}")
 
-    with p.open(encoding="utf-8") as f:
-        raw: dict[str, Any] = json.load(f)
+    try:
+        with p.open(encoding="utf-8") as f:
+            raw: dict[str, Any] = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON 파싱 오류 ({path}): {e}") from e
+    except OSError as e:
+        raise ValueError(f"파일 읽기 오류 ({path}): {e}") from e
 
-    raw = _migrate(raw)
-
-    meta = MacroMeta(**raw["meta"])
-    settings = MacroSettings(**raw.get("settings", {}))
-    raw_events: list[AnyEvent] = [_dict_to_event(e) for e in raw["raw_events"]]
-    events: list[AnyEvent] = [_dict_to_event(e) for e in raw["events"]]
-    is_edited: bool = raw.get("is_edited", False)
+    try:
+        raw = _migrate(raw)
+        meta = MacroMeta(**raw["meta"])
+        settings = MacroSettings(**raw.get("settings", {}))
+        raw_events: list[AnyEvent] = [_dict_to_event(e) for e in raw["raw_events"]]
+        events: list[AnyEvent] = [_dict_to_event(e) for e in raw["events"]]
+        is_edited: bool = raw.get("is_edited", False)
+    except (KeyError, TypeError) as e:
+        raise ValueError(f"매크로 파일 구조 오류 ({path}): {e}") from e
 
     return MacroData(
         meta=meta,
@@ -192,23 +199,26 @@ def save(macro: MacroData, path: str) -> None:
     """
     p = Path(path)
 
-    # 기존 파일 백업
-    if p.exists():
-        shutil.copy2(p, p.with_suffix(".bak"))
-        logger.debug(f"Backed up: {p.with_suffix('.bak')}")
+    try:
+        # 기존 파일 백업
+        if p.exists():
+            shutil.copy2(p, p.with_suffix(".bak"))
+            logger.debug(f"Backed up: {p.with_suffix('.bak')}")
 
-    p.parent.mkdir(parents=True, exist_ok=True)
+        p.parent.mkdir(parents=True, exist_ok=True)
 
-    data: dict[str, Any] = {
-        "meta":       dataclasses.asdict(macro.meta),
-        "settings":   dataclasses.asdict(macro.settings),
-        "raw_events": [_event_to_dict(e) for e in macro.raw_events],
-        "events":     [_event_to_dict(e) for e in macro.events],
-        "is_edited":  macro.is_edited,
-    }
+        data: dict[str, Any] = {
+            "meta":       dataclasses.asdict(macro.meta),
+            "settings":   dataclasses.asdict(macro.settings),
+            "raw_events": [_event_to_dict(e) for e in macro.raw_events],
+            "events":     [_event_to_dict(e) for e in macro.events],
+            "is_edited":  macro.is_edited,
+        }
 
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        with p.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        raise OSError(f"매크로 저장 실패 ({path}): {e}") from e
 
     logger.debug(f"Saved macro to {path}")
 

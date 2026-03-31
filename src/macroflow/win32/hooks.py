@@ -190,7 +190,7 @@ def _mouse_proc(nCode: int, wParam: int, lParam: int) -> int:
             ms = ctypes.cast(lParam, ctypes.POINTER(_MSLLHOOKSTRUCT)).contents
             _event_queue.append(("m", ts, wParam, (ms.pt.x, ms.pt.y, ms.mouseData)))
     except Exception:
-        pass  # 콜백에서 예외 발생해도 CallNextHookEx는 반드시 호출
+        logger.exception("_mouse_proc 콜백 예외 — 이벤트 누락 가능")
     return _user32.CallNextHookEx(_mouse_hook_id, nCode, wParam, lParam)
 
 
@@ -202,7 +202,7 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
             kb = ctypes.cast(lParam, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
             _event_queue.append(("k", ts, wParam, (kb.vkCode, kb.scanCode, kb.flags)))
     except Exception:
-        pass
+        logger.exception("_keyboard_proc 콜백 예외 — 이벤트 누락 가능")
     return _user32.CallNextHookEx(_keyboard_hook_id, nCode, wParam, lParam)
 
 
@@ -228,7 +228,7 @@ def _emg_keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
                     _emg_esc_times.clear()
                     _emg_callback()
     except Exception:
-        pass
+        logger.exception("_emg_keyboard_proc 콜백 예외")
     return _user32.CallNextHookEx(_emg_hook_id, nCode, wParam, lParam)
 
 
