@@ -9,7 +9,15 @@ import sys
 
 if sys.platform == "win32":
     from .dpi import get_logical_screen_size, pixel_to_ratio, ratio_to_pixel
-    from .hooks import find_window, get_cursor_pos, get_pixel_color, start_hook, stop_hook
+    from .hooks import (
+        find_window,
+        get_cursor_pos,
+        get_pixel_color,
+        start_emergency_hook,
+        start_hook,
+        stop_emergency_hook,
+        stop_hook,
+    )
     from .sendinput import (
         send_key,
         send_mouse_button,
@@ -31,7 +39,9 @@ else:
         send_mouse_click,
         send_mouse_drag,
         send_mouse_move,
+        start_emergency_hook,
         start_hook,
+        stop_emergency_hook,
         stop_hook,
     )
 
@@ -40,6 +50,8 @@ __all__ = [
     "get_pixel_color",
     "start_hook",
     "stop_hook",
+    "start_emergency_hook",
+    "stop_emergency_hook",
     "find_window",
     "send_mouse_button",
     "send_mouse_click",

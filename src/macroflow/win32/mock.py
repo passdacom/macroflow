@@ -53,6 +53,18 @@ def get_cursor_pos() -> tuple[int, int]:
     return _mock_cursor_pos
 
 
+# ── 긴급 중지 Hook ────────────────────────────────────────
+
+def start_emergency_hook(callback: object) -> None:
+    """긴급 중지 Hook Mock — 아무것도 하지 않음."""
+    logger.debug("[Mock] start_emergency_hook called (no-op on non-Windows)")
+
+
+def stop_emergency_hook() -> None:
+    """긴급 중지 Hook 해제 Mock."""
+    logger.debug("[Mock] stop_emergency_hook called (no-op on non-Windows)")
+
+
 # ── 창 감지 ──────────────────────────────────────────────
 
 def find_window(title_contains: str) -> int | None:

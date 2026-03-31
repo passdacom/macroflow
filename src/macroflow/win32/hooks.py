@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 
 assert sys.platform == "win32", "hooks.py는 Windows에서만 실행 가능합니다"
 
@@ -159,12 +160,23 @@ _user32.GetCursorPos.restype = ctypes.wintypes.BOOL
 _user32.GetCursorPos.argtypes = [ctypes.POINTER(_POINT)]
 
 
-# ── 내부 상태 ─────────────────────────────────────────────────────────────────
+# ── 내부 상태 (녹화 Hook) ─────────────────────────────────────────────────────
 _event_queue: deque[tuple[str, int, int, tuple[int, int, int]]] | None = None
 _mouse_hook_id: ctypes.c_void_p | None = None
 _keyboard_hook_id: ctypes.c_void_p | None = None
 _pump_thread: threading.Thread | None = None
 _pump_tid: int = 0
+
+# ── 내부 상태 (긴급 중지 전용 Hook) ──────────────────────────────────────────
+_emg_hook_id: ctypes.c_void_p | None = None
+_emg_pump_thread: threading.Thread | None = None
+_emg_pump_tid: int = 0
+_emg_esc_times: deque[float] = deque(maxlen=3)
+_emg_callback: Callable[[], None] | None = None
+
+# SendInput으로 주입된 이벤트 플래그 — 매크로가 ESC를 누를 때 오인식 방지
+_LLKHF_INJECTED: int = 0x10
+_ESC_WINDOW_SEC: float = 0.5
 
 
 # ── Hook 콜백 ─────────────────────────────────────────────────────────────────
@@ -196,6 +208,31 @@ def _keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
 
 _mouse_cb = _HOOKPROC(_mouse_proc)
 _keyboard_cb = _HOOKPROC(_keyboard_proc)
+
+
+# ── 긴급 중지 전용 Hook 콜백 ─────────────────────────────────────────────────
+# 재생 중에만 사용. ESC×3만 감지하고 나머지는 그냥 통과.
+# LLKHF_INJECTED(0x10) 플래그가 있으면 SendInput 주입 이벤트 → 무시.
+
+def _emg_keyboard_proc(nCode: int, wParam: int, lParam: int) -> int:
+    """긴급 중지 전용 키보드 LL Hook 콜백."""
+    try:
+        if nCode >= 0 and _emg_callback is not None and wParam == WM_KEYDOWN:
+            kb = ctypes.cast(lParam, ctypes.POINTER(_KBDLLHOOKSTRUCT)).contents
+            if kb.vkCode == 0x1B and not (kb.flags & _LLKHF_INJECTED):
+                _emg_esc_times.append(time.monotonic())
+                if (
+                    len(_emg_esc_times) == 3
+                    and _emg_esc_times[-1] - _emg_esc_times[0] <= _ESC_WINDOW_SEC
+                ):
+                    _emg_esc_times.clear()
+                    _emg_callback()
+    except Exception:
+        pass
+    return _user32.CallNextHookEx(_emg_hook_id, nCode, wParam, lParam)
+
+
+_emg_kb_cb = _HOOKPROC(_emg_keyboard_proc)
 
 
 # ── 메시지 펌프 스레드 ────────────────────────────────────────────────────────
@@ -235,6 +272,30 @@ def _message_pump() -> None:
     _pump_tid = 0
 
 
+# ── 긴급 중지 Hook 메시지 펌프 ───────────────────────────────────────────────
+
+def _emg_pump() -> None:
+    """WH_KEYBOARD_LL (긴급 중지 전용) 메시지 펌프."""
+    global _emg_hook_id, _emg_pump_tid
+
+    _emg_pump_tid = _kernel32.GetCurrentThreadId()
+    hmod = _kernel32.GetModuleHandleW(None)
+    _emg_hook_id = _user32.SetWindowsHookExW(WH_KEYBOARD_LL, _emg_kb_cb, hmod, 0)
+
+    if not _emg_hook_id:
+        logger.error("SetWindowsHookExW(WH_KEYBOARD_LL, emergency) failed")
+
+    msg = ctypes.wintypes.MSG()
+    while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+        _user32.TranslateMessage(ctypes.byref(msg))
+        _user32.DispatchMessageW(ctypes.byref(msg))
+
+    if _emg_hook_id:
+        _user32.UnhookWindowsHookEx(_emg_hook_id)
+        _emg_hook_id = None
+    _emg_pump_tid = 0
+
+
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
 
 def start_hook(queue: deque[tuple[str, int, int, tuple[int, int, int]]]) -> None:
@@ -267,6 +328,40 @@ def stop_hook() -> None:
         _pump_thread = None
 
     _event_queue = None
+
+
+def start_emergency_hook(callback: Callable[[], None]) -> None:
+    """재생 중 ESC×3 긴급 중지 감지용 키보드 Hook을 시작한다.
+
+    LLKHF_INJECTED 이벤트(SendInput 주입)는 무시하므로
+    매크로 자체가 ESC를 보내도 오인식하지 않는다.
+
+    Args:
+        callback: ESC×3 감지 시 호출할 콜백 (스레드 안전해야 함).
+    """
+    global _emg_callback, _emg_pump_thread
+
+    _emg_callback = callback
+    _emg_esc_times.clear()
+    _emg_pump_thread = threading.Thread(
+        target=_emg_pump, daemon=True, name="EmergencyHookPump"
+    )
+    _emg_pump_thread.start()
+    time.sleep(0.05)  # Hook 등록 완료 대기
+
+
+def stop_emergency_hook() -> None:
+    """긴급 중지 Hook을 해제하고 스레드를 종료한다."""
+    global _emg_pump_thread, _emg_callback
+
+    if _emg_pump_tid:
+        _user32.PostThreadMessageW(_emg_pump_tid, WM_QUIT, 0, 0)
+
+    if _emg_pump_thread is not None:
+        _emg_pump_thread.join(timeout=2.0)
+        _emg_pump_thread = None
+
+    _emg_callback = None
 
 
 def get_pixel_color(x: int, y: int) -> tuple[int, int, int]:

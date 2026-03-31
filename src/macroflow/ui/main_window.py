@@ -355,6 +355,10 @@ class MainWindow(QMainWindow):
         self._overlay.start_playing(speed)
         self._poll_timer.start()
         self._update_toolbar()
+
+        # 재생 중 ESC×3 긴급 중지 감지 Hook 시작
+        from macroflow.win32 import start_emergency_hook
+        start_emergency_hook(self._sig_emergency_stop.emit)
         self._sb_state.setText(f"▶ 재생 중 ({speed:.1f}x)")
         self._sb_count.setText(f"이벤트: {len(self._macro.events)}")
         logger.info(f"재생 시작 speed={speed} repeat={repeat_count} interval={interval_ms}ms")
@@ -405,7 +409,9 @@ class MainWindow(QMainWindow):
 
     def _stop_playback(self) -> None:
         from macroflow import player
+        from macroflow.win32 import stop_emergency_hook
         player.stop()
+        stop_emergency_hook()
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -414,6 +420,8 @@ class MainWindow(QMainWindow):
         logger.info("재생 중지")
 
     def _on_play_complete(self) -> None:
+        from macroflow.win32 import stop_emergency_hook
+        stop_emergency_hook()
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -422,6 +430,8 @@ class MainWindow(QMainWindow):
         logger.info("재생 완료")
 
     def _on_play_error(self, msg: str) -> None:
+        from macroflow.win32 import stop_emergency_hook
+        stop_emergency_hook()
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
