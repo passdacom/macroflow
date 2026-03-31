@@ -181,7 +181,7 @@ class TestPlaybackTiming:
         """stop() 호출 후 재생이 중단되어야 한다."""
         executed: list[str] = []
 
-        def _on_event(e: AnyEvent) -> None:
+        def _on_event(idx: int, e: AnyEvent) -> None:
             executed.append(e.id)
 
         events: list[AnyEvent] = [
@@ -213,7 +213,7 @@ class TestPlaybackTiming:
         macro = _make_macro(events)
         times: list[float] = []
 
-        def _on_event(e: AnyEvent) -> None:
+        def _on_event(idx: int, e: AnyEvent) -> None:
             times.append(time.perf_counter())
 
         player.play(macro, on_event=_on_event)

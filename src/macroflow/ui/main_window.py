@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSpinBox,
     QTabWidget,
@@ -41,6 +42,8 @@ _VK_F6 = 0x75
 _VK_F7 = 0x76
 _WM_HOTKEY = 0x0312
 
+_MAX_RECENT_SAVES = 10
+
 
 # ── 메인 창 ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,7 @@ class MainWindow(QMainWindow):
     _sig_play_complete = pyqtSignal()
     _sig_play_error = pyqtSignal(str)
     _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
+    _sig_play_event = pyqtSignal(int)   # 재생 중 이벤트 인덱스 알림
 
     def __init__(self) -> None:
         super().__init__()
@@ -76,10 +80,10 @@ class MainWindow(QMainWindow):
         self._setup_menubar()
         self._setup_toolbar()
 
-        tabs = QTabWidget()
-        tabs.addTab(self._editor, "매크로 에디터")
-        tabs.addTab(self._sequencer, "시퀀서")
-        self.setCentralWidget(tabs)
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._editor, "매크로 에디터")
+        self._tabs.addTab(self._sequencer, "시퀀서")
+        self.setCentralWidget(self._tabs)
 
         self._setup_statusbar()
 
@@ -88,6 +92,7 @@ class MainWindow(QMainWindow):
         self._sig_play_complete.connect(self._on_play_complete)
         self._sig_play_error.connect(self._on_play_error)
         self._sig_emergency_stop.connect(self._emergency_stop)
+        self._sig_play_event.connect(self._editor.highlight_event)
         self._editor.macro_changed.connect(self._on_macro_changed)
 
         # ── 폴링 타이머 (250ms) ───────────────────────────────────────────────
@@ -130,6 +135,13 @@ class MainWindow(QMainWindow):
         act_save_as = QAction("다른 이름으로 저장...", self)
         act_save_as.triggered.connect(self._save_file_as)
         file_menu.addAction(act_save_as)
+
+        file_menu.addSeparator()
+
+        # 최근 녹화 서브메뉴
+        self._recent_menu = QMenu("최근 녹화", self)
+        file_menu.addMenu(self._recent_menu)
+        self._refresh_recent_menu()
 
         file_menu.addSeparator()
 
@@ -199,6 +211,29 @@ class MainWindow(QMainWindow):
 
         tb.addSeparator()
 
+        # 구간 재생
+        tb.addWidget(QLabel("  구간:"))
+        self._range_start_spin = QSpinBox()
+        self._range_start_spin.setMinimum(0)
+        self._range_start_spin.setMaximum(0)
+        self._range_start_spin.setValue(0)
+        self._range_start_spin.setSpecialValueText("처음")
+        self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
+        self._range_start_spin.setFixedWidth(60)
+        tb.addWidget(self._range_start_spin)
+
+        tb.addWidget(QLabel("~"))
+        self._range_end_spin = QSpinBox()
+        self._range_end_spin.setMinimum(0)
+        self._range_end_spin.setMaximum(0)
+        self._range_end_spin.setValue(0)
+        self._range_end_spin.setSpecialValueText("끝")
+        self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
+        self._range_end_spin.setFixedWidth(60)
+        tb.addWidget(self._range_end_spin)
+
+        tb.addSeparator()
+
         self._act_open = QAction("📂 열기", self)
         self._act_open.triggered.connect(self._open_file)
         tb.addAction(self._act_open)
@@ -207,10 +242,15 @@ class MainWindow(QMainWindow):
         self._act_save.triggered.connect(self._save_file)
         tb.addAction(self._act_save)
 
+        self._act_save_seq = QAction("💾+ 시퀀서", self)
+        self._act_save_seq.setToolTip("영구 저장 후 시퀀서에 추가")
+        self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
+        tb.addAction(self._act_save_seq)
+
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
         self._sb_count = QLabel("")
-        self._sb_hint = QLabel("F6: 녹화  |  F7: 재생  |  ESC×3: 긴급 중지")
+        self._sb_hint = QLabel("F6: 녹화  |  F7: 재생/색트리거  |  ESC×3: 긴급 중지")
 
         sb = self.statusBar()
         sb.addWidget(self._sb_state)
@@ -331,9 +371,11 @@ class MainWindow(QMainWindow):
         self._overlay.stop()
         self._editor.load_macro(macro)
         self._update_toolbar()
+        self._update_range_spinboxes()
         count = len(macro.events)
         self._sb_state.setText("대기 중")
         self._sb_count.setText(f"이벤트: {count}")
+        self._refresh_recent_menu()
         logger.info(f"녹화 완료: {count}개 이벤트")
 
     def _toggle_playback(self) -> None:
@@ -351,6 +393,9 @@ class MainWindow(QMainWindow):
         repeat_count = self._repeat_spin.value()
         interval_ms = self._interval_spin.value()
 
+        # 구간 재생 범위 계산
+        event_range = self._calc_event_range()
+
         self._state = "playing"
         self._overlay.start_playing(speed)
         self._poll_timer.start()
@@ -359,13 +404,25 @@ class MainWindow(QMainWindow):
         # 재생 중 ESC×3 긴급 중지 감지 Hook 시작
         from macroflow.win32 import start_emergency_hook
         start_emergency_hook(self._sig_emergency_stop.emit)
-        self._sb_state.setText(f"▶ 재생 중 ({speed:.1f}x)")
+
+        range_str = ""
+        if event_range is not None:
+            range_str = f" [구간 {self._range_start_spin.value()}~{self._range_end_spin.value()}]"
+        self._sb_state.setText(f"▶ 재생 중 ({speed:.1f}x){range_str}")
         self._sb_count.setText(f"이벤트: {len(self._macro.events)}")
-        logger.info(f"재생 시작 speed={speed} repeat={repeat_count} interval={interval_ms}ms")
+        logger.info(
+            f"재생 시작 speed={speed} repeat={repeat_count} "
+            f"interval={interval_ms}ms range={event_range}"
+        )
 
         macro = self._macro
 
-        def _repeat_worker() -> None:
+        def _on_event(idx: int, _event: object) -> None:
+            self._sig_play_event.emit(idx)
+
+        def _repeat_worker(
+            _range: tuple[int, int] | None = event_range,
+        ) -> None:
             from macroflow import player
             for i in range(repeat_count):
                 if player._stop_flag.is_set():  # type: ignore[attr-defined]
@@ -381,7 +438,14 @@ class MainWindow(QMainWindow):
                     _eh.append(str(exc))
                     _ev.set()
 
-                player.play(macro, speed=speed, on_complete=_on_complete, on_error=_on_error)
+                player.play(
+                    macro,
+                    speed=speed,
+                    on_event=_on_event,
+                    on_complete=_on_complete,
+                    on_error=_on_error,
+                    event_range=_range,
+                )
 
                 # 재생 완료 대기
                 while not done_event.is_set():
@@ -406,6 +470,19 @@ class MainWindow(QMainWindow):
         threading.Thread(
             target=_repeat_worker, daemon=True, name="RepeatPlayWorker"
         ).start()
+
+    def _calc_event_range(self) -> tuple[int, int] | None:
+        """구간 SpinBox 값에서 event_range (start, end exclusive)를 계산한다."""
+        start_row = self._range_start_spin.value()
+        end_row = self._range_end_spin.value()
+        if start_row == 0 and end_row == 0:
+            return None  # 전체 재생
+        total = self._editor.row_count()
+        if total == 0:
+            return None
+        effective_start = start_row if start_row > 0 else 1
+        effective_end = end_row if end_row > 0 else total
+        return self._editor.get_event_range_for_rows(effective_start, effective_end)
 
     def _stop_playback(self) -> None:
         from macroflow import player
@@ -494,6 +571,15 @@ class MainWindow(QMainWindow):
 
         self._act_stop.setEnabled(is_rec or is_play or is_stop)
         self._act_save.setEnabled(is_idle and self._macro is not None)
+        self._act_save_seq.setEnabled(is_idle and self._macro is not None)
+
+    def _update_range_spinboxes(self) -> None:
+        """매크로 로드 후 구간 SpinBox 범위를 갱신한다."""
+        total = self._editor.row_count()
+        self._range_start_spin.setMaximum(max(total, 0))
+        self._range_end_spin.setMaximum(max(total, 0))
+        self._range_start_spin.setValue(0)
+        self._range_end_spin.setValue(0)
 
     # ── 파일 조작 ─────────────────────────────────────────────────────────────
 
@@ -505,12 +591,17 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
+        self._load_file(path)
+
+    def _load_file(self, path: str) -> None:
+        """경로에서 매크로를 로드하여 에디터에 표시한다."""
         try:
             from macroflow import macro_file
             self._macro = macro_file.load(path)
             self._current_file = Path(path)
             self._editor.load_macro(self._macro)
             self._update_toolbar()
+            self._update_range_spinboxes()
             self._sb_state.setText("파일 로드됨")
             self._sb_count.setText(f"이벤트: {len(self._macro.events)}")
             self.setWindowTitle(f"MacroFlow — {Path(path).name}")
@@ -551,28 +642,86 @@ class MainWindow(QMainWindow):
         self._sb_state.setText(f"저장 완료: {Path(path).name}")
         logger.info(f"저장: {path}")
 
+    def _save_and_add_to_sequencer(self) -> None:
+        """영구 저장 후 시퀀서에 추가한다."""
+        if not self._macro:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "영구 저장 + 시퀀서 추가",
+            str(Path.home()),
+            "Macro JSON (*.json)",
+        )
+        if not path:
+            return
+        if not path.endswith(".json"):
+            path += ".json"
+        self._do_save(path)
+        self._current_file = Path(path)
+        self.setWindowTitle(f"MacroFlow — {Path(path).name}")
+        # 시퀀서에 추가
+        self._sequencer.add_macro_file(Path(path))
+        self._tabs.setCurrentWidget(self._sequencer)
+        self._sb_state.setText(f"저장 + 시퀀서 추가: {Path(path).name}")
+        logger.info(f"시퀀서 추가: {path}")
+
     # ── 매크로 변경 콜백 ─────────────────────────────────────────────────────
 
     def _on_macro_changed(self, macro: object) -> None:
         if isinstance(macro, MacroData):
             self._macro = macro
+            self._update_range_spinboxes()
 
-    # ── 기타 ─────────────────────────────────────────────────────────────────
+    # ── 최근 녹화 메뉴 ───────────────────────────────────────────────────────
+
+    def _get_temp_dir(self) -> Path:
+        """자동저장 디렉토리 경로를 반환한다."""
+        if sys.platform == "win32":
+            base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+        else:
+            base = Path.home() / ".local" / "share"
+        return base / "MacroFlow" / "temp"
+
+    def _refresh_recent_menu(self) -> None:
+        """최근 녹화 서브메뉴를 임시 저장 파일 목록으로 갱신한다."""
+        self._recent_menu.clear()
+        temp_dir = self._get_temp_dir()
+        if not temp_dir.exists():
+            act = self._recent_menu.addAction("(최근 녹화 없음)")
+            act.setEnabled(False)
+            return
+
+        files = sorted(temp_dir.glob("recording_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not files:
+            act = self._recent_menu.addAction("(최근 녹화 없음)")
+            act.setEnabled(False)
+            return
+
+        for f in files[:_MAX_RECENT_SAVES]:
+            act = self._recent_menu.addAction(f.name)
+            file_path = str(f)
+            act.triggered.connect(lambda checked=False, p=file_path: self._load_file(p))
+
+    # ── 자동 저장 ─────────────────────────────────────────────────────────────
 
     def _auto_save_temp(self, macro: MacroData) -> None:
         from datetime import datetime
 
         from macroflow import macro_file
-        if sys.platform == "win32":
-            base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        else:
-            base = Path.home() / ".local" / "share"
-        temp_dir = base / "MacroFlow" / "temp"
+        temp_dir = self._get_temp_dir()
         temp_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         temp_file = temp_dir / f"recording_{ts}.json"
         macro_file.save(macro, str(temp_file))
         logger.info(f"임시 저장: {temp_file}")
+
+        # 최근 10개만 유지, 나머지 삭제
+        files = sorted(temp_dir.glob("recording_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old_file in files[_MAX_RECENT_SAVES:]:
+            try:
+                old_file.unlink()
+                logger.debug(f"오래된 임시 파일 삭제: {old_file.name}")
+            except OSError:
+                pass
 
     def _show_about(self) -> None:
         from macroflow import __version__
@@ -581,8 +730,9 @@ class MainWindow(QMainWindow):
             f"<b>MacroFlow v{__version__}</b><br><br>"
             "Windows 전용 마우스·키보드 매크로 녹화·재생 도구<br><br>"
             "F6: 녹화 시작/중지<br>"
-            "F7: 재생 시작/중지<br>"
-            "ESC×3: 긴급 중지",
+            "F7: 재생 시작/중지 (녹화 중: 색상 체크 삽입)<br>"
+            "ESC×3: 긴급 중지<br><br>"
+            "구간 재생: 시작/끝 행 번호 설정 (0=전체)",
         )
 
     def keyPressEvent(self, event: QKeyEvent | None) -> None:  # noqa: N802

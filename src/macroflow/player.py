@@ -221,9 +221,10 @@ def _wait_for_window(event: WindowTriggerEvent) -> None:
 def _play_loop(
     macro: MacroData,
     speed: float,
-    on_event: Callable[[AnyEvent], None] | None,
+    on_event: Callable[[int, AnyEvent], None] | None,
     on_complete: Callable[[], None] | None,
     on_error: Callable[[Exception], None] | None,
+    event_range: tuple[int, int] | None,
 ) -> None:
     """실제 재생을 수행하는 스레드 함수.
 
@@ -232,19 +233,34 @@ def _play_loop(
     Args:
         macro: 재생할 MacroData (events 배열만 사용).
         speed: 재생 속도 배율 (0.5~10.0).
-        on_event: 각 이벤트 실행 후 호출되는 콜백.
+        on_event: 각 이벤트 실행 후 호출되는 콜백 (idx, event).
         on_complete: 재생 완료 시 콜백.
         on_error: 오류 발생 시 콜백.
+        event_range: (start_idx, end_idx) 구간 재생. None이면 전체 재생.
+            end_idx는 exclusive (Python slice 규칙).
     """
     global _current_event_idx, _total_events
     play_start_ns = time.perf_counter_ns()
     last_event_end_ns = play_start_ns
     state = _PlayState()
-    _total_events = len(macro.events)
-    _current_event_idx = 0
 
-    for idx, event in enumerate(macro.events):
-        _current_event_idx = idx
+    # 구간 재생 범위 결정
+    all_events = macro.events
+    start = 0
+    end = len(all_events)
+    if event_range is not None:
+        start = max(0, event_range[0])
+        end = min(len(all_events), event_range[1])
+    events_to_play = list(enumerate(all_events))[start:end]
+
+    _total_events = len(events_to_play)
+    _current_event_idx = start
+
+    # 구간 재생 시 첫 이벤트의 타임스탬프를 기준점으로 (즉시 시작)
+    base_ts_ns = events_to_play[0][1].timestamp_ns if events_to_play else 0
+
+    for _play_idx, (orig_idx, event) in enumerate(events_to_play):
+        _current_event_idx = orig_idx
 
         # 일시정지 대기
         while _pause_flag.is_set() and not _stop_flag.is_set():
@@ -258,7 +274,7 @@ def _play_loop(
         if event.delay_override_ms is not None:
             target_ns = last_event_end_ns + int(event.delay_override_ms * 1_000_000)
         else:
-            target_ns = play_start_ns + int(event.timestamp_ns / speed)
+            target_ns = play_start_ns + int((event.timestamp_ns - base_ts_ns) / speed)
 
         # 대기 (1ms 이상일 때만 sleep — 오버슛 보정은 다음 이벤트가 처리)
         now_ns = time.perf_counter_ns()
@@ -280,7 +296,7 @@ def _play_loop(
             return
 
         if on_event:
-            on_event(event)
+            on_event(orig_idx, event)
 
         last_event_end_ns = time.perf_counter_ns()
 
@@ -293,18 +309,20 @@ def _play_loop(
 def play(
     macro: MacroData,
     speed: float = 1.0,
-    on_event: Callable[[AnyEvent], None] | None = None,
+    on_event: Callable[[int, AnyEvent], None] | None = None,
     on_complete: Callable[[], None] | None = None,
     on_error: Callable[[Exception], None] | None = None,
+    event_range: tuple[int, int] | None = None,
 ) -> None:
     """MacroData를 별도 스레드에서 재생 시작한다.
 
     Args:
         macro: 재생할 MacroData. events 배열 사용.
         speed: 재생 속도 배율. 기본 1.0.
-        on_event: 각 이벤트 실행 후 UI에 알릴 콜백.
+        on_event: 각 이벤트 실행 후 UI에 알릴 콜백 (idx, event).
         on_complete: 재생 완료 시 UI에 알릴 콜백.
         on_error: 오류 발생 시 UI에 알릴 콜백.
+        event_range: (start_idx, end_idx) 구간 재생. None이면 전체 재생.
     """
     global _playback_thread
 
@@ -313,7 +331,7 @@ def play(
 
     _playback_thread = threading.Thread(
         target=_play_loop,
-        args=(macro, speed, on_event, on_complete, on_error),
+        args=(macro, speed, on_event, on_complete, on_error, event_range),
         daemon=True,
         name="PlaybackThread",
     )
@@ -349,3 +367,8 @@ def get_progress() -> float:
     if _total_events == 0:
         return 0.0
     return _current_event_idx / _total_events
+
+
+def get_current_event_idx() -> int:
+    """현재 재생 중인 이벤트의 원본 인덱스를 반환한다."""
+    return _current_event_idx

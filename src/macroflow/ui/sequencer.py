@@ -252,6 +252,13 @@ class MacroSequencerWidget(QWidget):
                     break
         self._items = new_items
 
+    def add_macro_file(self, path: Path) -> None:
+        """외부에서 매크로 파일을 시퀀서에 추가한다.
+
+        main_window의 '영구 저장 + 시퀀서' 기능에서 호출.
+        """
+        self._add_item(path)
+
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self, "매크로 파일 추가",

@@ -436,12 +436,49 @@ class EventEditorWidget(QWidget):
         return self._macro
 
     def highlight_event(self, event_idx: int) -> None:
-        """재생 중 해당 이벤트 인덱스에 대응하는 행을 하이라이트한다."""
+        """재생 중 해당 이벤트 인덱스에 대응하는 행을 하이라이트한다.
+
+        스크롤과 선택이 현재 재생 위치를 정확히 따라간다.
+        """
         for row_idx, row in enumerate(self._rows):
             if event_idx in row.event_indices:
                 self._table.selectRow(row_idx)
-                self._table.scrollTo(self._table.model().index(row_idx, 0))
+                self._table.scrollTo(
+                    self._table.model().index(row_idx, 0),
+                    QAbstractItemView.ScrollHint.PositionAtCenter,
+                )
                 return
+
+    def get_event_range_for_rows(
+        self, start_row: int, end_row: int,
+    ) -> tuple[int, int] | None:
+        """표시 행 범위를 원본 events 인덱스 범위(start, end exclusive)로 변환한다.
+
+        Args:
+            start_row: 시작 표시 행 번호 (1-based, 사용자 기준).
+            end_row: 끝 표시 행 번호 (1-based, inclusive).
+
+        Returns:
+            (start_event_idx, end_event_idx_exclusive) 또는 범위가 유효하지 않으면 None.
+        """
+        if not self._rows:
+            return None
+        # 1-based → 0-based
+        s = max(0, start_row - 1)
+        e = min(len(self._rows), end_row)
+        if s >= e:
+            return None
+        selected_rows = self._rows[s:e]
+        all_indices: list[int] = []
+        for row in selected_rows:
+            all_indices.extend(row.event_indices)
+        if not all_indices:
+            return None
+        return (min(all_indices), max(all_indices) + 1)
+
+    def row_count(self) -> int:
+        """현재 표시 행 수를 반환한다."""
+        return len(self._rows)
 
     # ── 테이블 갱신 ───────────────────────────────────────────────────────────
 
