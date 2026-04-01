@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import QApplication, QWidget
 
 
 class OverlayWindow(QWidget):
-    """녹화/재생 상태를 표시하는 미니 플로팅 창."""
+    """녹화/재생/힌트 상태를 표시하는 미니 플로팅 창."""
 
     _WIDTH = 210
     _HEIGHT = 52
@@ -38,7 +38,8 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedSize(self._WIDTH, self._HEIGHT)
 
-        self._mode: str = "recording"  # "recording" | "playing"
+        self._mode: str = "recording"  # "recording" | "playing" | "hint"
+        self._hint_text: str = ""
         self._start_time: float = 0.0
         self._event_count: int = 0
         self._progress: float = 0.0
@@ -94,6 +95,21 @@ class OverlayWindow(QWidget):
         """재생 진행률(0.0~1.0)을 갱신한다."""
         self._progress = max(0.0, min(1.0, progress))
 
+    def show_hint(self, text: str) -> None:
+        """F6 캡처 대기 중 힌트 메시지를 표시한다."""
+        self._mode = "hint"
+        self._hint_text = text
+        self._repaint_timer.stop()
+        self._blink_timer.stop()
+        self._position_bottom_right()
+        self.show()
+        self.update()
+
+    def stop_hint(self) -> None:
+        """힌트 모드를 종료한다."""
+        if self._mode == "hint":
+            self.hide()
+
     def stop(self) -> None:
         """오버레이를 숨기고 타이머를 중지한다."""
         self._repaint_timer.stop()
@@ -124,6 +140,8 @@ class OverlayWindow(QWidget):
 
         if self._mode == "recording":
             self._paint_recording(painter, elapsed)
+        elif self._mode == "hint":
+            self._paint_hint(painter)
         else:
             self._paint_playing(painter)
 
@@ -171,6 +189,22 @@ class OverlayWindow(QWidget):
         painter.drawText(36, 0, self._WIDTH - 42, self._HEIGHT,
                          Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                          text)
+
+    def _paint_hint(self, painter: QPainter) -> None:
+        """F6 캡처 대기 힌트 메시지를 그린다."""
+        # 노란 📍 아이콘 영역
+        painter.setBrush(QColor(220, 170, 30))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(10, 16, 18, 18)
+
+        font = QFont()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(34, 0, self._WIDTH - 40, self._HEIGHT,
+                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                         self._hint_text)
 
     # ── 드래그 이동 ───────────────────────────────────────────────────────────
 

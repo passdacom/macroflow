@@ -100,6 +100,11 @@ class MainWindow(QMainWindow):
         # 시퀀서 실행 완료/오류 시 툴바 갱신
         self._sequencer.sequence_complete.connect(lambda _: self._update_toolbar())
         self._sequencer.sequence_error.connect(lambda _: self._update_toolbar())
+        # F6 캡처 힌트 오버레이 연동
+        self._editor.f6_capture_started.connect(
+            lambda: self._overlay.show_hint("F6을 눌러 위치 지정")
+        )
+        self._editor.f6_capture_ended.connect(self._overlay.stop_hint)
 
         # ── 폴링 타이머 (250ms) ───────────────────────────────────────────────
         self._poll_timer = QTimer(self)
@@ -162,39 +167,40 @@ class MainWindow(QMainWindow):
         help_menu.addAction(act_about)
 
     def _setup_toolbar(self) -> None:
-        tb = self.addToolBar("메인 도구")
-        tb.setMovable(False)
-        tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        # ── 1행: 녹화 / 재생 / 중지 ──────────────────────────────────────────
+        tb1 = self.addToolBar("제어")
+        tb1.setMovable(False)
+        tb1.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
-        self._act_record = QAction("● 녹화", self)
+        self._act_record = QAction("● 녹화 (F6)", self)
         self._act_record.setToolTip("F6  —  녹화 시작/중지")
         self._act_record.setCheckable(True)
         self._act_record.triggered.connect(self._toggle_recording)
-        tb.addAction(self._act_record)
+        tb1.addAction(self._act_record)
 
-        self._act_play = QAction("▶ 재생", self)
+        self._act_play = QAction("▶ 재생 (F7)", self)
         self._act_play.setToolTip("F7  —  재생 시작/중지")
         self._act_play.triggered.connect(self._toggle_playback)
-        tb.addAction(self._act_play)
+        tb1.addAction(self._act_play)
 
         self._act_stop = QAction("⏹ 중지", self)
         self._act_stop.setToolTip("녹화 또는 재생을 즉시 중지합니다")
         self._act_stop.triggered.connect(self._emergency_stop)
-        tb.addAction(self._act_stop)
+        tb1.addAction(self._act_stop)
 
-        tb.addSeparator()
+        # ── 2행: 속도 / 반복 / 간격 / 구간 ──────────────────────────────────
+        tb2 = self.addToolBar("재생 설정")
+        tb2.setMovable(False)
 
-        # 재생 속도
-        tb.addWidget(QLabel(" 속도:"))
+        tb2.addWidget(QLabel(" 속도:"))
         self._speed_combo = QComboBox()
         self._speed_combo.addItems(["0.5x", "1.0x", "2.0x", "5.0x"])
         self._speed_combo.setCurrentIndex(1)
         self._speed_combo.setToolTip("재생 속도 배율")
         self._speed_combo.setFixedWidth(68)
-        tb.addWidget(self._speed_combo)
+        tb2.addWidget(self._speed_combo)
 
-        # 반복 횟수
-        tb.addWidget(QLabel("  반복:"))
+        tb2.addWidget(QLabel("  반복:"))
         self._repeat_spin = QSpinBox()
         self._repeat_spin.setMinimum(1)
         self._repeat_spin.setMaximum(9999)
@@ -202,10 +208,9 @@ class MainWindow(QMainWindow):
         self._repeat_spin.setSuffix("회")
         self._repeat_spin.setToolTip("반복 재생 횟수")
         self._repeat_spin.setFixedWidth(90)
-        tb.addWidget(self._repeat_spin)
+        tb2.addWidget(self._repeat_spin)
 
-        # 반복 간격
-        tb.addWidget(QLabel("  간격:"))
+        tb2.addWidget(QLabel("  간격:"))
         self._interval_spin = QSpinBox()
         self._interval_spin.setMinimum(0)
         self._interval_spin.setMaximum(60000)
@@ -213,12 +218,11 @@ class MainWindow(QMainWindow):
         self._interval_spin.setSuffix("ms")
         self._interval_spin.setToolTip("반복 재생 간 대기 시간 (ms)")
         self._interval_spin.setFixedWidth(95)
-        tb.addWidget(self._interval_spin)
+        tb2.addWidget(self._interval_spin)
 
-        tb.addSeparator()
+        tb2.addSeparator()
 
-        # 구간 재생
-        tb.addWidget(QLabel("  구간:"))
+        tb2.addWidget(QLabel("구간:"))
         self._range_start_spin = QSpinBox()
         self._range_start_spin.setMinimum(0)
         self._range_start_spin.setMaximum(0)
@@ -226,9 +230,9 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setSpecialValueText("처음")
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
         self._range_start_spin.setFixedWidth(75)
-        tb.addWidget(self._range_start_spin)
+        tb2.addWidget(self._range_start_spin)
 
-        tb.addWidget(QLabel("~"))
+        tb2.addWidget(QLabel("~"))
         self._range_end_spin = QSpinBox()
         self._range_end_spin.setMinimum(0)
         self._range_end_spin.setMaximum(0)
@@ -236,22 +240,25 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setSpecialValueText("끝")
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
         self._range_end_spin.setFixedWidth(75)
-        tb.addWidget(self._range_end_spin)
+        tb2.addWidget(self._range_end_spin)
 
-        tb.addSeparator()
+        # ── 3행: 열기 / 저장 / 시퀀서에 추가 ────────────────────────────────
+        tb3 = self.addToolBar("파일")
+        tb3.setMovable(False)
+        tb3.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
         self._act_open = QAction("📂 열기", self)
         self._act_open.triggered.connect(self._open_file)
-        tb.addAction(self._act_open)
+        tb3.addAction(self._act_open)
 
         self._act_save = QAction("💾 저장", self)
         self._act_save.triggered.connect(self._save_file)
-        tb.addAction(self._act_save)
+        tb3.addAction(self._act_save)
 
         self._act_save_seq = QAction("📋 시퀀서에 추가", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
-        tb.addAction(self._act_save_seq)
+        tb3.addAction(self._act_save_seq)
 
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
@@ -322,6 +329,10 @@ class MainWindow(QMainWindow):
             msg = ctypes.wintypes.MSG.from_address(int(message))  # type: ignore[arg-type]
             if msg.message == _WM_HOTKEY:
                 if msg.wParam == _HOTKEY_RECORD:
+                    # F6 캡처 모드 확인: 에디터가 캡처 대기 중이면 위치/색 캡처
+                    if self._editor.is_f6_capture_active():
+                        self._do_f6_capture()
+                        return True, 0
                     # 시퀀서 탭에서는 F6(녹화) 무시
                     if not self._is_sequencer_tab():
                         self._toggle_recording()
@@ -544,6 +555,21 @@ class MainWindow(QMainWindow):
         self._sb_state.setText("재생 오류")
         QMessageBox.warning(self, "재생 오류", msg)
         logger.error(f"재생 오류: {msg}")
+
+    def _do_f6_capture(self) -> None:
+        """F6 캡처 모드: 현재 마우스 위치와 픽셀 색을 에디터 캡처 콜백으로 전달한다."""
+        if sys.platform != "win32":
+            return
+        from macroflow.win32 import get_cursor_pos, get_pixel_color, pixel_to_ratio
+
+        x, y = get_cursor_pos()
+        x_r, y_r = pixel_to_ratio(x, y)
+        r, g, b = get_pixel_color(x, y)
+        color_hex = f"#{r:02X}{g:02X}{b:02X}"
+
+        self._editor.consume_f6_capture(x_r, y_r, color_hex)
+        self._overlay.stop_hint()
+        logger.info(f"F6 캡처: ({x_r:.3f}, {y_r:.3f}) {color_hex}")
 
     def _insert_color_trigger(self) -> None:
         """녹화 중 F7: 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다."""

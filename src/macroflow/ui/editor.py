@@ -9,9 +9,12 @@ from __future__ import annotations
 import copy
 import dataclasses
 import logging
+import secrets
+import time
 from collections import deque
+from collections.abc import Callable
 
-from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -315,7 +318,9 @@ class EventEditorWidget(QWidget):
       - Delete 키: 선택 행 삭제
     """
 
-    macro_changed = pyqtSignal(object)  # MacroData
+    macro_changed = pyqtSignal(object)   # MacroData
+    f6_capture_started = pyqtSignal()   # F6 캡처 대기 시작 (힌트 오버레이용)
+    f6_capture_ended = pyqtSignal()     # F6 캡처 완료 또는 취소
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -324,6 +329,9 @@ class EventEditorWidget(QWidget):
         self._show_moves: bool = False
         self._undo_stack: deque[list[AnyEvent]] = deque(maxlen=_MAX_UNDO)
         self._redo_stack: list[list[AnyEvent]] = []
+        # F6 캡처 콜백: (x_ratio, y_ratio, color_hex) 형태.
+        # 위치 편집은 color 무시, 색 트리거 삽입은 모두 활용.
+        self._f6_capture_cb: Callable[[float, float, str], None] | None = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -370,6 +378,17 @@ class EventEditorWidget(QWidget):
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
         toolbar.addAction(self._act_redo)
+
+        toolbar.addSeparator()
+
+        self._act_insert_color = QAction("🎨 색 체크 삽입", self)
+        self._act_insert_color.setToolTip(
+            "선택 행 다음에 ColorTriggerEvent를 삽입합니다\n"
+            "클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요"
+        )
+        self._act_insert_color.triggered.connect(self._start_color_trigger_insert)
+        self._act_insert_color.setEnabled(False)
+        toolbar.addAction(self._act_insert_color)
 
         toolbar.addSeparator()
 
@@ -428,6 +447,7 @@ class EventEditorWidget(QWidget):
         self._act_toggle_moves.setEnabled(True)
         self._act_del_moves.setEnabled(True)
         self._act_set_delay.setEnabled(True)
+        self._act_insert_color.setEnabled(True)
         self._act_reset.setEnabled(True)
         self._act_undo.setEnabled(False)
         self._act_redo.setEnabled(False)
@@ -449,6 +469,31 @@ class EventEditorWidget(QWidget):
                     QAbstractItemView.ScrollHint.PositionAtCenter,
                 )
                 return
+
+    # ── F6 캡처 인터페이스 (main_window에서 호출) ─────────────────────────────
+
+    def is_f6_capture_active(self) -> bool:
+        """F6 캡처 대기 중이면 True를 반환한다."""
+        return self._f6_capture_cb is not None
+
+    def consume_f6_capture(self, x_ratio: float, y_ratio: float, color_hex: str) -> bool:
+        """F6이 눌렸을 때 캡처 콜백을 실행한다.
+
+        캡처 대기 중이 아니면 False를 반환한다. 콜백 실행 후 대기 상태를 해제한다.
+        """
+        if self._f6_capture_cb is None:
+            return False
+        cb = self._f6_capture_cb
+        self._f6_capture_cb = None
+        cb(x_ratio, y_ratio, color_hex)
+        self.f6_capture_ended.emit()
+        return True
+
+    def cancel_f6_capture(self) -> None:
+        """F6 캡처 대기 상태를 취소한다."""
+        if self._f6_capture_cb is not None:
+            self._f6_capture_cb = None
+            self.f6_capture_ended.emit()
 
     def get_event_range_for_rows(
         self, start_row: int, end_row: int,
@@ -687,7 +732,8 @@ class EventEditorWidget(QWidget):
     def _edit_position(self, row: int) -> None:
         """마우스 이벤트의 위치를 변경한다.
 
-        SpinBox 직접 입력 또는 '화면에서 직접 지정' (3초 카운트다운 후 캡처) 중 선택.
+        SpinBox 직접 입력 또는 'F6으로 직접 지정' (F6 캡처 모드) 중 선택.
+        클릭/드래그 행은 mouse_down과 mouse_up 좌표를 동시에 업데이트한다.
         """
         if self._macro is None or row >= len(self._rows):
             return
@@ -698,7 +744,7 @@ class EventEditorWidget(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("위치 변경")
-        dialog.setFixedWidth(300)
+        dialog.setFixedWidth(320)
 
         form = QFormLayout()
         x_spin = QDoubleSpinBox()
@@ -715,58 +761,37 @@ class EventEditorWidget(QWidget):
         y_spin.setValue(primary.y_ratio * 100)
         form.addRow("Y 위치:", y_spin)
 
-        # 카운트다운 상태 레이블
         capture_label = QLabel("")
         capture_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         capture_label.setStyleSheet("color: #c07000; font-weight: bold;")
 
-        # 화면에서 직접 지정 버튼
-        btn_capture = QPushButton("📍 화면에서 직접 지정 (3초 후 캡처)")
+        btn_capture = QPushButton("📍 화면에서 직접 지정 (F6으로 지정)")
         btn_capture.setToolTip(
-            "버튼 클릭 후 3초 안에 원하는 위치로 마우스를 이동하세요.\n"
-            "카운트다운이 끝나면 마우스 위치가 자동으로 입력됩니다."
+            "버튼 클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요."
         )
 
-        # 카운트다운 로직 — 클로저로 상태 관리
-        _countdown: list[int] = [0]
-        _timer: list[QTimer | None] = [None]
-
-        def _start_capture() -> None:
-            btn_capture.setEnabled(False)
-            _countdown[0] = 3
-            capture_label.setText(f"⏱ {_countdown[0]}초 후 캡처...")
-            dialog.showMinimized()
-
-            timer = QTimer(dialog)
-            _timer[0] = timer
-
-            def _tick() -> None:
-                _countdown[0] -= 1
-                if _countdown[0] > 0:
-                    capture_label.setText(f"⏱ {_countdown[0]}초 후 캡처...")
-                else:
-                    timer.stop()
-                    _do_capture()
-
-            timer.timeout.connect(_tick)
-            timer.start(1000)
-
-        def _do_capture() -> None:
-            import sys as _sys
-            if _sys.platform == "win32":
-                from macroflow.win32 import get_cursor_pos, pixel_to_ratio
-                x_px, y_px = get_cursor_pos()
-                x_r, y_r = pixel_to_ratio(x_px, y_px)
-                x_spin.setValue(x_r * 100)
-                y_spin.setValue(y_r * 100)
-                capture_label.setText(f"✅ 캡처됨: ({x_px}, {y_px})")
-            else:
-                capture_label.setText("❌ Windows 전용 기능입니다")
+        def _on_f6_captured(x_r: float, y_r: float, _color: str) -> None:
+            """F6 캡처 콜백 — 다이얼로그 복원 및 SpinBox 갱신."""
+            x_spin.setValue(x_r * 100)
+            y_spin.setValue(y_r * 100)
+            capture_label.setText(f"✅ 캡처됨: ({x_r * 100:.1f}%, {y_r * 100:.1f}%)")
             dialog.showNormal()
             dialog.raise_()
             btn_capture.setEnabled(True)
 
+        def _start_capture() -> None:
+            btn_capture.setEnabled(False)
+            capture_label.setText("⏳ F6을 눌러 위치를 지정하세요...")
+            self._f6_capture_cb = _on_f6_captured
+            self.f6_capture_started.emit()  # → main_window에서 힌트 오버레이 표시
+            dialog.showMinimized()
+
+        def _on_dialog_finished(_result: int) -> None:
+            # 다이얼로그가 닫힐 때 캡처 대기 상태 해제
+            self.cancel_f6_capture()
+
         btn_capture.clicked.connect(_start_capture)
+        dialog.finished.connect(_on_dialog_finished)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -781,12 +806,7 @@ class EventEditorWidget(QWidget):
         v.addWidget(buttons)
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            if _timer[0] is not None:
-                _timer[0].stop()
             return
-
-        if _timer[0] is not None:
-            _timer[0].stop()
 
         new_x = x_spin.value() / 100.0
         new_y = y_spin.value() / 100.0
@@ -798,9 +818,62 @@ class EventEditorWidget(QWidget):
             self._undo_stack.pop()
             QMessageBox.warning(self, "오류", "위치 변경에 실패했습니다.")
             return
+
+        # 클릭/드래그 행: mouse_up 좌표도 동일하게 업데이트 (드래그 오인식 방지)
+        if display_row.kind in ("click", "right_click", "drag", "right_drag"):
+            for idx in display_row.event_indices:
+                ev = new_macro.events[idx]
+                if isinstance(ev, MouseButtonEvent) and ev.type == "mouse_up":
+                    try:
+                        new_macro = edit_position(new_macro, ev.id, new_x, new_y)
+                    except (KeyError, TypeError):
+                        pass
+                    break
+
         self._macro = new_macro
         self._refresh()
         self.macro_changed.emit(self._macro)
+
+    def _start_color_trigger_insert(self) -> None:
+        """선택 행 다음에 ColorTriggerEvent를 F6 캡처로 삽입한다.
+
+        F6을 누르는 순간의 마우스 위치와 픽셀 색을 ColorTriggerEvent로 삽입.
+        """
+        if self._macro is None:
+            return
+
+        rows = self._selected_row_indices()
+        # 삽입 기준: 선택 행의 마지막 이벤트 인덱스 다음 위치
+        if rows:
+            last_row = self._rows[rows[-1]]
+            insert_after_event_idx = max(last_row.event_indices)
+        else:
+            # 선택 없으면 맨 끝에 추가
+            insert_after_event_idx = len(self._macro.events) - 1
+
+        def _on_color_captured(x_r: float, y_r: float, color_hex: str) -> None:
+            """F6 콜백 — ColorTriggerEvent 삽입."""
+            if self._macro is None:
+                return
+            ts_ns = int(time.perf_counter_ns())
+            new_event = ColorTriggerEvent(
+                id=secrets.token_hex(4),
+                type="color_trigger",
+                timestamp_ns=ts_ns,
+                delay_override_ms=None,
+                x_ratio=x_r,
+                y_ratio=y_r,
+                target_color=color_hex,
+                tolerance=10,
+                timeout_ms=10000,
+            )
+            self._push_undo()
+            events = list(self._macro.events)
+            events.insert(insert_after_event_idx + 1, new_event)
+            self._apply_events(events)
+
+        self._f6_capture_cb = _on_color_captured
+        self.f6_capture_started.emit()  # → main_window에서 힌트 오버레이 표시
 
     def _delete_selected(self) -> None:
         rows = self._selected_row_indices()
