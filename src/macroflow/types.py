@@ -26,6 +26,7 @@ class MacroEvent:
     type: str
     timestamp_ns: int
     delay_override_ms: int | None = None
+    source_file: str = ""
 
 
 @dataclass(kw_only=True)

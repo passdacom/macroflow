@@ -84,7 +84,7 @@ _KIND_COLORS: dict[str, QColor] = {
     "orphan":         QColor(160, 60, 60),
 }
 
-_COLUMNS = ["#", "타입", "내용", "시간(ms)", "딜레이(ms)"]
+_COLUMNS = ["#", "타입", "내용", "시간(ms)", "딜레이(ms)", "출처"]
 
 
 # ── 표시 행 데이터 ─────────────────────────────────────────────────────────────
@@ -100,6 +100,7 @@ class _DisplayRow:
     delay_str: str            # 딜레이(ms) 열 텍스트
     event_indices: list[int]  # 이 행이 나타내는 이벤트 인덱스들
     primary_idx: int          # 딜레이/편집 기준 이벤트 인덱스
+    source_file: str = ""     # 출처 파일명 (병합 매크로에서 설정)
 
 
 def _delay_str(event: AnyEvent) -> str:
@@ -461,6 +462,7 @@ class EventEditorWidget(QWidget):
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
 
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
@@ -583,10 +585,16 @@ class EventEditorWidget(QWidget):
 
         events = self._macro.events
         self._rows = _build_rows(events, self._show_moves)
+        # 출처 열: primary 이벤트의 source_file을 각 행에 반영
+        for row in self._rows:
+            row.source_file = events[row.primary_idx].source_file
         self._table.setRowCount(len(self._rows))
 
         for row_idx, row in enumerate(self._rows):
             color = _KIND_COLORS.get(row.kind, QColor(80, 80, 80))
+
+            source_item = _cell(row.source_file)
+            source_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
             items = [
                 _cell(str(row_idx + 1)),
@@ -594,13 +602,15 @@ class EventEditorWidget(QWidget):
                 _cell(row.detail),
                 _cell(f"{row.time_ms:.0f}"),
                 _cell(row.delay_str),
+                source_item,
             ]
 
             items[1].setBackground(QBrush(color))
             items[1].setForeground(QBrush(QColor(255, 255, 255)))
 
             for col, item in enumerate(items):
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if col != 5:  # 출처 열은 이미 정렬 지정됨
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_idx, col, item)
 
         total = len(events)

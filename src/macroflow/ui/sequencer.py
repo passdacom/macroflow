@@ -89,6 +89,7 @@ class MacroSequencerWidget(QWidget):
     sequence_complete = pyqtSignal(str)   # status
     sequence_error = pyqtSignal(str)      # message
     open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
+    merge_to_editor = pyqtSignal(object)  # 병합 결과 MacroData → 에디터로 전달
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -133,6 +134,17 @@ class MacroSequencerWidget(QWidget):
         self._act_save_flow.triggered.connect(self._save_flow)
         self._act_save_flow.setEnabled(False)
         toolbar.addAction(self._act_save_flow)
+
+        toolbar.addSeparator()
+
+        self._act_merge = QAction("🔗 에디터로 병합", self)
+        self._act_merge.setToolTip(
+            "목록의 모든 매크로를 순서대로 이어 붙여 하나의 매크로로 만든 뒤\n"
+            "매크로 에디터 탭으로 보냅니다 (저장 후 수정 가능)"
+        )
+        self._act_merge.triggered.connect(self._merge_to_editor)
+        self._act_merge.setEnabled(False)
+        toolbar.addAction(self._act_merge)
 
         layout.addWidget(toolbar)
 
@@ -505,12 +517,51 @@ class MacroSequencerWidget(QWidget):
         except (ValueError, IndexError):
             return -1
 
+    # ── 병합 ──────────────────────────────────────────────────────────────────
+
+    def _merge_to_editor(self) -> None:
+        """시퀀서의 모든 매크로를 하나로 병합하여 에디터에 전달한다.
+
+        각 매크로 파일을 순서대로 로드하고, macro_file.merge_macros()를 사용하여
+        하나의 MacroData로 병합한 뒤 merge_to_editor 신호를 방출한다.
+        이벤트의 source_file 필드에 원본 파일명이 기록되어 에디터 '출처' 열에 표시된다.
+        """
+        if len(self._items) < 2:
+            return
+
+        from macroflow.macro_file import load, merge_macros
+        from macroflow.types import MacroData
+
+        macro_tuples: list[tuple[MacroData, str]] = []
+        for item in self._items:
+            try:
+                macro = load(str(item.path))
+            except Exception as exc:
+                QMessageBox.critical(
+                    self, "로드 오류",
+                    f"파일을 읽을 수 없습니다:\n{item.path.name}\n\n{exc}",
+                )
+                return
+            macro_tuples.append((macro, item.path.name))
+
+        try:
+            merged = merge_macros(macro_tuples)
+        except Exception as exc:
+            QMessageBox.critical(self, "병합 오류", str(exc))
+            return
+
+        self.merge_to_editor.emit(merged)
+        self._log_message(
+            f"에디터로 병합 완료: {len(self._items)}개 파일 → {len(merged.events)}개 이벤트"
+        )
+
     # ── 버튼 활성화 관리 ──────────────────────────────────────────────────────
 
     def _update_buttons(self) -> None:
         has_items = bool(self._items)
         self._btn_run.setEnabled(has_items)
         self._act_save_flow.setEnabled(has_items)
+        self._act_merge.setEnabled(len(self._items) >= 2)
 
     # ── 로그 ──────────────────────────────────────────────────────────────────
 

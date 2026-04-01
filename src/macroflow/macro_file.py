@@ -77,6 +77,7 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
         "type":             d["type"],
         "timestamp_ns":     d["timestamp_ns"],
         "delay_override_ms": d.get("delay_override_ms"),
+        "source_file":      d.get("source_file", ""),
     }
 
     match d["type"]:
@@ -387,6 +388,53 @@ def edit_wheel_delta(
                 is_edited=True,
             )
     raise KeyError(f"Event id not found: {event_id!r}")
+
+
+def merge_macros(macros: list[tuple[MacroData, str]]) -> MacroData:
+    """여러 MacroData를 타임스탬프 오프셋을 적용하여 하나로 병합한다.
+
+    각 매크로 사이에 500 ms 간격을 두고, source_file 필드에 원본 파일명을
+    기록하여 에디터의 '출처' 열에 표시할 수 있게 한다.
+
+    Args:
+        macros: (MacroData, 파일명) 튜플 목록. 순서대로 연결된다.
+
+    Returns:
+        병합된 새 MacroData (is_edited=True).
+
+    Raises:
+        ValueError: macros 목록이 비어 있는 경우.
+    """
+    if not macros:
+        raise ValueError("병합할 매크로가 없습니다")
+
+    _GAP_NS = 500_000_000  # 매크로 간 500 ms 간격
+
+    merged_events: list[AnyEvent] = []
+    offset_ns = 0
+
+    for macro_data, fname in macros:
+        evs = copy.deepcopy(macro_data.events)
+        for ev in evs:
+            ev.timestamp_ns += offset_ns
+            ev.source_file = fname
+        merged_events.extend(evs)
+
+        # 다음 매크로 오프셋 = 현재 마지막 이벤트 타임스탬프 + GAP
+        if evs:
+            offset_ns = max(ev.timestamp_ns for ev in evs) + _GAP_NS
+
+    # 첫 번째 매크로의 메타·설정을 기반으로 생성
+    base_meta = macros[0][0].meta
+    base_settings = macros[0][0].settings
+
+    return MacroData(
+        meta=base_meta,
+        settings=base_settings,
+        raw_events=copy.deepcopy(merged_events),
+        events=merged_events,
+        is_edited=True,
+    )
 
 
 def edit_position(

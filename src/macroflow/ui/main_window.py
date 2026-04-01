@@ -97,6 +97,8 @@ class MainWindow(QMainWindow):
         self._editor.macro_changed.connect(self._on_macro_changed)
         # 시퀀서 더블클릭 → 매크로 에디터 탭으로 로드
         self._sequencer.open_in_editor.connect(self._load_file_and_switch_tab)
+        # 시퀀서 병합 → 에디터 탭으로 전달
+        self._sequencer.merge_to_editor.connect(self._on_merge_to_editor)
         # 시퀀서 실행 완료/오류 시 툴바 갱신
         self._sequencer.sequence_complete.connect(lambda _: self._update_toolbar())
         self._sequencer.sequence_error.connect(lambda _: self._update_toolbar())
@@ -188,6 +190,8 @@ class MainWindow(QMainWindow):
         self._act_stop.triggered.connect(self._emergency_stop)
         tb1.addAction(self._act_stop)
 
+        self.addToolBarBreak()
+
         # ── 2행: 속도 / 반복 / 간격 / 구간 ──────────────────────────────────
         tb2 = self.addToolBar("재생 설정")
         tb2.setMovable(False)
@@ -242,6 +246,8 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setFixedWidth(75)
         tb2.addWidget(self._range_end_spin)
 
+        self.addToolBarBreak()
+
         # ── 3행: 열기 / 저장 / 시퀀서에 추가 ────────────────────────────────
         tb3 = self.addToolBar("파일")
         tb3.setMovable(False)
@@ -251,7 +257,7 @@ class MainWindow(QMainWindow):
         self._act_open.triggered.connect(self._open_file)
         tb3.addAction(self._act_open)
 
-        self._act_save = QAction("💾 저장", self)
+        self._act_save = QAction("💾 다른 이름으로 저장", self)
         self._act_save.triggered.connect(self._save_file)
         tb3.addAction(self._act_save)
 
@@ -688,13 +694,29 @@ class MainWindow(QMainWindow):
         self._load_file(path)
         self._tabs.setCurrentWidget(self._editor)
 
-    def _save_file(self) -> None:
-        if not self._macro:
+    def _on_merge_to_editor(self, macro: object) -> None:
+        """시퀀서 '에디터로 병합' 결과를 에디터 탭에 로드한다.
+
+        병합된 MacroData를 편집 가능한 상태로 에디터에 표시한다.
+        저장 경로는 설정하지 않으므로, 저장 시 항상 '다른 이름으로 저장' 다이얼로그가 뜬다.
+        """
+        if not isinstance(macro, MacroData):
             return
-        if self._current_file:
-            self._do_save(str(self._current_file))
-        else:
-            self._save_file_as()
+        self._macro = macro
+        self._current_file = None  # 병합 결과는 미저장 상태
+        self._editor.load_macro(macro)
+        self._tabs.setCurrentWidget(self._editor)
+        self._update_toolbar()
+        self._update_range_spinboxes()
+        count = len(macro.events)
+        self._sb_state.setText("병합 완료")
+        self._sb_count.setText(f"이벤트: {count}")
+        self.setWindowTitle("MacroFlow — [병합 매크로]")
+        logger.info(f"시퀀서 병합 로드: {count}개 이벤트")
+
+    def _save_file(self) -> None:
+        """항상 '다른 이름으로 저장' 다이얼로그를 열어 저장 경로를 지정한다."""
+        self._save_file_as()
 
     def _save_file_as(self) -> None:
         if not self._macro:
