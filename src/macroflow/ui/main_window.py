@@ -83,6 +83,7 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.addTab(self._editor, "매크로 에디터")
         self._tabs.addTab(self._sequencer, "시퀀서")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)
 
         self._setup_statusbar()
@@ -94,6 +95,11 @@ class MainWindow(QMainWindow):
         self._sig_emergency_stop.connect(self._emergency_stop)
         self._sig_play_event.connect(self._editor.highlight_event)
         self._editor.macro_changed.connect(self._on_macro_changed)
+        # 시퀀서 더블클릭 → 매크로 에디터 탭으로 로드
+        self._sequencer.open_in_editor.connect(self._load_file_and_switch_tab)
+        # 시퀀서 실행 완료/오류 시 툴바 갱신
+        self._sequencer.sequence_complete.connect(lambda _: self._update_toolbar())
+        self._sequencer.sequence_error.connect(lambda _: self._update_toolbar())
 
         # ── 폴링 타이머 (250ms) ───────────────────────────────────────────────
         self._poll_timer = QTimer(self)
@@ -184,7 +190,7 @@ class MainWindow(QMainWindow):
         self._speed_combo.addItems(["0.5x", "1.0x", "2.0x", "5.0x"])
         self._speed_combo.setCurrentIndex(1)
         self._speed_combo.setToolTip("재생 속도 배율")
-        self._speed_combo.setFixedWidth(64)
+        self._speed_combo.setFixedWidth(68)
         tb.addWidget(self._speed_combo)
 
         # 반복 횟수
@@ -195,7 +201,7 @@ class MainWindow(QMainWindow):
         self._repeat_spin.setValue(1)
         self._repeat_spin.setSuffix("회")
         self._repeat_spin.setToolTip("반복 재생 횟수")
-        self._repeat_spin.setFixedWidth(72)
+        self._repeat_spin.setFixedWidth(90)
         tb.addWidget(self._repeat_spin)
 
         # 반복 간격
@@ -206,7 +212,7 @@ class MainWindow(QMainWindow):
         self._interval_spin.setValue(500)
         self._interval_spin.setSuffix("ms")
         self._interval_spin.setToolTip("반복 재생 간 대기 시간 (ms)")
-        self._interval_spin.setFixedWidth(80)
+        self._interval_spin.setFixedWidth(95)
         tb.addWidget(self._interval_spin)
 
         tb.addSeparator()
@@ -219,7 +225,7 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setValue(0)
         self._range_start_spin.setSpecialValueText("처음")
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
-        self._range_start_spin.setFixedWidth(60)
+        self._range_start_spin.setFixedWidth(75)
         tb.addWidget(self._range_start_spin)
 
         tb.addWidget(QLabel("~"))
@@ -229,7 +235,7 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setValue(0)
         self._range_end_spin.setSpecialValueText("끝")
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
-        self._range_end_spin.setFixedWidth(60)
+        self._range_end_spin.setFixedWidth(75)
         tb.addWidget(self._range_end_spin)
 
         tb.addSeparator()
@@ -242,8 +248,8 @@ class MainWindow(QMainWindow):
         self._act_save.triggered.connect(self._save_file)
         tb.addAction(self._act_save)
 
-        self._act_save_seq = QAction("💾+ 시퀀서", self)
-        self._act_save_seq.setToolTip("영구 저장 후 시퀀서에 추가")
+        self._act_save_seq = QAction("📋 시퀀서에 추가", self)
+        self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
         tb.addAction(self._act_save_seq)
 
@@ -316,15 +322,30 @@ class MainWindow(QMainWindow):
             msg = ctypes.wintypes.MSG.from_address(int(message))  # type: ignore[arg-type]
             if msg.message == _WM_HOTKEY:
                 if msg.wParam == _HOTKEY_RECORD:
-                    self._toggle_recording()
+                    # 시퀀서 탭에서는 F6(녹화) 무시
+                    if not self._is_sequencer_tab():
+                        self._toggle_recording()
                     return True, 0
                 if msg.wParam == _HOTKEY_PLAY:
-                    if self._state == "recording":
+                    if self._is_sequencer_tab():
+                        # 시퀀서 탭: F7 → 시퀀스 실행/중지
+                        self._toggle_sequencer()
+                    elif self._state == "recording":
                         self._insert_color_trigger()
                     else:
                         self._toggle_playback()
                     return True, 0
         return False, 0
+
+    # ── 탭 관리 ──────────────────────────────────────────────────────────────
+
+    def _is_sequencer_tab(self) -> bool:
+        """현재 활성 탭이 시퀀서인지 반환한다."""
+        return self._tabs.currentWidget() is self._sequencer
+
+    def _on_tab_changed(self, _index: int) -> None:
+        """탭 전환 시 툴바 버튼 상태를 갱신한다."""
+        self._update_toolbar()
 
     # ── 상태 머신 ─────────────────────────────────────────────────────────────
 
@@ -377,6 +398,13 @@ class MainWindow(QMainWindow):
         self._sb_count.setText(f"이벤트: {count}")
         self._refresh_recent_menu()
         logger.info(f"녹화 완료: {count}개 이벤트")
+
+    def _toggle_sequencer(self) -> None:
+        """시퀀서 탭에서 F7: 시퀀스 실행 중이면 중지, 아니면 실행."""
+        if self._sequencer.is_running():
+            self._sequencer.stop_sequence()
+        else:
+            self._sequencer.run_sequence()
 
     def _toggle_playback(self) -> None:
         if self._state == "idle" and self._macro:
@@ -561,13 +589,21 @@ class MainWindow(QMainWindow):
         is_rec = self._state == "recording"
         is_stop = self._state == "stopping"
         is_play = self._state == "playing"
+        is_seq_tab = self._is_sequencer_tab()
+        seq_running = self._sequencer.is_running()
 
-        self._act_record.setEnabled(is_idle or is_rec)
+        # 녹화: 시퀀서 탭에서는 항상 비활성화
+        self._act_record.setEnabled((is_idle or is_rec) and not is_seq_tab)
         self._act_record.setChecked(is_rec)
         self._act_record.setText("■ 중지 (F6)" if is_rec else "● 녹화 (F6)")
 
-        self._act_play.setEnabled(is_idle and self._macro is not None)
-        self._act_play.setText("⏸ 일시정지 (F7)" if is_play else "▶ 재생 (F7)")
+        # 재생: 탭에 따라 텍스트와 활성화 조건이 달라짐
+        if is_seq_tab:
+            self._act_play.setEnabled(bool(self._sequencer.has_items()))
+            self._act_play.setText("⏹ 중지 (F7)" if seq_running else "▶ 시퀀스 실행 (F7)")
+        else:
+            self._act_play.setEnabled(is_idle and self._macro is not None)
+            self._act_play.setText("⏸ 일시정지 (F7)" if is_play else "▶ 재생 (F7)")
 
         self._act_stop.setEnabled(is_rec or is_play or is_stop)
         self._act_save.setEnabled(is_idle and self._macro is not None)
@@ -583,10 +619,21 @@ class MainWindow(QMainWindow):
 
     # ── 파일 조작 ─────────────────────────────────────────────────────────────
 
+    def _get_default_dir(self) -> str:
+        """파일 다이얼로그 초기 폴더를 반환한다.
+
+        PyInstaller 패키징 상태이면 exe 파일이 있는 폴더,
+        개발 환경이면 현재 작업 디렉토리를 반환한다.
+        """
+        if getattr(sys, "frozen", False):
+            # PyInstaller 패키징 상태: sys.executable = ...MacroFlow.exe
+            return str(Path(sys.executable).parent)
+        return str(Path.cwd())
+
     def _open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "매크로 파일 열기",
-            str(Path.home()),
+            self._get_default_dir(),
             "Macro JSON (*.json);;모든 파일 (*)",
         )
         if not path:
@@ -610,6 +657,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "파일 열기 오류", str(exc))
             logger.exception("파일 열기 오류")
 
+    def _load_file_and_switch_tab(self, path: str) -> None:
+        """시퀀서 더블클릭 시: 매크로를 로드하고 에디터 탭으로 전환한다."""
+        self._load_file(path)
+        self._tabs.setCurrentWidget(self._editor)
+
     def _save_file(self) -> None:
         if not self._macro:
             return
@@ -623,7 +675,7 @@ class MainWindow(QMainWindow):
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "매크로 저장",
-            str(Path.home()),
+            self._get_default_dir(),
             "Macro JSON (*.json)",
         )
         if not path:
@@ -642,27 +694,49 @@ class MainWindow(QMainWindow):
         self._sb_state.setText(f"저장 완료: {Path(path).name}")
         logger.info(f"저장: {path}")
 
+    def _get_macros_dir(self) -> Path:
+        """영구 저장용 macros 디렉토리 경로를 반환한다.
+
+        PyInstaller 패키징 상태이면 exe 파일 옆 macros/ 폴더,
+        개발 환경이면 현재 작업 디렉토리 아래 macros/ 폴더를 사용한다.
+        """
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).parent / "macros"
+        return Path.cwd() / "macros"
+
     def _save_and_add_to_sequencer(self) -> None:
-        """영구 저장 후 시퀀서에 추가한다."""
+        """macros 폴더에 날짜·시간 파일명으로 자동 저장 후 시퀀서에 추가한다.
+
+        다이얼로그 없이 즉시 저장되며, 시퀀서 탭으로 자동 전환된다.
+        """
         if not self._macro:
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "영구 저장 + 시퀀서 추가",
-            str(Path.home()),
-            "Macro JSON (*.json)",
-        )
-        if not path:
+        from datetime import datetime
+
+        from macroflow import macro_file
+
+        macros_dir = self._get_macros_dir()
+        try:
+            macros_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            QMessageBox.critical(self, "폴더 생성 오류", str(e))
             return
-        if not path.endswith(".json"):
-            path += ".json"
-        self._do_save(path)
-        self._current_file = Path(path)
-        self.setWindowTitle(f"MacroFlow — {Path(path).name}")
-        # 시퀀서에 추가
-        self._sequencer.add_macro_file(Path(path))
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_path = macros_dir / f"macro_{ts}.json"
+
+        try:
+            macro_file.save(self._macro, str(save_path))
+        except OSError as e:
+            QMessageBox.critical(self, "저장 오류", str(e))
+            return
+
+        self._current_file = save_path
+        self.setWindowTitle(f"MacroFlow — {save_path.name}")
+        self._sequencer.add_macro_file(save_path)
         self._tabs.setCurrentWidget(self._sequencer)
-        self._sb_state.setText(f"저장 + 시퀀서 추가: {Path(path).name}")
-        logger.info(f"시퀀서 추가: {path}")
+        self._sb_state.setText(f"시퀀서 추가: {save_path.name}")
+        logger.info(f"시퀀서 자동 저장: {save_path}")
 
     # ── 매크로 변경 콜백 ─────────────────────────────────────────────────────
 

@@ -11,7 +11,7 @@ import dataclasses
 import logging
 from collections import deque
 
-from PyQt6.QtCore import QPoint, Qt, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMenu,
     QMessageBox,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QToolBar,
@@ -684,7 +685,10 @@ class EventEditorWidget(QWidget):
                     pass
 
     def _edit_position(self, row: int) -> None:
-        """마우스 이벤트의 위치를 변경한다."""
+        """마우스 이벤트의 위치를 변경한다.
+
+        SpinBox 직접 입력 또는 '화면에서 직접 지정' (3초 카운트다운 후 캡처) 중 선택.
+        """
         if self._macro is None or row >= len(self._rows):
             return
         display_row = self._rows[row]
@@ -694,22 +698,75 @@ class EventEditorWidget(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("위치 변경")
-        dialog.setFixedWidth(260)
+        dialog.setFixedWidth(300)
 
         form = QFormLayout()
         x_spin = QDoubleSpinBox()
         x_spin.setRange(0.0, 100.0)
-        x_spin.setDecimals(1)
+        x_spin.setDecimals(2)
         x_spin.setSuffix(" %")
         x_spin.setValue(primary.x_ratio * 100)
         form.addRow("X 위치:", x_spin)
 
         y_spin = QDoubleSpinBox()
         y_spin.setRange(0.0, 100.0)
-        y_spin.setDecimals(1)
+        y_spin.setDecimals(2)
         y_spin.setSuffix(" %")
         y_spin.setValue(primary.y_ratio * 100)
         form.addRow("Y 위치:", y_spin)
+
+        # 카운트다운 상태 레이블
+        capture_label = QLabel("")
+        capture_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        capture_label.setStyleSheet("color: #c07000; font-weight: bold;")
+
+        # 화면에서 직접 지정 버튼
+        btn_capture = QPushButton("📍 화면에서 직접 지정 (3초 후 캡처)")
+        btn_capture.setToolTip(
+            "버튼 클릭 후 3초 안에 원하는 위치로 마우스를 이동하세요.\n"
+            "카운트다운이 끝나면 마우스 위치가 자동으로 입력됩니다."
+        )
+
+        # 카운트다운 로직 — 클로저로 상태 관리
+        _countdown: list[int] = [0]
+        _timer: list[QTimer | None] = [None]
+
+        def _start_capture() -> None:
+            btn_capture.setEnabled(False)
+            _countdown[0] = 3
+            capture_label.setText(f"⏱ {_countdown[0]}초 후 캡처...")
+            dialog.showMinimized()
+
+            timer = QTimer(dialog)
+            _timer[0] = timer
+
+            def _tick() -> None:
+                _countdown[0] -= 1
+                if _countdown[0] > 0:
+                    capture_label.setText(f"⏱ {_countdown[0]}초 후 캡처...")
+                else:
+                    timer.stop()
+                    _do_capture()
+
+            timer.timeout.connect(_tick)
+            timer.start(1000)
+
+        def _do_capture() -> None:
+            import sys as _sys
+            if _sys.platform == "win32":
+                from macroflow.win32 import get_cursor_pos, pixel_to_ratio
+                x_px, y_px = get_cursor_pos()
+                x_r, y_r = pixel_to_ratio(x_px, y_px)
+                x_spin.setValue(x_r * 100)
+                y_spin.setValue(y_r * 100)
+                capture_label.setText(f"✅ 캡처됨: ({x_px}, {y_px})")
+            else:
+                capture_label.setText("❌ Windows 전용 기능입니다")
+            dialog.showNormal()
+            dialog.raise_()
+            btn_capture.setEnabled(True)
+
+        btn_capture.clicked.connect(_start_capture)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -719,10 +776,17 @@ class EventEditorWidget(QWidget):
 
         v = QVBoxLayout(dialog)
         v.addLayout(form)
+        v.addWidget(btn_capture)
+        v.addWidget(capture_label)
         v.addWidget(buttons)
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            if _timer[0] is not None:
+                _timer[0].stop()
             return
+
+        if _timer[0] is not None:
+            _timer[0].stop()
 
         new_x = x_spin.value() / 100.0
         new_y = y_spin.value() / 100.0

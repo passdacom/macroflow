@@ -13,6 +13,7 @@ drag-drop-sequencer.md 스펙 기반.
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -85,8 +86,9 @@ class MacroSequencerWidget(QWidget):
     """
 
     # 워커 → 메인 스레드 신호
-    sequence_complete = pyqtSignal(str)  # status
-    sequence_error = pyqtSignal(str)     # message
+    sequence_complete = pyqtSignal(str)   # status
+    sequence_error = pyqtSignal(str)      # message
+    open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -149,6 +151,7 @@ class MacroSequencerWidget(QWidget):
         self._list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._list.itemSelectionChanged.connect(self._on_selection_changed)
+        self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
 
         # 파일 드래그앤드롭 지원
         self._list.setAcceptDrops(True)
@@ -253,16 +256,36 @@ class MacroSequencerWidget(QWidget):
         self._items = new_items
 
     def add_macro_file(self, path: Path) -> None:
-        """외부에서 매크로 파일을 시퀀서에 추가한다.
-
-        main_window의 '영구 저장 + 시퀀서' 기능에서 호출.
-        """
+        """외부에서 매크로 파일을 시퀀서에 추가한다."""
         self._add_item(path)
+
+    def has_items(self) -> bool:
+        """목록에 항목이 있는지 반환한다."""
+        return bool(self._items)
+
+    def is_running(self) -> bool:
+        """시퀀스가 실행 중인지 반환한다."""
+        return self._engine is not None and self._engine.is_running()
+
+    def run_sequence(self) -> None:
+        """외부(main_window)에서 시퀀스를 시작한다."""
+        if self._items and not self.is_running():
+            self._run_sequence()
+
+    def stop_sequence(self) -> None:
+        """외부(main_window)에서 시퀀스를 중지한다."""
+        self._stop_sequence()
+
+    def _get_default_dir(self) -> str:
+        """파일 다이얼로그 초기 폴더를 반환한다."""
+        if getattr(sys, "frozen", False):
+            return str(Path(sys.executable).parent)
+        return str(Path.cwd())
 
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self, "매크로 파일 추가",
-            str(Path.home()),
+            self._get_default_dir(),
             "Macro JSON (*.json);;모든 파일 (*)",
         )
         for path in paths:
@@ -283,12 +306,26 @@ class MacroSequencerWidget(QWidget):
         has_sel = bool(self._list.selectedItems())
         self._act_remove.setEnabled(has_sel)
 
+    def _on_item_double_clicked(self, item: object) -> None:
+        """목록 항목 더블클릭 시 해당 매크로를 에디터로 불러온다."""
+        row = self._list.currentRow()
+        if 0 <= row < len(self._items):
+            path = self._items[row].path
+            if path.exists():
+                self.open_in_editor.emit(str(path))
+            else:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self, "파일 없음",
+                    f"파일을 찾을 수 없습니다:\n{path}",
+                )
+
     # ── 플로우 파일 I/O ───────────────────────────────────────────────────────
 
     def _open_flow(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "플로우 파일 열기",
-            str(Path.home()),
+            self._get_default_dir(),
             "MacroFlow (*.macroflow);;모든 파일 (*)",
         )
         if path:
@@ -330,7 +367,7 @@ class MacroSequencerWidget(QWidget):
         else:
             path, _ = QFileDialog.getSaveFileName(
                 self, "플로우 저장",
-                str(Path.home()),
+                self._get_default_dir(),
                 "MacroFlow (*.macroflow)",
             )
             if not path:
