@@ -16,9 +16,13 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --python 3.11
 
       - name: Run ruff
         run: uv run ruff check .
@@ -41,9 +45,13 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --extra dev --python 3.11
 
       # pyproject.toml에서 버전을 읽어 EXE 파일명에 반영
       - name: Get version
@@ -64,9 +72,9 @@ jobs:
       - name: Rename EXE with version
         shell: bash
         run: |
-          VERSION=${{ steps.get_version.outputs.version }}
-          BUILD=${{ github.run_number }}
-          mv dist/MacroFlow.exe dist/MacroFlow-v${VERSION}-build${BUILD}.exe
+          VERSION="${{ steps.get_version.outputs.version }}"
+          BUILD="${{ github.run_number }}"
+          mv dist/MacroFlow.exe "dist/MacroFlow-v${VERSION}-build${BUILD}.exe"
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4

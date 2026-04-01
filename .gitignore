@@ -18,6 +18,7 @@ venv/
 # PyInstaller output
 dist/
 *.spec.bak
+build/macroflow-win/
 
 # IDE
 .vscode/
