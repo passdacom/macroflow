@@ -9,6 +9,7 @@ import pytest
 
 from macroflow.macro_file import (
     delete_mouse_moves,
+    edit_wheel_delta,
     load,
     reset_to_raw,
     save,
@@ -23,6 +24,7 @@ from macroflow.types import (
     MacroSettings,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
     WaitEvent,
 )
 
@@ -139,6 +141,55 @@ def test_event_types_roundtrip(tmp_path: Path) -> None:
     type_names = [e.type for e in loaded.events]
     assert type_names == ["mouse_down", "mouse_move", "mouse_up",
                           "key_down", "key_up", "wait", "color_trigger"]
+
+
+def test_wheel_event_roundtrip(tmp_path: Path) -> None:
+    """MouseWheelEvent가 저장 후 동일 값으로 복원되어야 한다."""
+    wheel = MouseWheelEvent(
+        id="00000010", type="mouse_wheel", timestamp_ns=1000,
+        delta=-240, axis="vertical", x_ratio=0.5, y_ratio=0.5,
+    )
+    macro = MacroData(
+        meta=MacroMeta(version="1.0", app_version="0.1.0",
+                       created_at="2025-01-15T00:00:00",
+                       screen_width=1920, screen_height=1080, dpi_scale=1.0),
+        settings=MacroSettings(),
+        raw_events=[wheel],
+        events=[wheel],
+    )
+    path = str(tmp_path / "wheel.json")
+    save(macro, path)
+    loaded = load(path)
+
+    assert len(loaded.events) == 1
+    ev = loaded.events[0]
+    assert isinstance(ev, MouseWheelEvent)
+    assert ev.delta == -240
+    assert ev.axis == "vertical"
+    assert ev.x_ratio == pytest.approx(0.5)
+
+
+def test_edit_wheel_delta() -> None:
+    """edit_wheel_delta는 지정 이벤트의 delta만 변경하고 나머지는 유지한다."""
+    wheel = MouseWheelEvent(
+        id="00000011", type="mouse_wheel", timestamp_ns=500,
+        delta=120, axis="vertical", x_ratio=0.3, y_ratio=0.4,
+    )
+    macro = MacroData(
+        meta=MacroMeta(version="1.0", app_version="0.1.0",
+                       created_at="2025-01-15T00:00:00",
+                       screen_width=1920, screen_height=1080, dpi_scale=1.0),
+        settings=MacroSettings(),
+        raw_events=[wheel],
+        events=[wheel],
+    )
+
+    result = edit_wheel_delta(macro, "00000011", -360)
+
+    assert result.events[0].delta == -360  # type: ignore[union-attr]
+    assert result.is_edited is True
+    # raw_events 불변
+    assert macro.raw_events[0].delta == 120  # type: ignore[union-attr]
 
 
 # ── 편집 함수 ─────────────────────────────────────────────────────────────────

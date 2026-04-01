@@ -28,6 +28,7 @@ from macroflow.types import (
     MacroSettings,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
     WaitEvent,
     WindowTriggerEvent,
 )
@@ -89,6 +90,14 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
         case "mouse_move":
             return MouseMoveEvent(
                 **common,
+                x_ratio=d["x_ratio"],
+                y_ratio=d["y_ratio"],
+            )
+        case "mouse_wheel":
+            return MouseWheelEvent(
+                **common,
+                delta=d["delta"],
+                axis=d.get("axis", "vertical"),
                 x_ratio=d["x_ratio"],
                 y_ratio=d["y_ratio"],
             )
@@ -337,6 +346,39 @@ def edit_key_value(
                 raise TypeError(f"Event {event_id!r} is not a KeyEvent")
             event.key = new_key
             event.vk_code = new_vk_code
+            return MacroData(
+                meta=macro.meta,
+                settings=macro.settings,
+                raw_events=macro.raw_events,
+                events=updated,
+                is_edited=True,
+            )
+    raise KeyError(f"Event id not found: {event_id!r}")
+
+
+def edit_wheel_delta(
+    macro: MacroData, event_id: str, new_delta: int
+) -> MacroData:
+    """events에서 특정 id의 MouseWheelEvent delta를 수정한다.
+
+    Args:
+        macro: 원본 MacroData.
+        event_id: 수정할 이벤트 id (8자리 hex).
+        new_delta: 새 스크롤 양 (양수=위/우, 음수=아래/좌).
+
+    Returns:
+        해당 이벤트가 수정된 새 MacroData (is_edited=True).
+
+    Raises:
+        KeyError: 해당 id를 가진 이벤트가 없는 경우.
+        TypeError: 해당 이벤트가 MouseWheelEvent가 아닌 경우.
+    """
+    updated = copy.deepcopy(macro.events)
+    for event in updated:
+        if event.id == event_id:
+            if not isinstance(event, MouseWheelEvent):
+                raise TypeError(f"Event {event_id!r} is not a MouseWheelEvent")
+            event.delta = new_delta
             return MacroData(
                 meta=macro.meta,
                 settings=macro.settings,

@@ -9,7 +9,7 @@ import pytest
 
 import macroflow.recorder as rec
 from macroflow.recorder import _convert_raw, _vk_to_key
-from macroflow.types import KeyEvent, MouseButtonEvent, MouseMoveEvent
+from macroflow.types import KeyEvent, MouseButtonEvent, MouseMoveEvent, MouseWheelEvent
 
 # ── _convert_raw 단위 테스트 ──────────────────────────────────────────────────
 
@@ -115,6 +115,52 @@ class TestConvertRaw:
         assert event is not None
         assert len(event.id) == 8
         assert all(c in "0123456789abcdef" for c in event.id)
+
+    def test_wheel_vertical_up(self) -> None:
+        """WM_MOUSEWHEEL(0x020A) + 양수 delta → MouseWheelEvent vertical 위."""
+        # mouseData 상위 16비트 = 0x0078 (120) → 1노치 위
+        mouse_data = 120 << 16
+        with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.5, 0.5)):
+            raw = ("m", 0, 0x020A, (960, 540, mouse_data))
+            event = _convert_raw(raw)
+
+        assert isinstance(event, MouseWheelEvent)
+        assert event.type == "mouse_wheel"
+        assert event.axis == "vertical"
+        assert event.delta == 120
+
+    def test_wheel_vertical_down(self) -> None:
+        """WM_MOUSEWHEEL + 음수 delta → delta는 음수."""
+        # mouseData 상위 16비트 = 0xFF88 (-120 as unsigned short)
+        raw_word = (-120) & 0xFFFF
+        mouse_data = raw_word << 16
+        with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.5, 0.5)):
+            raw = ("m", 0, 0x020A, (960, 540, mouse_data))
+            event = _convert_raw(raw)
+
+        assert isinstance(event, MouseWheelEvent)
+        assert event.delta == -120
+
+    def test_wheel_horizontal(self) -> None:
+        """WM_MOUSEHWHEEL(0x020E) → axis == 'horizontal'."""
+        mouse_data = 120 << 16
+        with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.3, 0.7)):
+            raw = ("m", 0, 0x020E, (576, 756, mouse_data))
+            event = _convert_raw(raw)
+
+        assert isinstance(event, MouseWheelEvent)
+        assert event.axis == "horizontal"
+        assert event.delta == 120
+
+    def test_wheel_multi_notch(self) -> None:
+        """delta = 360 → 3노치 스크롤."""
+        mouse_data = 360 << 16
+        with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.5, 0.5)):
+            raw = ("m", 0, 0x020A, (960, 540, mouse_data))
+            event = _convert_raw(raw)
+
+        assert isinstance(event, MouseWheelEvent)
+        assert event.delta == 360
 
 
 # ── _vk_to_key 테스트 ────────────────────────────────────────────────────────

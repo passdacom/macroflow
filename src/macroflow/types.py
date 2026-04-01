@@ -70,6 +70,27 @@ class KeyEvent(MacroEvent):
 
 
 @dataclass(kw_only=True)
+class MouseWheelEvent(MacroEvent):
+    """mouse_wheel 이벤트 — 마우스 휠 스크롤.
+
+    core-beliefs.md 원칙 4: 좌표는 비율로 저장.
+    재생 시 커서를 x_ratio/y_ratio 위치로 먼저 이동한 뒤 휠 입력을 전송해야
+    올바른 윈도우가 스크롤 이벤트를 받는다.
+
+    Attributes:
+        delta: 스크롤 양. 양수=위/우, 음수=아래/좌. WHEEL_DELTA(120) 단위.
+        axis: 스크롤 축. "vertical" 또는 "horizontal".
+        x_ratio: 발생 위치 X 비율 (0.0~1.0).
+        y_ratio: 발생 위치 Y 비율 (0.0~1.0).
+    """
+
+    delta: int          # 양수=위/우, 음수=아래/좌 (1노치 = ±120)
+    axis: str           # "vertical" | "horizontal"
+    x_ratio: float      # 발생 위치 (재생 시 커서 선이동에 사용)
+    y_ratio: float
+
+
+@dataclass(kw_only=True)
 class WaitEvent(MacroEvent):
     """wait 이벤트 — UI에서 수동 삽입하는 고정 대기.
 
@@ -153,6 +174,7 @@ class LoopEvent(MacroEvent):
 AnyEvent = (
     MouseButtonEvent
     | MouseMoveEvent
+    | MouseWheelEvent
     | KeyEvent
     | WaitEvent
     | ColorTriggerEvent

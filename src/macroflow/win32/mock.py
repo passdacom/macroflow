@@ -91,6 +91,11 @@ def send_mouse_drag(x1: int, y1: int, x2: int, y2: int, button: str = "left") ->
     logger.debug(f"[Mock] send_mouse_drag({x1},{y1} → {x2},{y2})")
 
 
+def send_mouse_wheel(x: int, y: int, delta: int, horizontal: bool = False) -> None:
+    axis = "hwheel" if horizontal else "wheel"
+    logger.debug(f"[Mock] send_mouse_wheel({x}, {y}, delta={delta:+d}, {axis})")
+
+
 def send_key(vk_code: int, is_down: bool) -> None:
     logger.debug(f"[Mock] send_key(vk={vk_code:#04x}, down={is_down})")
 

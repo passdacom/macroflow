@@ -29,6 +29,7 @@ from macroflow.types import (
     MacroSettings,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
 )
 from macroflow.win32 import (
     get_logical_screen_size,
@@ -55,6 +56,8 @@ _WM_RBUTTONDOWN: int = 0x0204
 _WM_RBUTTONUP: int = 0x0205
 _WM_MBUTTONDOWN: int = 0x0207
 _WM_MBUTTONUP: int = 0x0208
+_WM_MOUSEWHEEL: int = 0x020A   # 수직 휠
+_WM_MOUSEHWHEEL: int = 0x020E  # 수평 휠
 
 _WM_KEYDOWN: int = 0x0100
 _WM_KEYUP: int = 0x0101
@@ -136,7 +139,7 @@ def _convert_raw(
     eid = secrets.token_hex(4)
 
     if kind == "m":
-        x_px, y_px, _ = data
+        x_px, y_px, mouse_data = data
         x_ratio, y_ratio = pixel_to_ratio(x_px, y_px)
 
         if wParam == _WM_MOUSEMOVE:
@@ -158,6 +161,18 @@ def _convert_raw(
                 timestamp_ns=rel_ts_ns,
                 x_ratio=x_ratio, y_ratio=y_ratio,
                 button=_MOUSE_UP_MAP[wParam],  # type: ignore[arg-type]
+            )
+        if wParam in (_WM_MOUSEWHEEL, _WM_MOUSEHWHEEL):
+            # mouseData 상위 16비트 = 휠 델타 (부호 있는 short)
+            raw_word = (mouse_data >> 16) & 0xFFFF
+            delta = raw_word if raw_word < 0x8000 else raw_word - 0x10000
+            axis = "vertical" if wParam == _WM_MOUSEWHEEL else "horizontal"
+            return MouseWheelEvent(
+                id=eid, type="mouse_wheel",
+                timestamp_ns=rel_ts_ns,
+                delta=delta,
+                axis=axis,
+                x_ratio=x_ratio, y_ratio=y_ratio,
             )
 
     elif kind == "k":

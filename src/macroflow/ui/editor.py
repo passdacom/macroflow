@@ -22,12 +22,16 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
     QMenu,
     QMessageBox,
     QPushButton,
+    QRadioButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QToolBar,
@@ -39,6 +43,7 @@ from macroflow.macro_file import (
     delete_mouse_moves,
     edit_key_value,
     edit_position,
+    edit_wheel_delta,
     reset_to_raw,
     set_delay_all,
     set_delay_single,
@@ -52,6 +57,7 @@ from macroflow.types import (
     MacroData,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
     WaitEvent,
     WindowTriggerEvent,
 )
@@ -69,6 +75,7 @@ _KIND_COLORS: dict[str, QColor] = {
     "right_drag":     QColor(60, 40, 140),
     "key_press":      QColor(60, 145, 85),
     "mouse_move":     QColor(90, 90, 90),
+    "mouse_wheel":    QColor(20, 150, 155),   # 청록색 — 휠 스크롤
     "wait":           QColor(190, 120, 50),
     "color_trigger":  QColor(140, 80, 170),
     "window_trigger": QColor(140, 80, 170),
@@ -229,6 +236,45 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 "wait", "대기", f"{event.duration_ms}ms",
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
+            ))
+
+        # ── 마우스 휠 ────────────────────────────────────────────────────────
+        elif isinstance(event, MouseWheelEvent):
+            # 연속된 같은 축(axis) 휠 이벤트를 하나의 행으로 그룹핑한다.
+            # 다른 이벤트 타입이 사이에 끼면 그룹을 끊는다.
+            group_indices: list[int] = [i]
+            total_delta: int = event.delta
+            for j in range(i + 1, len(events)):
+                if j in consumed:
+                    break
+                e2 = events[j]
+                if isinstance(e2, MouseWheelEvent) and e2.axis == event.axis:
+                    group_indices.append(j)
+                    total_delta += e2.delta
+                else:
+                    break
+            consumed.update(group_indices)
+
+            # 방향 아이콘 결정
+            if event.axis == "vertical":
+                icon = "↑" if total_delta > 0 else "↓"
+                label = f"↕ 휠 {'위' if total_delta > 0 else '아래'}"
+            else:
+                icon = "→" if total_delta > 0 else "←"
+                label = f"↔ 휠 {'우' if total_delta > 0 else '좌'}"
+
+            notches = abs(total_delta) // 120 or 1  # 0 방지
+            count_str = f" ×{len(group_indices)}" if len(group_indices) > 1 else ""
+            x_s = f"{event.x_ratio * 100:.1f}%"
+            y_s = f"{event.y_ratio * 100:.1f}%"
+            detail = (
+                f"{icon} {notches}노치  Δ{total_delta:+d}{count_str}"
+                f"  @ ({x_s}, {y_s})"
+            )
+            rows.append(_DisplayRow(
+                "mouse_wheel", label, detail,
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), group_indices, i,
             ))
 
         # ── 색 트리거 ─────────────────────────────────────────────────────────
@@ -631,6 +677,10 @@ class EventEditorWidget(QWidget):
                 act_edit_pos = menu.addAction("위치 변경...")
                 act_edit_pos.triggered.connect(lambda: self._edit_position(rows[0]))
 
+            if row.kind == "mouse_wheel":
+                act_edit_wheel = menu.addAction("스크롤 편집...")
+                act_edit_wheel.triggered.connect(lambda: self._edit_wheel(rows[0]))
+
             menu.addSeparator()
 
         act_delete = menu.addAction(f"행 삭제 ({len(rows)}개)")
@@ -654,6 +704,8 @@ class EventEditorWidget(QWidget):
                 self._edit_key(row)
             elif display_row.kind in ("click", "right_click", "drag", "right_drag", "orphan", "mouse_move"):
                 self._edit_position(row)
+            elif display_row.kind == "mouse_wheel":
+                self._edit_wheel(row)
 
     # ── 편집 동작 ─────────────────────────────────────────────────────────────
 
@@ -831,6 +883,121 @@ class EventEditorWidget(QWidget):
                     break
 
         self._macro = new_macro
+        self._refresh()
+        self.macro_changed.emit(self._macro)
+
+    def _edit_wheel(self, row: int) -> None:
+        """휠 이벤트(그룹)의 스크롤 양과 방향을 변경한다.
+
+        그룹 전체를 단일 이벤트로 병합 후 delta를 적용한다.
+        이렇게 하면 노치 수를 자유롭게 조정할 수 있다.
+        """
+        if self._macro is None or row >= len(self._rows):
+            return
+        display_row = self._rows[row]
+        primary = self._macro.events[display_row.primary_idx]
+        if not isinstance(primary, MouseWheelEvent):
+            return
+
+        # 그룹의 현재 총 delta 계산
+        total_delta = sum(
+            self._macro.events[idx].delta  # type: ignore[union-attr]
+            for idx in display_row.event_indices
+            if isinstance(self._macro.events[idx], MouseWheelEvent)
+        )
+        current_notches = max(1, abs(total_delta) // 120)
+        is_positive = total_delta >= 0
+
+        dialog = QDialog(self)
+        is_vertical = (primary.axis == "vertical")
+        dialog.setWindowTitle(
+            f"{'↕ 수직' if is_vertical else '↔ 수평'} 휠 스크롤 편집"
+        )
+        dialog.setFixedWidth(300)
+
+        layout = QVBoxLayout(dialog)
+
+        # ── 방향 선택 ────────────────────────────────────────────────────────
+        dir_group = QGroupBox("방향")
+        dir_layout = QHBoxLayout(dir_group)
+        if is_vertical:
+            btn_pos = QRadioButton("↑ 위 (앞으로)")
+            btn_neg = QRadioButton("↓ 아래 (뒤로)")
+        else:
+            btn_pos = QRadioButton("→ 우 (앞으로)")
+            btn_neg = QRadioButton("← 좌 (뒤로)")
+        btn_pos.setChecked(is_positive)
+        btn_neg.setChecked(not is_positive)
+        dir_layout.addWidget(btn_pos)
+        dir_layout.addWidget(btn_neg)
+        layout.addWidget(dir_group)
+
+        # ── 노치 수 ──────────────────────────────────────────────────────────
+        form = QFormLayout()
+        notch_spin = QSpinBox()
+        notch_spin.setMinimum(1)
+        notch_spin.setMaximum(999)
+        notch_spin.setValue(current_notches)
+        notch_spin.setSuffix("  노치  (1노치 = 120)")
+        notch_spin.setFixedWidth(180)
+        form.addRow("스크롤 양:", notch_spin)
+        layout.addLayout(form)
+
+        # 실시간 delta 미리보기
+        preview = QLabel()
+        preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview.setStyleSheet("color: #888; font-size: 11px;")
+
+        def _update_preview() -> None:
+            sign = 1 if btn_pos.isChecked() else -1
+            delta_val = sign * notch_spin.value() * 120
+            preview.setText(f"Δ = {delta_val:+d}")
+
+        notch_spin.valueChanged.connect(lambda _: _update_preview())
+        btn_pos.toggled.connect(lambda _: _update_preview())
+        _update_preview()
+        layout.addWidget(preview)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        sign = 1 if btn_pos.isChecked() else -1
+        new_delta = sign * notch_spin.value() * 120
+
+        self._push_undo()
+
+        # 그룹의 첫 이벤트(primary)를 new_delta로 업데이트
+        try:
+            new_macro = edit_wheel_delta(self._macro, primary.id, new_delta)
+        except (KeyError, TypeError):
+            self._undo_stack.pop()
+            QMessageBox.warning(self, "오류", "스크롤 편집에 실패했습니다.")
+            return
+
+        # 그룹 내 나머지 이벤트(primary 제외)를 삭제 — 단일 이벤트로 병합
+        rest_indices = set(display_row.event_indices[1:])
+        if rest_indices:
+            merged_events = [
+                e for idx, e in enumerate(new_macro.events)
+                if idx not in rest_indices
+            ]
+            self._macro = MacroData(
+                meta=new_macro.meta,
+                settings=new_macro.settings,
+                raw_events=new_macro.raw_events,
+                events=merged_events,
+                is_edited=True,
+            )
+        else:
+            self._macro = new_macro
+
         self._refresh()
         self.macro_changed.emit(self._macro)
 

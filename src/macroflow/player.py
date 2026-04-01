@@ -27,6 +27,7 @@ from macroflow.types import (
     MacroSettings,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
     WaitEvent,
     WindowTriggerEvent,
 )
@@ -38,6 +39,7 @@ from macroflow.win32 import (
     send_mouse_button,
     send_mouse_drag,
     send_mouse_move,
+    send_mouse_wheel,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,10 @@ def _execute_event(
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
         send_mouse_move(x, y)
         state.has_moves_since_down = True
+
+    elif isinstance(event, MouseWheelEvent):
+        x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
+        send_mouse_wheel(x, y, event.delta, horizontal=(event.axis == "horizontal"))
 
     elif isinstance(event, KeyEvent):
         send_key(event.vk_code, is_down=(event.type == "key_down"))

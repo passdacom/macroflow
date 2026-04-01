@@ -33,6 +33,8 @@ MOUSEEVENTF_RIGHTDOWN: int = 0x0008
 MOUSEEVENTF_RIGHTUP: int = 0x0010
 MOUSEEVENTF_MIDDLEDOWN: int = 0x0020
 MOUSEEVENTF_MIDDLEUP: int = 0x0040
+MOUSEEVENTF_WHEEL: int = 0x0800   # 수직 휠
+MOUSEEVENTF_HWHEEL: int = 0x1000  # 수평 휠
 MOUSEEVENTF_ABSOLUTE: int = 0x8000
 
 KEYEVENTF_KEYUP: int = 0x0002
@@ -203,6 +205,31 @@ def send_mouse_button(x: int, y: int, button: str, down: bool) -> None:
     down_flag, up_flag = _BUTTON_FLAGS.get(button, _BUTTON_FLAGS["left"])
     flag = down_flag if down else up_flag
     _send(_mouse_input(x, y, flag))
+
+
+def send_mouse_wheel(x: int, y: int, delta: int, horizontal: bool = False) -> None:
+    """커서를 지정 위치로 이동한 뒤 휠 스크롤 이벤트를 전송한다.
+
+    커서를 먼저 이동해야 올바른 윈도우가 이벤트를 수신한다.
+    delta는 양수=위/우, 음수=아래/좌. WHEEL_DELTA(120) 단위.
+
+    Args:
+        x: 커서 위치 X (픽셀).
+        y: 커서 위치 Y (픽셀).
+        delta: 스크롤 양. 양수=위/우, 음수=아래/좌.
+        horizontal: True이면 수평 휠(MOUSEEVENTF_HWHEEL).
+    """
+    send_mouse_move(x, y)
+    flag = MOUSEEVENTF_HWHEEL if horizontal else MOUSEEVENTF_WHEEL
+    # delta는 DWORD 필드에 부호 있는 값으로 저장 (Windows 관례 — 비트 패턴 그대로 전달)
+    inp = _INPUT(type=INPUT_MOUSE)
+    inp._input.mi = _MOUSEINPUT(
+        dx=0, dy=0,
+        mouseData=delta & 0xFFFFFFFF,  # 음수: 2의 보수 표현
+        dwFlags=flag,
+        time=0, dwExtraInfo=0,
+    )
+    _send(inp)
 
 
 def send_key(vk_code: int, is_down: bool) -> None:
