@@ -6,6 +6,40 @@
 
 ---
 
+## v0.2.1 — 2026-04-01
+
+### UI/UX 개선 6종 (`main_window.py`, `sequencer.py`, `editor.py`)
+
+#### ① 시퀀서 자동 저장 (다이얼로그 제거)
+- **변경 전**: "💾+ 시퀀서" 버튼 → 파일 저장 다이얼로그 → 시퀀서 추가
+- **변경 후**: 다이얼로그 없이 `macros/macro_YYYYMMDD_HHMMSS.json`으로 즉시 저장
+- `_get_macros_dir()`: exe 위치(frozen) 또는 cwd(dev) 하위 `macros/` 폴더 자동 생성
+
+#### ② 시퀀서 더블클릭 → 에디터 로드
+- `MacroSequencerWidget.open_in_editor = pyqtSignal(str)` 신호 추가
+- 리스트 아이템 더블클릭 → `open_in_editor` 발생 → 에디터 탭으로 자동 전환 + 파일 로드
+
+#### ③ 탭 기반 F6/F7 동작 분리
+- **에디터 탭**: F6=녹화 토글, F7=재생 토글 (기존 동일)
+- **시퀀서 탭**: F6 비활성화, F7=시퀀서 실행/중지 토글
+- `_on_tab_changed()`: 탭 전환 시 툴바 상태 자동 갱신
+- `_update_toolbar()`: 시퀀서 탭에서 녹화 버튼 비활성화, 재생 버튼 텍스트 변경
+
+#### ④ 파일 다이얼로그 초기 폴더
+- `_get_default_dir()`: `sys.frozen` 감지 → exe 부모 디렉토리 / 개발 환경 → cwd
+- 기존 `Path.home()` 참조를 전부 `_get_default_dir()`로 교체 (main_window, sequencer 양쪽)
+
+#### ⑤ SpinBox 너비 확대 (숫자 잘림 해소)
+- repeat: 72→90px, interval: 80→95px, range start/end: 60→75px
+- 화살표 버튼에 숫자가 가려지던 문제 해결
+
+#### ⑥ 마우스 위치 3초 카운트다운 캡처 (`editor.py`)
+- 위치 편집 다이얼로그에 **"📍 화면에서 직접 지정 (3초 후 캡처)"** 버튼 추가
+- 버튼 클릭 → 다이얼로그 최소화 → 1초 간격 카운트다운 (3→2→1) → `GetCursorPos()` 호출
+- `pixel_to_ratio()` 변환 후 x/y SpinBox에 자동 입력 → 다이얼로그 복원
+
+---
+
 ## v0.2.0 — 2026-04-01
 
 ### 빌드 버전 관리 개선
