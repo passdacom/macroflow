@@ -6,6 +6,33 @@
 
 ---
 
+## v0.2.2 — 2026-04-01
+
+### 마우스 휠 녹화·재생 지원 (수직/수평 모두)
+
+#### 구현 범위 (파일 10개)
+| 파일 | 변경 내용 |
+|---|---|
+| `types.py` | `MouseWheelEvent` 추가 (delta, axis, x_ratio, y_ratio) |
+| `recorder.py` | `WM_MOUSEWHEEL(0x020A)` / `WM_MOUSEHWHEEL(0x020E)` 처리, mouseData 상위 16비트에서 부호 있는 delta 추출 |
+| `sendinput.py` | `send_mouse_wheel(x, y, delta, horizontal)` 추가 — `MOUSEEVENTF_WHEEL` / `MOUSEEVENTF_HWHEEL` |
+| `mock.py` | `send_mouse_wheel` Mock 추가 |
+| `win32/__init__.py` | `send_mouse_wheel` 익스포트 |
+| `macro_file.py` | `mouse_wheel` 직렬화/역직렬화, `edit_wheel_delta()` 유틸 |
+| `player.py` | `MouseWheelEvent` 재생: 기록된 위치로 커서 선이동 후 휠 전송 |
+| `editor.py` | 연속 같은 축 휠 이벤트 그룹핑, 청록색, 편집 다이얼로그 (방향·노치 수 조정, 그룹→단일 병합) |
+| `tests/test_recorder.py` | 수직 상/하, 수평, 멀티노치 테스트 4개 추가 |
+| `tests/test_macro_file.py` | wheel roundtrip, edit_wheel_delta 테스트 2개 추가 |
+
+#### UX 설계 포인트
+- **그룹핑**: 연속된 같은 축 휠 이벤트 → 에디터에서 1행으로 압축 표시 (`↑ 휠 위 ×3  Δ+360  @ (45.2%, 30.1%)`)
+- **편집 다이얼로그**: 방향 라디오 버튼 + 노치 수 SpinBox + 실시간 Δ 미리보기
+- **편집 결과**: 그룹 전체를 primary 이벤트 1개로 병합 (Undo 지원)
+- **재생**: `send_mouse_move` → `send_mouse_wheel` 순서 보장 (타겟 윈도우 정확도)
+- **테스트**: 48/48 통과
+
+---
+
 ## v0.2.1 — 2026-04-01
 
 ### UI/UX 개선 6종 (`main_window.py`, `sequencer.py`, `editor.py`)
