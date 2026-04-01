@@ -59,7 +59,7 @@ jobs:
         shell: python
         run: |
           import re, os
-          text = open("pyproject.toml").read()
+          text = open("pyproject.toml", encoding="utf-8").read()
           m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
           version = m.group(1) if m else "0.0.0"
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
