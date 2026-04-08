@@ -99,9 +99,9 @@ class MainWindow(QMainWindow):
         self._sequencer.open_in_editor.connect(self._load_file_and_switch_tab)
         # 시퀀서 병합 → 에디터 탭으로 전달
         self._sequencer.merge_to_editor.connect(self._on_merge_to_editor)
-        # 시퀀서 실행 완료/오류 시 툴바 갱신
-        self._sequencer.sequence_complete.connect(lambda _: self._update_toolbar())
-        self._sequencer.sequence_error.connect(lambda _: self._update_toolbar())
+        # 시퀀서 실행 완료/오류 시 emergency hook 해제 + 툴바 갱신
+        self._sequencer.sequence_complete.connect(self._on_sequence_done)
+        self._sequencer.sequence_error.connect(self._on_sequence_done)
         # F6 캡처 힌트 오버레이 연동
         self._editor.f6_capture_started.connect(
             lambda: self._overlay.show_hint("F6을 눌러 위치 지정")
@@ -233,7 +233,7 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setValue(0)
         self._range_start_spin.setSpecialValueText("처음")
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
-        self._range_start_spin.setFixedWidth(75)
+        self._range_start_spin.setFixedWidth(95)
         tb2.addWidget(self._range_start_spin)
 
         tb2.addWidget(QLabel("~"))
@@ -243,8 +243,13 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setValue(0)
         self._range_end_spin.setSpecialValueText("끝")
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
-        self._range_end_spin.setFixedWidth(75)
+        self._range_end_spin.setFixedWidth(95)
         tb2.addWidget(self._range_end_spin)
+
+        self._act_range_play = QAction("▶ 구간 재생", self)
+        self._act_range_play.setToolTip("설정한 구간(시작~끝)만 재생합니다")
+        self._act_range_play.triggered.connect(self._start_range_playback)
+        tb2.addAction(self._act_range_play)
 
         self.addToolBarBreak()
 
@@ -420,7 +425,14 @@ class MainWindow(QMainWindow):
         """시퀀서 탭에서 F7: 시퀀스 실행 중이면 중지, 아니면 실행."""
         if self._sequencer.is_running():
             self._sequencer.stop_sequence()
-        else:
+            if sys.platform == "win32":
+                from macroflow.win32 import stop_emergency_hook
+                stop_emergency_hook()
+            self._update_toolbar()
+        elif self._sequencer.has_items():
+            if sys.platform == "win32":
+                from macroflow.win32 import start_emergency_hook
+                start_emergency_hook(self._sig_emergency_stop.emit)
             self._sequencer.run_sequence()
 
     def _toggle_playback(self) -> None:
@@ -592,8 +604,36 @@ class MainWindow(QMainWindow):
         self._sb_state.setText(f"● 녹화 중  |  색상 체크 삽입: {color_hex}  ({x}, {y})")
         logger.info(f"색상 체크 삽입: {color_hex} @ pixel ({x}, {y})")
 
+    def _on_sequence_done(self, _msg: str = "") -> None:
+        """시퀀스 완료/오류 시 emergency hook 해제 후 툴바를 갱신한다."""
+        if sys.platform == "win32":
+            from macroflow.win32 import stop_emergency_hook
+            stop_emergency_hook()
+        self._update_toolbar()
+
+    def _start_range_playback(self) -> None:
+        """구간 재생 전용 버튼: 구간이 설정된 경우에만 재생한다."""
+        if self._state != "idle" or not self._macro:
+            return
+        if self._range_start_spin.value() == 0 and self._range_end_spin.value() == 0:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "구간 미설정",
+                "구간 시작 또는 끝 값을 1 이상으로 설정한 후 재생하세요.\n"
+                "(0=전체 재생은 ▶ 재생 버튼을 사용하세요)",
+            )
+            return
+        self._start_playback()
+
     def _emergency_stop(self) -> None:
         logger.info("긴급 중지")
+        # 시퀀서 실행 중이면 우선 중지
+        if self._sequencer.is_running():
+            self._sequencer.stop_sequence()
+            if sys.platform == "win32":
+                from macroflow.win32 import stop_emergency_hook
+                stop_emergency_hook()
+            self._update_toolbar()
         if self._state == "recording":
             self._do_stop_recording()
         elif self._state == "playing":
@@ -637,7 +677,10 @@ class MainWindow(QMainWindow):
             self._act_play.setEnabled(is_idle and self._macro is not None)
             self._act_play.setText("⏸ 일시정지 (F7)" if is_play else "▶ 재생 (F7)")
 
-        self._act_stop.setEnabled(is_rec or is_play or is_stop)
+        self._act_stop.setEnabled(is_rec or is_play or is_stop or (is_seq_tab and seq_running))
+        self._act_range_play.setEnabled(
+            is_idle and self._macro is not None and not is_seq_tab
+        )
         self._act_save.setEnabled(is_idle and self._macro is not None)
         self._act_save_seq.setEnabled(is_idle and self._macro is not None)
 

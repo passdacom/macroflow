@@ -23,12 +23,11 @@ from PyQt6.QtGui import QAction, QBrush, QColor, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
-    QPushButton,
+    QSpinBox,
     QSplitter,
     QTextEdit,
     QToolBar,
@@ -146,6 +145,19 @@ class MacroSequencerWidget(QWidget):
         self._act_merge.setEnabled(False)
         toolbar.addAction(self._act_merge)
 
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel(" 간격:"))
+        self._gap_spin = QSpinBox()
+        self._gap_spin.setMinimum(0)
+        self._gap_spin.setMaximum(30000)
+        self._gap_spin.setValue(500)
+        self._gap_spin.setSuffix("ms")
+        self._gap_spin.setToolTip(
+            "시퀀스 실행 또는 에디터 병합 시 매크로 사이에 삽입할 딜레이 (0=없음)"
+        )
+        self._gap_spin.setFixedWidth(95)
+        toolbar.addWidget(self._gap_spin)
+
         layout.addWidget(toolbar)
 
         # 본문: 목록 + 실행 버튼 + 로그
@@ -173,18 +185,6 @@ class MacroSequencerWidget(QWidget):
 
         list_layout.addWidget(QLabel("매크로 목록 (드래그로 순서 변경, 파일을 여기로 끌어오기)"))
         list_layout.addWidget(self._list)
-
-        # 실행 버튼
-        btn_row = QHBoxLayout()
-        self._btn_run = QPushButton("▶ 시퀀스 실행")
-        self._btn_run.setEnabled(False)
-        self._btn_run.clicked.connect(self._run_sequence)
-        self._btn_stop = QPushButton("⏹ 중지")
-        self._btn_stop.setEnabled(False)
-        self._btn_stop.clicked.connect(self._stop_sequence)
-        btn_row.addWidget(self._btn_run)
-        btn_row.addWidget(self._btn_stop)
-        list_layout.addLayout(btn_row)
 
         splitter.addWidget(list_container)
 
@@ -398,30 +398,56 @@ class MacroSequencerWidget(QWidget):
             QMessageBox.critical(self, "플로우 저장 오류", str(exc))
 
     def _build_flow(self, save_path: Path) -> MacroFlow:
-        """현재 목록에서 선형 MacroFlow를 생성한다."""
+        """현재 목록에서 선형 MacroFlow를 생성한다.
+
+        gap_ms > 0 이면 매크로 노드 사이에 WaitFixedNode를 삽입한다.
+        매크로 파일이 flow 기준 폴더와 다른 위치에 있으면 절대 경로를 사용한다.
+        """
+        from macroflow.script_engine import WaitFixedNode as _WaitFixedNode
+
         base = save_path.parent
         nodes: dict[str, Any] = {}
+        gap_ms = self._gap_spin.value()
+        n = len(self._items)
 
         for i, item in enumerate(self._items):
             nid = f"macro_{i:03d}"
-            next_nid = f"macro_{i + 1:03d}" if i < len(self._items) - 1 else "end_success"
+            # 다음 노드: gap이 있으면 wait 노드를 거친다
+            if gap_ms > 0 and i < n - 1:
+                next_nid = f"wait_{i:03d}"
+            else:
+                next_nid = f"macro_{i + 1:03d}" if i < n - 1 else "end_success"
+
+            # 경로: 같은 기준 폴더면 상대경로, 다른 곳이면 절대경로 사용
             try:
-                rel = item.path.relative_to(base)
+                macro_path_str = str(item.path.relative_to(base)).replace("\\", "/")
             except ValueError:
-                rel = item.path   # 같은 드라이브가 아닌 경우 절대경로 폴백
+                macro_path_str = str(item.path).replace("\\", "/")
 
             nodes[nid] = MacroNode(
                 id=nid,
                 label=item.path.name,
-                macro_path=str(rel).replace("\\", "/"),
+                macro_path=macro_path_str,
                 next_on_success=next_nid,
                 next_on_failure="end_error",
-                position={"x": 100, "y": 100 + i * 150},
+                position={"x": 100, "y": 100 + i * (200 if gap_ms > 0 else 150)},
             )
 
+            # 딜레이 노드 삽입
+            if gap_ms > 0 and i < n - 1:
+                wait_nid = f"wait_{i:03d}"
+                nodes[wait_nid] = _WaitFixedNode(
+                    id=wait_nid,
+                    label=f"{gap_ms}ms 대기",
+                    duration_ms=gap_ms,
+                    next=f"macro_{i + 1:03d}",
+                    position={"x": 100, "y": 100 + i * 200 + 100},
+                )
+
+        row_count = n * (2 if gap_ms > 0 else 1)
         nodes["end_success"] = EndNode(
             id="end_success", label="완료", status="success",
-            position={"x": 100, "y": 100 + len(self._items) * 150},
+            position={"x": 100, "y": 100 + row_count * 100},
         )
         nodes["end_error"] = EndNode(
             id="end_error", label="오류 종료", status="error",
@@ -466,17 +492,12 @@ class MacroSequencerWidget(QWidget):
             on_error=lambda m: self.sequence_error.emit(m),
         )
         self._engine.start(flow)
-
-        self._btn_run.setEnabled(False)
-        self._btn_stop.setEnabled(True)
         self._log_message("시퀀스 실행 시작")
 
     def _stop_sequence(self) -> None:
         if self._engine:
             self._engine.stop()
             self._engine = None
-        self._btn_run.setEnabled(bool(self._items))
-        self._btn_stop.setEnabled(False)
         self._log_message("시퀀스 중지됨")
 
     def _on_node_start(self, node_id: str, label: str) -> None:
@@ -498,14 +519,10 @@ class MacroSequencerWidget(QWidget):
         QTimer.singleShot(0, lambda: self._log_message(f"{status_str}: {message}"))
 
     def _on_complete(self, status: str) -> None:
-        self._btn_run.setEnabled(bool(self._items))
-        self._btn_stop.setEnabled(False)
         self._log_message(f"시퀀스 {status}")
         self._engine = None
 
     def _on_error(self, message: str) -> None:
-        self._btn_run.setEnabled(bool(self._items))
-        self._btn_stop.setEnabled(False)
         self._log_message(f"오류: {message}")
         QMessageBox.warning(self, "시퀀스 오류", message)
         self._engine = None
@@ -545,7 +562,7 @@ class MacroSequencerWidget(QWidget):
             macro_tuples.append((macro, item.path.name))
 
         try:
-            merged = merge_macros(macro_tuples)
+            merged = merge_macros(macro_tuples, gap_ms=self._gap_spin.value())
         except Exception as exc:
             QMessageBox.critical(self, "병합 오류", str(exc))
             return
@@ -559,7 +576,6 @@ class MacroSequencerWidget(QWidget):
 
     def _update_buttons(self) -> None:
         has_items = bool(self._items)
-        self._btn_run.setEnabled(has_items)
         self._act_save_flow.setEnabled(has_items)
         self._act_merge.setEnabled(len(self._items) >= 2)
 

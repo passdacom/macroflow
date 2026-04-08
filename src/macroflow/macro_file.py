@@ -390,14 +390,15 @@ def edit_wheel_delta(
     raise KeyError(f"Event id not found: {event_id!r}")
 
 
-def merge_macros(macros: list[tuple[MacroData, str]]) -> MacroData:
+def merge_macros(macros: list[tuple[MacroData, str]], gap_ms: int = 500) -> MacroData:
     """여러 MacroData를 타임스탬프 오프셋을 적용하여 하나로 병합한다.
 
-    각 매크로 사이에 500 ms 간격을 두고, source_file 필드에 원본 파일명을
+    각 매크로 사이에 gap_ms 간격을 두고, source_file 필드에 원본 파일명을
     기록하여 에디터의 '출처' 열에 표시할 수 있게 한다.
 
     Args:
         macros: (MacroData, 파일명) 튜플 목록. 순서대로 연결된다.
+        gap_ms: 매크로 사이 삽입 간격 (밀리초). 기본값 500ms.
 
     Returns:
         병합된 새 MacroData (is_edited=True).
@@ -408,7 +409,7 @@ def merge_macros(macros: list[tuple[MacroData, str]]) -> MacroData:
     if not macros:
         raise ValueError("병합할 매크로가 없습니다")
 
-    _GAP_NS = 500_000_000  # 매크로 간 500 ms 간격
+    _GAP_NS = max(0, gap_ms) * 1_000_000  # 매크로 간 간격
 
     merged_events: list[AnyEvent] = []
     offset_ns = 0

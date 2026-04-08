@@ -399,22 +399,26 @@ class FlowEngine:
 
     def _run_macro_node(self, node: MacroNode) -> str | None:
         """매크로 JSON 파일을 동기적으로 재생하고 다음 노드 ID를 반환한다."""
-        macro_path = self._base_dir / node.macro_path
-        # Path Traversal 방지: 경로가 반드시 base_dir 하위에 있어야 함
-        try:
-            if not macro_path.resolve().is_relative_to(self._base_dir.resolve()):
-                msg = f"보안: 허용되지 않은 경로 접근 차단 ({node.macro_path!r})"
+        raw = Path(node.macro_path)
+        if raw.is_absolute():
+            # 절대 경로: 시퀀서가 직접 생성한 경로이므로 그대로 사용
+            macro_path = raw
+        else:
+            # 상대 경로: Path Traversal(../) 방지 검사 적용
+            macro_path = (self._base_dir / raw).resolve()
+            try:
+                if not macro_path.is_relative_to(self._base_dir.resolve()):
+                    msg = f"보안: 허용되지 않은 경로 접근 차단 ({node.macro_path!r})"
+                    logger.error(msg)
+                    if self._on_node_done:
+                        self._on_node_done(node.id, False, msg)
+                    raise FlowError(msg)
+            except ValueError as e:
+                msg = f"보안: 경로 검증 실패 ({node.macro_path!r})"
                 logger.error(msg)
                 if self._on_node_done:
                     self._on_node_done(node.id, False, msg)
-                raise FlowError(msg)
-        except ValueError as e:
-            # Windows에서 드라이브가 다를 때 is_relative_to가 ValueError 발생 가능
-            msg = f"보안: 경로 검증 실패 ({node.macro_path!r})"
-            logger.error(msg)
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
-            raise FlowError(msg) from e
+                raise FlowError(msg) from e
         if not macro_path.exists():
             msg = f"매크로 파일 없음: {macro_path}"
             if self._on_node_done:
