@@ -141,20 +141,25 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 
 ---
 
-## 8. 현재 진행 상태
+## 8. 현재 진행 상태 (v0.2.0 — 2026-04-08 기준)
 
-- [x] 하네스 구조 설계 완료
-- [x] CLAUDE.md 작성 완료 (Windows 전용 확정)
-- [x] core-beliefs.md 작성 완료
-- [x] ARCHITECTURE.md 작성
-- [x] json-format-spec.md 확정
-- [x] macro-recorder.md 완료
-- [x] macro-player.md 완료
-- [x] scripting-engine.md 완료
-- [x] drag-drop-sequencer.md 완료
-- [ ] src/ 초기 코드 스캐폴딩
+### 마일스톤
+- [x] M0: CI/CD 환경 — GitHub Actions, Windows EXE 빌드, Releases 자동 업로드
+- [x] M1: Win32 이벤트 캡처 — WH_MOUSE_LL/WH_KEYBOARD_LL, DPI 정규화, ESC×3 긴급 중지
+- [x] M2: JSON 저장 + 재생 — SendInput, 절대 타임스탬프 기반 재생, click/drag 판별
+- [x] M3: 오버레이 + GUI — 에디터(undo/redo, 구간 재생), 오버레이, F6/F7 핫키
+- [x] M4: color_trigger — GetPixel 색상 감지, F7 삽입, ColorCheckNode
+- [x] M5: 시퀀서 — 드래그앤드롭, .macroflow 저장/불러오기, 실행 상태 시각화
 
-**현재 단계**: 문서 작성 단계. 코드 작성 시작 전.
+### M5 이후 추가 구현
+- [x] 마우스 휠 녹화/재생 (수직·수평, 그룹 표시)
+- [x] 에디터 병합 — 여러 JSON → 하나로 병합, source 열 표시
+- [x] 시퀀서 UX 개선 — 중복 버튼 제거, 파일 간 경로 버그 수정
+- [x] 매크로 간 딜레이 스핀박스 (시퀀스 실행 + 병합 공용)
+- [x] ESC×3 — 시퀀서 실행 중에도 무조건 작동하도록 수정
+- [x] 구간 재생 전용 버튼 + 스핀박스 크기 개선
+
+**현재 단계**: 기능 구현 완료. 실사용 피드백 기반 UX 개선 중.
 
 ---
 
