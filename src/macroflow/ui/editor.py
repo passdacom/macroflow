@@ -868,16 +868,18 @@ class EventEditorWidget(QWidget):
 
         form = QFormLayout()
         x_spin = QDoubleSpinBox()
-        x_spin.setRange(0.0, 100.0)
+        x_spin.setRange(-500.0, 500.0)
         x_spin.setDecimals(2)
         x_spin.setSuffix(" %")
+        x_spin.setToolTip("기본 모니터 너비 기준 비율. 보조 모니터는 100% 초과 가능.")
         x_spin.setValue(primary.x_ratio * 100)
         form.addRow("X 위치:", x_spin)
 
         y_spin = QDoubleSpinBox()
-        y_spin.setRange(0.0, 100.0)
+        y_spin.setRange(-500.0, 500.0)
         y_spin.setDecimals(2)
         y_spin.setSuffix(" %")
+        y_spin.setToolTip("기본 모니터 높이 기준 비율. 보조 모니터는 100% 초과 가능.")
         y_spin.setValue(primary.y_ratio * 100)
         form.addRow("Y 위치:", y_spin)
 

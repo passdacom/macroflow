@@ -636,7 +636,6 @@ class MainWindow(QMainWindow):
         """속도 콤보 변경 처리. '직접 입력...' 선택 시 수동 입력 다이얼로그를 띄운다."""
         if idx != 6:
             return
-        from PyQt6.QtWidgets import QInputDialog
         val, ok = QInputDialog.getDouble(
             self, "재생 속도 직접 입력",
             "배율을 입력하세요 (0.1 ~ 10.0):",
