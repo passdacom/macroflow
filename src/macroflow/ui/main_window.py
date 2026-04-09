@@ -19,6 +19,7 @@ from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEven
 from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
@@ -69,6 +70,8 @@ class MainWindow(QMainWindow):
 
         # ESC×3 감지 (앱 포커스 상태에서만)
         self._esc_times: deque[float] = deque(maxlen=3)
+        # 재생 속도 직접 입력 값
+        self._custom_speed: float = 1.0
 
         # ── 하위 위젯 ─────────────────────────────────────────────────────────
         self._editor = EventEditorWidget()
@@ -95,6 +98,8 @@ class MainWindow(QMainWindow):
         self._sig_emergency_stop.connect(self._emergency_stop)
         self._sig_play_event.connect(self._editor.highlight_event)
         self._editor.macro_changed.connect(self._on_macro_changed)
+        # 에디터 단일 이벤트 실행 요청
+        self._editor.play_event_range.connect(self._on_play_event_range)
         # 시퀀서 더블클릭 → 매크로 에디터 탭으로 로드
         self._sequencer.open_in_editor.connect(self._load_file_and_switch_tab)
         # 시퀀서 병합 → 에디터 탭으로 전달
@@ -198,10 +203,11 @@ class MainWindow(QMainWindow):
 
         tb2.addWidget(QLabel(" 속도:"))
         self._speed_combo = QComboBox()
-        self._speed_combo.addItems(["0.5x", "1.0x", "2.0x", "5.0x"])
+        self._speed_combo.addItems(["0.5x", "1.0x", "2.0x", "3.0x", "4.0x", "5.0x", "직접 입력..."])
         self._speed_combo.setCurrentIndex(1)
-        self._speed_combo.setToolTip("재생 속도 배율")
-        self._speed_combo.setFixedWidth(68)
+        self._speed_combo.setToolTip("재생 속도 배율 (직접 입력 선택 시 수동 입력 가능)")
+        self._speed_combo.setFixedWidth(110)
+        self._speed_combo.currentIndexChanged.connect(self._on_speed_combo_changed)
         tb2.addWidget(self._speed_combo)
 
         tb2.addWidget(QLabel("  반복:"))
@@ -441,17 +447,18 @@ class MainWindow(QMainWindow):
         elif self._state == "playing":
             self._stop_playback()
 
-    def _start_playback(self) -> None:
+    def _start_playback(self, forced_range: tuple[int, int] | None = None) -> None:
         if not self._macro:
             return
 
-        speed_values = [0.5, 1.0, 2.0, 5.0]
-        speed = speed_values[self._speed_combo.currentIndex()]
+        _speed_presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
+        idx = self._speed_combo.currentIndex()
+        speed = self._custom_speed if idx == 6 else _speed_presets[idx]
         repeat_count = self._repeat_spin.value()
         interval_ms = self._interval_spin.value()
 
-        # 구간 재생 범위 계산
-        event_range = self._calc_event_range()
+        # 구간 재생 범위 계산 (단일 이벤트 실행 시 forced_range 우선)
+        event_range = forced_range if forced_range is not None else self._calc_event_range()
 
         self._state = "playing"
         self._overlay.start_playing(speed)
@@ -624,6 +631,34 @@ class MainWindow(QMainWindow):
             )
             return
         self._start_playback()
+
+    def _on_speed_combo_changed(self, idx: int) -> None:
+        """속도 콤보 변경 처리. '직접 입력...' 선택 시 수동 입력 다이얼로그를 띄운다."""
+        if idx != 6:
+            return
+        from PyQt6.QtWidgets import QInputDialog
+        val, ok = QInputDialog.getDouble(
+            self, "재생 속도 직접 입력",
+            "배율을 입력하세요 (0.1 ~ 10.0):",
+            value=self._custom_speed,
+            min=0.1, max=10.0, decimals=1,
+        )
+        if ok:
+            self._custom_speed = val
+            self._speed_combo.setItemText(6, f"직접 ({val:.1f}x)")
+        else:
+            # 취소 시 이전 프리셋 인덱스로 되돌리기
+            _presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
+            best = min(range(6), key=lambda i: abs(_presets[i] - self._custom_speed))
+            self._speed_combo.blockSignals(True)
+            self._speed_combo.setCurrentIndex(best)
+            self._speed_combo.blockSignals(False)
+
+    def _on_play_event_range(self, start_idx: int, end_idx: int) -> None:
+        """에디터에서 단일 이벤트 실행 요청 수신 시 해당 범위만 재생한다."""
+        if self._state != "idle" or not self._macro:
+            return
+        self._start_playback(forced_range=(start_idx, end_idx))
 
     def _emergency_stop(self) -> None:
         logger.info("긴급 중지")

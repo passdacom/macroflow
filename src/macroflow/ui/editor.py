@@ -365,9 +365,10 @@ class EventEditorWidget(QWidget):
       - Delete 키: 선택 행 삭제
     """
 
-    macro_changed = pyqtSignal(object)   # MacroData
-    f6_capture_started = pyqtSignal()   # F6 캡처 대기 시작 (힌트 오버레이용)
-    f6_capture_ended = pyqtSignal()     # F6 캡처 완료 또는 취소
+    macro_changed = pyqtSignal(object)      # MacroData
+    f6_capture_started = pyqtSignal()      # F6 캡처 대기 시작 (힌트 오버레이용)
+    f6_capture_ended = pyqtSignal()        # F6 캡처 완료 또는 취소
+    play_event_range = pyqtSignal(int, int)  # (start_idx, end_exclusive) 단일 이벤트 실행 요청
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -379,6 +380,10 @@ class EventEditorWidget(QWidget):
         # F6 캡처 콜백: (x_ratio, y_ratio, color_hex) 형태.
         # 위치 편집은 color 무시, 색 트리거 삽입은 모두 활용.
         self._f6_capture_cb: Callable[[float, float, str], None] | None = None
+        # 비고(remark): event_id → 비고 문자열. 내용 열 표시를 대체.
+        self._remarks: dict[str, str] = {}
+        # 재생 하이라이트: 마지막으로 하이라이트된 행 인덱스 (-1 = 없음).
+        self._last_highlight_row: int = -1
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -491,6 +496,8 @@ class EventEditorWidget(QWidget):
         self._macro = macro
         self._undo_stack.clear()
         self._redo_stack.clear()
+        self._remarks.clear()
+        self._last_highlight_row = -1
         self._refresh()
         self._act_toggle_moves.setEnabled(True)
         self._act_del_moves.setEnabled(True)
@@ -507,16 +514,49 @@ class EventEditorWidget(QWidget):
     def highlight_event(self, event_idx: int) -> None:
         """재생 중 해당 이벤트 인덱스에 대응하는 행을 하이라이트한다.
 
-        스크롤과 선택이 현재 재생 위치를 정확히 따라간다.
+        - 같은 행이면 재갱신하지 않아 불필요한 깜빡임을 방지한다.
+        - 해당 이벤트가 숨겨진 행(mouse_move 숨김 등)이면 이전 하이라이트를 유지한다.
+        - 배경색 기반으로 표시하므로 테이블 포커스 해제 후에도 위치가 보인다.
         """
         for row_idx, row in enumerate(self._rows):
             if event_idx in row.event_indices:
-                self._table.selectRow(row_idx)
-                self._table.scrollTo(
-                    self._table.model().index(row_idx, 0),
-                    QAbstractItemView.ScrollHint.PositionAtCenter,
-                )
+                if row_idx != self._last_highlight_row:
+                    if 0 <= self._last_highlight_row < self._table.rowCount():
+                        self._repaint_row_default(self._last_highlight_row)
+                    self._last_highlight_row = row_idx
+                    self._repaint_row_highlight(row_idx)
+                    self._table.scrollTo(
+                        self._table.model().index(row_idx, 0),
+                        QAbstractItemView.ScrollHint.PositionAtCenter,
+                    )
                 return
+        # 이벤트에 대응하는 표시 행 없음(숨긴 mouse_move 등) → 이전 하이라이트 유지
+
+    # ── 재생 하이라이트 헬퍼 ─────────────────────────────────────────────────
+
+    _HIGHLIGHT_COLOR = QColor(255, 200, 0, 200)  # 황금색 — 포커스 해제에도 잘 보임
+
+    def _repaint_row_highlight(self, row_idx: int) -> None:
+        """지정 행 전체를 재생 하이라이트 색으로 덮어쓴다."""
+        for col in range(self._table.columnCount()):
+            item = self._table.item(row_idx, col)
+            if item is not None:
+                item.setBackground(QBrush(self._HIGHLIGHT_COLOR))
+
+    def _repaint_row_default(self, row_idx: int) -> None:
+        """지정 행을 원래 kind 색으로 복원한다."""
+        if row_idx >= len(self._rows):
+            return
+        row = self._rows[row_idx]
+        kind_color = _KIND_COLORS.get(row.kind, QColor(80, 80, 80))
+        for col in range(self._table.columnCount()):
+            item = self._table.item(row_idx, col)
+            if item is None:
+                continue
+            if col == 1:  # 타입 열은 kind 색 유지
+                item.setBackground(QBrush(kind_color))
+            else:
+                item.setData(Qt.ItemDataRole.BackgroundRole, None)  # 기본(교대색) 복원
 
     # ── F6 캡처 인터페이스 (main_window에서 호출) ─────────────────────────────
 
@@ -588,6 +628,12 @@ class EventEditorWidget(QWidget):
         # 출처 열: primary 이벤트의 source_file을 각 행에 반영
         for row in self._rows:
             row.source_file = events[row.primary_idx].source_file
+        # 비고: 있으면 내용 열을 대체
+        for row in self._rows:
+            eid = events[row.primary_idx].id
+            if eid in self._remarks:
+                row.detail = f"📝 {self._remarks[eid]}"
+        self._last_highlight_row = -1  # 갱신 시 하이라이트 초기화
         self._table.setRowCount(len(self._rows))
 
         for row_idx, row in enumerate(self._rows):
@@ -676,6 +722,11 @@ class EventEditorWidget(QWidget):
             row = self._rows[rows[0]]
             primary = self._macro.events[row.primary_idx]
 
+            # ▶ 이 이벤트만 실행
+            act_play_single = menu.addAction("▶ 이 이벤트만 실행")
+            act_play_single.triggered.connect(lambda: self._play_single_event(rows[0]))
+            menu.addSeparator()
+
             act_edit_delay = menu.addAction("딜레이 설정...")
             act_edit_delay.triggered.connect(lambda: self._edit_delay(rows[0]))
 
@@ -690,6 +741,9 @@ class EventEditorWidget(QWidget):
             if row.kind == "mouse_wheel":
                 act_edit_wheel = menu.addAction("스크롤 편집...")
                 act_edit_wheel.triggered.connect(lambda: self._edit_wheel(rows[0]))
+
+            act_remark = menu.addAction("📝 비고 편집...")
+            act_remark.triggered.connect(lambda: self._edit_remark(rows[0]))
 
             menu.addSeparator()
 
@@ -708,6 +762,8 @@ class EventEditorWidget(QWidget):
         display_row = self._rows[row]
         if col == 4:  # 딜레이 셀
             self._edit_delay(row)
+        elif col == 1:  # 타입 셀 → 비고 편집
+            self._edit_remark(row)
         elif col == 2:  # 내용 셀
             primary = self._macro.events[display_row.primary_idx]
             if display_row.kind == "key_press" and isinstance(primary, KeyEvent):
@@ -716,6 +772,8 @@ class EventEditorWidget(QWidget):
                 self._edit_position(row)
             elif display_row.kind == "mouse_wheel":
                 self._edit_wheel(row)
+            else:
+                self._edit_remark(row)  # 나머지 타입(wait, color_trigger 등)
 
     # ── 편집 동작 ─────────────────────────────────────────────────────────────
 
@@ -881,16 +939,17 @@ class EventEditorWidget(QWidget):
             QMessageBox.warning(self, "오류", "위치 변경에 실패했습니다.")
             return
 
-        # 클릭/드래그 행: mouse_up 좌표도 동일하게 업데이트 (드래그 오인식 방지)
-        if display_row.kind in ("click", "right_click", "drag", "right_drag"):
-            for idx in display_row.event_indices:
-                ev = new_macro.events[idx]
-                if isinstance(ev, MouseButtonEvent) and ev.type == "mouse_up":
-                    try:
-                        new_macro = edit_position(new_macro, ev.id, new_x, new_y)
-                    except (KeyError, TypeError):
-                        pass
-                    break
+        # 그룹 내 나머지 마우스 이벤트(move + up)도 모두 같은 위치로 업데이트.
+        # 이를 누락하면 재생 시 중간 move 이벤트가 old 위치로 마우스를 이동시킨다.
+        for idx in display_row.event_indices:
+            if idx == display_row.primary_idx:
+                continue  # primary는 이미 위에서 업데이트
+            ev = new_macro.events[idx]
+            if isinstance(ev, (MouseButtonEvent, MouseMoveEvent)):
+                try:
+                    new_macro = edit_position(new_macro, ev.id, new_x, new_y)
+                except (KeyError, TypeError):
+                    pass
 
         self._macro = new_macro
         self._refresh()
@@ -1109,3 +1168,63 @@ class EventEditorWidget(QWidget):
         self._macro = reset_to_raw(self._macro)
         self._refresh()
         self.macro_changed.emit(self._macro)
+
+    # ── 비고(Remark) 편집 ────────────────────────────────────────────────────
+
+    def _edit_remark(self, row: int) -> None:
+        """지정 행에 비고를 설정한다.
+
+        비고가 있으면 내용 열에 📝 prefix와 함께 원래 내용 대신 표시된다.
+        비워두면 비고가 삭제되어 원래 내용이 복원된다.
+        """
+        if self._macro is None or row >= len(self._rows):
+            return
+        display_row = self._rows[row]
+        event_id = self._macro.events[display_row.primary_idx].id
+        current = self._remarks.get(event_id, "")
+
+        text, ok = QInputDialog.getText(
+            self, "비고 편집",
+            f"행 #{row + 1}  비고 (비워두면 기본 표시로 복원):",
+            text=current,
+        )
+        if not ok:
+            return
+
+        stripped = text.strip()
+        if stripped:
+            self._remarks[event_id] = stripped
+        else:
+            self._remarks.pop(event_id, None)
+
+        # 해당 셀만 갱신 — 전체 refresh 불필요
+        detail_text = f"📝 {stripped}" if stripped else display_row.detail
+        # _DisplayRow.detail 갱신 후 셀 텍스트 업데이트
+        display_row.detail = detail_text
+        item = self._table.item(row, 2)
+        if item is not None:
+            # detail이 원래 내용이면 remark 없음 → 직접 재계산
+            if not stripped:
+                # 원래 detail을 재계산하기 위해 해당 행만 다시 빌드
+                events = self._macro.events
+                rebuilt = _build_rows(events, self._show_moves)
+                if row < len(rebuilt):
+                    src_row = rebuilt[row]
+                    src_row.source_file = events[src_row.primary_idx].source_file
+                    display_row.detail = src_row.detail
+            item.setText(display_row.detail)
+
+    # ── 단일 이벤트 실행 ──────────────────────────────────────────────────────
+
+    def _play_single_event(self, row: int) -> None:
+        """지정 행의 이벤트만 실행하도록 신호를 방출한다."""
+        if self._macro is None or row >= len(self._rows):
+            return
+        display_row = self._rows[row]
+        indices = display_row.event_indices
+        if not indices:
+            return
+        start_idx = min(indices)
+        end_idx = max(indices) + 1
+        self.play_event_range.emit(start_idx, end_idx)
+
