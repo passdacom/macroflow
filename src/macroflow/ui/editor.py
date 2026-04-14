@@ -11,7 +11,6 @@ import dataclasses
 import logging
 import secrets
 import sys
-import time
 from collections import deque
 from collections.abc import Callable
 
@@ -372,6 +371,18 @@ _NAME_TO_VK: dict[str, int] = {
     # 기타
     "printscreen": 0x2C, "prtsc": 0x2C,
     "apps": 0x5D,
+    # 하위 호환 별칭 — recorder.py 구버전이 저장한 이름도 편집 가능하도록
+    "period": 0xBE, "comma": 0xBC, "minus": 0xBD, "equal": 0xBB,
+    "slash": 0xBF, "backtick": 0xC0,
+    "bracket_left": 0xDB, "backslash": 0xDC,
+    "bracket_right": 0xDD, "quote": 0xDE, "semicolon": 0xBA,
+    "shift_left": 0xA0, "shift_right": 0xA1,
+    "ctrl_left": 0xA2, "ctrl_right": 0xA3,
+    "alt_left": 0xA4, "alt_right": 0xA5,
+    "win_left": 0x5B, "win_right": 0x5C,
+    "numpad0": 0x60, "numpad1": 0x61, "numpad2": 0x62, "numpad3": 0x63,
+    "numpad4": 0x64, "numpad5": 0x65, "numpad6": 0x66, "numpad7": 0x67,
+    "numpad8": 0x68, "numpad9": 0x69,
 }
 
 
@@ -842,8 +853,10 @@ class EventEditorWidget(QWidget):
 
         val, ok = QInputDialog.getInt(
             self, "딜레이 설정",
-            f"행 #{row + 1} 딜레이 (ms):\n0 입력 시 원래 타이밍으로 복원",
-            current, 0, 60000, 10,
+            f"행 #{row + 1} 딜레이 (ms):\n"
+            "0 입력 시 원래 타이밍으로 복원.\n"
+            "음수(-) 입력 시 직전 이벤트보다 빨리 실행 (즉시 실행 방향).",
+            current, -60000, 60000, 10,
         )
         if not ok:
             return
@@ -1142,15 +1155,35 @@ class EventEditorWidget(QWidget):
             # 선택 없으면 맨 끝에 추가
             insert_after_event_idx = len(self._macro.events) - 1
 
+        # 색 트리거에 부여할 시간 예산 (1초)
+        # 직전 이벤트 타임스탬프 + 1초를 색 트리거 타임스탬프로 사용한다.
+        # 이후 이벤트들은 동일하게 1초 시프트하여 상대적 타이밍을 보존한다.
+        _TRIGGER_BUDGET_NS = 1_000_000_000  # 1초
+
         def _on_color_captured(x_r: float, y_r: float, color_hex: str) -> None:
-            """F6 콜백 — ColorTriggerEvent 삽입."""
+            """F6 콜백 — ColorTriggerEvent 삽입.
+
+            타임스탬프: 직전 이벤트 ts + 1초 (perf_counter_ns 절대값 사용 금지).
+            이후 이벤트: 모두 1초 시프트하여 상대 타이밍 보존.
+            """
             if self._macro is None:
                 return
-            ts_ns = int(time.perf_counter_ns())
+
+            # 직전 이벤트의 타임스탬프 기준으로 +1초
+            evs = self._macro.events
+            if 0 <= insert_after_event_idx < len(evs):
+                prev_ts_ns = evs[insert_after_event_idx].timestamp_ns
+            elif evs:
+                prev_ts_ns = evs[-1].timestamp_ns
+            else:
+                prev_ts_ns = 0
+
+            color_ts_ns = prev_ts_ns + _TRIGGER_BUDGET_NS
+
             new_event = ColorTriggerEvent(
                 id=secrets.token_hex(4),
                 type="color_trigger",
-                timestamp_ns=ts_ns,
+                timestamp_ns=color_ts_ns,
                 delay_override_ms=None,
                 x_ratio=x_r,
                 y_ratio=y_r,
@@ -1161,6 +1194,13 @@ class EventEditorWidget(QWidget):
             self._push_undo()
             events = list(self._macro.events)
             events.insert(insert_after_event_idx + 1, new_event)
+
+            # 삽입 지점 이후의 이벤트들을 1초 시프트 → 상대적 타이밍 보존
+            # (시프트 없으면 이후 이벤트의 ts < 색 트리거 ts → 삽입 후 즉시 재생)
+            for i in range(insert_after_event_idx + 2, len(events)):
+                ev = events[i]
+                events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + _TRIGGER_BUDGET_NS)
+
             self._apply_events(events)
 
         self._f6_capture_cb = _on_color_captured
@@ -1199,8 +1239,10 @@ class EventEditorWidget(QWidget):
             return
         val, ok = QInputDialog.getInt(
             self, "딜레이 일괄 설정",
-            "모든 이벤트에 적용할 딜레이 (ms):\n0 입력 시 원래 타이밍으로 복원",
-            100, 0, 60000, 10,
+            "모든 이벤트에 적용할 딜레이 (ms):\n"
+            "0 입력 시 원래 타이밍으로 복원.\n"
+            "음수(-) 입력 시 직전 이벤트보다 빨리 실행.",
+            100, -60000, 60000, 10,
         )
         if not ok:
             return

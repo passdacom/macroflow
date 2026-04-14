@@ -288,6 +288,7 @@ def _play_loop(
         if sleep_ns > 1_000_000:
             time.sleep(sleep_ns / 1_000_000_000)
 
+        execute_start_ns = time.perf_counter_ns()
         try:
             _execute_event(event, macro.settings, state)
         except PlaybackError as e:
@@ -305,6 +306,20 @@ def _play_loop(
             on_event(orig_idx, event)
 
         last_event_end_ns = time.perf_counter_ns()
+
+        # ── 색/창 트리거 타이머 보정 ─────────────────────────────────────────
+        # 색·창 트리거는 실제 로딩 시간만큼 대기하기 때문에 녹화 당시보다 오래
+        # 걸릴 수 있다. 보정하지 않으면 이후 이벤트들의 target_ns가 이미 과거가
+        # 되어 모두 즉시(연속으로) 실행되어 버린다.
+        # → 실제 실행 시간만큼 play_start_ns 를 전진시켜 이후 모든 target_ns 를
+        #   같은 폭으로 미뤄 녹화 당시의 상대 간격을 유지한다.
+        if isinstance(event, (ColorTriggerEvent, WindowTriggerEvent)):
+            trigger_duration_ns = last_event_end_ns - execute_start_ns
+            if trigger_duration_ns > 0:
+                play_start_ns += trigger_duration_ns
+                logger.debug(
+                    f"Trigger timer compensated: +{trigger_duration_ns / 1_000_000:.1f}ms"
+                )
 
     if not _stop_flag.is_set() and on_complete:
         on_complete()
