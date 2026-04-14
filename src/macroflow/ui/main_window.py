@@ -6,6 +6,7 @@ F6/F7 글로벌 핫키(RegisterHotKey), 미니 오버레이, 이벤트 에디터
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import sys
@@ -31,6 +32,7 @@ from PyQt6.QtWidgets import (
 from macroflow.types import MacroData
 
 from .editor import EventEditorWidget
+from .favorites import FavoritesWidget
 from .overlay import OverlayWindow
 from .sequencer import MacroSequencerWidget
 
@@ -72,10 +74,13 @@ class MainWindow(QMainWindow):
         self._esc_times: deque[float] = deque(maxlen=3)
         # 재생 속도 직접 입력 값
         self._custom_speed: float = 1.0
+        # 이전 녹화 복원용 — 새 녹화 시작 직전에 저장
+        self._prev_macro: MacroData | None = None
 
         # ── 하위 위젯 ─────────────────────────────────────────────────────────
         self._editor = EventEditorWidget()
         self._sequencer = MacroSequencerWidget()
+        self._favorites = FavoritesWidget()
         self._overlay = OverlayWindow()
 
         # ── UI 구성 ───────────────────────────────────────────────────────────
@@ -86,8 +91,12 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.addTab(self._editor, "매크로 에디터")
         self._tabs.addTab(self._sequencer, "시퀀서")
+        self._tabs.addTab(self._favorites, "즐겨찾기")
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self.setCentralWidget(self._tabs)
+
+        # 즐겨찾기 디렉토리 설정
+        self._favorites.set_favorites_dir(self._get_favorites_dir())
 
         self._setup_statusbar()
 
@@ -112,6 +121,9 @@ class MainWindow(QMainWindow):
             lambda: self._overlay.show_hint("F6을 눌러 위치 지정")
         )
         self._editor.f6_capture_ended.connect(self._overlay.stop_hint)
+        # 즐겨찾기 신호 연결
+        self._favorites.open_in_editor.connect(self._load_file_and_switch_tab)
+        self._favorites.add_to_sequencer.connect(self._add_favorite_to_sequencer)
 
         # ── 폴링 타이머 (250ms) ───────────────────────────────────────────────
         self._poll_timer = QTimer(self)
@@ -277,6 +289,25 @@ class MainWindow(QMainWindow):
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
         tb3.addAction(self._act_save_seq)
 
+        self._act_save_fav = QAction("⭐ 즐겨찾기에 추가", self)
+        self._act_save_fav.setToolTip(
+            "현재 매크로를 이름을 지정하여 즐겨찾기로 저장합니다\n"
+            "(favorites 폴더 — macros 폴더와 별도 보관)"
+        )
+        self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
+        tb3.addAction(self._act_save_fav)
+
+        tb3.addSeparator()
+
+        self._act_restore_prev = QAction("↩ 이전 매크로 복원", self)
+        self._act_restore_prev.setToolTip(
+            "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
+            "(실수로 F6을 눌러 기존 매크로가 사라졌을 때 사용)"
+        )
+        self._act_restore_prev.triggered.connect(self._restore_prev_macro)
+        self._act_restore_prev.setEnabled(False)
+        tb3.addAction(self._act_restore_prev)
+
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
         self._sb_count = QLabel("")
@@ -350,14 +381,17 @@ class MainWindow(QMainWindow):
                     if self._editor.is_f6_capture_active():
                         self._do_f6_capture()
                         return True, 0
-                    # 시퀀서 탭에서는 F6(녹화) 무시
-                    if not self._is_sequencer_tab():
+                    # 시퀀서·즐겨찾기 탭에서는 F6(녹화) 무시
+                    if not self._is_sequencer_tab() and not self._is_favorites_tab():
                         self._toggle_recording()
                     return True, 0
                 if msg.wParam == _HOTKEY_PLAY:
                     if self._is_sequencer_tab():
                         # 시퀀서 탭: F7 → 시퀀스 실행/중지
                         self._toggle_sequencer()
+                    elif self._is_favorites_tab():
+                        # 즐겨찾기 탭: F7 → 일반 재생
+                        self._toggle_playback()
                     elif self._state == "recording":
                         self._insert_color_trigger()
                     else:
@@ -370,6 +404,10 @@ class MainWindow(QMainWindow):
     def _is_sequencer_tab(self) -> bool:
         """현재 활성 탭이 시퀀서인지 반환한다."""
         return self._tabs.currentWidget() is self._sequencer
+
+    def _is_favorites_tab(self) -> bool:
+        """현재 활성 탭이 즐겨찾기인지 반환한다."""
+        return self._tabs.currentWidget() is self._favorites
 
     def _on_tab_changed(self, _index: int) -> None:
         """탭 전환 시 툴바 버튼 상태를 갱신한다."""
@@ -384,6 +422,12 @@ class MainWindow(QMainWindow):
             self._do_stop_recording()
 
     def _start_recording(self) -> None:
+        # 기존 매크로가 있으면 복원을 위해 백업한다 (실수로 F6 눌렀을 때 복원 가능)
+        if self._macro is not None:
+            self._prev_macro = copy.deepcopy(self._macro)
+            self._auto_save_prev_recording(self._prev_macro)
+            logger.info("이전 매크로 백업 완료 (복원 버튼으로 되돌릴 수 있음)")
+
         from macroflow import recorder
         recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
         self._state = "recording"
@@ -696,10 +740,13 @@ class MainWindow(QMainWindow):
         is_stop = self._state == "stopping"
         is_play = self._state == "playing"
         is_seq_tab = self._is_sequencer_tab()
+        is_fav_tab = self._is_favorites_tab()
         seq_running = self._sequencer.is_running()
 
-        # 녹화: 시퀀서 탭에서는 항상 비활성화
-        self._act_record.setEnabled((is_idle or is_rec) and not is_seq_tab)
+        # 녹화: 시퀀서·즐겨찾기 탭에서는 항상 비활성화
+        self._act_record.setEnabled(
+            (is_idle or is_rec) and not is_seq_tab and not is_fav_tab
+        )
         self._act_record.setChecked(is_rec)
         self._act_record.setText("■ 중지 (F6)" if is_rec else "● 녹화 (F6)")
 
@@ -717,6 +764,8 @@ class MainWindow(QMainWindow):
         )
         self._act_save.setEnabled(is_idle and self._macro is not None)
         self._act_save_seq.setEnabled(is_idle and self._macro is not None)
+        self._act_save_fav.setEnabled(is_idle and self._macro is not None)
+        self._act_restore_prev.setEnabled(is_idle and self._prev_macro is not None)
 
     def _update_range_spinboxes(self) -> None:
         """매크로 로드 후 구간 SpinBox 범위를 갱신한다."""
@@ -828,6 +877,97 @@ class MainWindow(QMainWindow):
         if getattr(sys, "frozen", False):
             return Path(sys.executable).parent / "macros"
         return Path.cwd() / "macros"
+
+    def _get_favorites_dir(self) -> Path:
+        """즐겨찾기 저장용 favorites 디렉토리 경로를 반환한다.
+
+        macros/ 와 별도의 favorites/ 폴더를 사용한다.
+        """
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).parent / "favorites"
+        return Path.cwd() / "favorites"
+
+    def _save_and_add_to_favorites(self) -> None:
+        """현재 매크로를 이름 입력 후 즐겨찾기 폴더에 저장하고 즐겨찾기 탭에 추가한다."""
+        if not self._macro:
+            return
+
+        # 파일명 입력 받기
+        suggested = self._current_file.stem if self._current_file else "즐겨찾기"
+        name, ok = QInputDialog.getText(
+            self,
+            "즐겨찾기 이름 입력",
+            "저장할 이름을 입력하세요 (파일명으로 사용됩니다):",
+            text=suggested,
+        )
+        if not ok or not name.strip():
+            return
+
+        name = name.strip()
+        success = self._favorites.add_macro(self._macro, name)
+        if success:
+            self._tabs.setCurrentWidget(self._favorites)
+            self._sb_state.setText(f"즐겨찾기 추가: {name}")
+            logger.info(f"즐겨찾기 추가: {name}")
+        else:
+            QMessageBox.critical(self, "즐겨찾기 저장 오류", f"'{name}' 저장에 실패했습니다.")
+
+    def _add_favorite_to_sequencer(self, path: str) -> None:
+        """즐겨찾기 항목을 시퀀서에 추가하고 시퀀서 탭으로 전환한다."""
+        from pathlib import Path as _Path
+        self._sequencer.add_macro_file(_Path(path))
+        self._tabs.setCurrentWidget(self._sequencer)
+        self._sb_state.setText(f"시퀀서 추가: {_Path(path).name}")
+
+    def _restore_prev_macro(self) -> None:
+        """이전 녹화를 복원한다.
+
+        새 녹화를 시작하기 직전에 백업해 둔 매크로를 에디터에 로드한다.
+        실수로 F6을 눌러 기존 매크로를 덮어쓴 경우에 사용한다.
+        """
+        if self._prev_macro is None:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "이전 매크로 복원",
+            f"녹화 시작 전에 편집하던 매크로를 복원합니다.\n"
+            f"이벤트 수: {len(self._prev_macro.events)}개\n\n"
+            "현재 에디터의 내용은 임시 저장 파일로만 남습니다.\n계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        restored = self._prev_macro
+        self._prev_macro = None
+        self._macro = restored
+        self._current_file = None
+        self._editor.load_macro(restored)
+        self._tabs.setCurrentWidget(self._editor)
+        self._update_toolbar()
+        self._update_range_spinboxes()
+        count = len(restored.events)
+        self._sb_state.setText("이전 매크로 복원됨")
+        self._sb_count.setText(f"이벤트: {count}")
+        self.setWindowTitle("MacroFlow — [복원된 매크로]")
+        logger.info(f"이전 매크로 복원: {count}개 이벤트")
+
+    def _auto_save_prev_recording(self, macro: MacroData) -> None:
+        """새 녹화 시작 전 기존 매크로를 pre_recording_*.json 으로 임시 저장한다."""
+        from datetime import datetime
+
+        from macroflow import macro_file
+        temp_dir = self._get_temp_dir()
+        try:
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            temp_file = temp_dir / f"pre_recording_{ts}.json"
+            macro_file.save(macro, str(temp_file))
+            logger.info(f"녹화 전 백업 저장: {temp_file.name}")
+        except OSError as e:
+            logger.warning(f"녹화 전 백업 저장 실패: {e}")
 
     def _save_and_add_to_sequencer(self) -> None:
         """macros 폴더에 날짜·시간 파일명으로 자동 저장 후 시퀀서에 추가한다.

@@ -141,7 +141,7 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 
 ---
 
-## 8. 현재 진행 상태 (v0.2.0 — 2026-04-08 기준)
+## 8. 현재 진행 상태 (v0.2.3 — 2026-04-14 기준)
 
 ### 마일스톤
 - [x] M0: CI/CD 환경 — GitHub Actions, Windows EXE 빌드, Releases 자동 업로드
@@ -158,6 +158,9 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 - [x] 매크로 간 딜레이 스핀박스 (시퀀스 실행 + 병합 공용)
 - [x] ESC×3 — 시퀀서 실행 중에도 무조건 작동하도록 수정
 - [x] 구간 재생 전용 버튼 + 스핀박스 크기 개선
+- [x] 즐겨찾기 탭 — favorites/ 폴더, 더블클릭 로드, 우클릭 시퀀서 추가
+- [x] 키 수정 버그 수정 — OEM 특수문자 VK 매핑 + VkKeyScanA 폴백
+- [x] 이전 매크로 복원 — F6 실수 시 1클릭 복원 (메모리+파일 백업)
 
 **현재 단계**: 기능 구현 완료. 실사용 피드백 기반 UX 개선 중.
 
