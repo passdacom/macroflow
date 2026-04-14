@@ -141,7 +141,7 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 
 ---
 
-## 8. 현재 진행 상태 (v0.2.3 — 2026-04-14 기준)
+## 8. 현재 진행 상태 (v0.2.5 — 2026-04-14 기준)
 
 ### 마일스톤
 - [x] M0: CI/CD 환경 — GitHub Actions, Windows EXE 빌드, Releases 자동 업로드
@@ -161,6 +161,7 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 - [x] 즐겨찾기 탭 — favorites/ 폴더, 더블클릭 로드, 우클릭 시퀀서 추가
 - [x] 키 수정 버그 수정 — OEM 특수문자 VK 매핑 + VkKeyScanA 폴백
 - [x] 이전 매크로 복원 — F6 실수 시 1클릭 복원 (메모리+파일 백업)
+- [x] 음수 딜레이 이벤트 순서 역전 방지 — last_significant_event_end_ns 클램프
 
 **현재 단계**: 기능 구현 완료. 실사용 피드백 기반 UX 개선 중.
 

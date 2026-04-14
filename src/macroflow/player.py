@@ -248,6 +248,9 @@ def _play_loop(
     global _current_event_idx, _total_events
     play_start_ns = time.perf_counter_ns()
     last_event_end_ns = play_start_ns
+    # 음수 딜레이 플로어: 마우스 이동을 제외한 마지막 이벤트 종료 시각.
+    # 음수 delay_override_ms 로 target_ns 가 이 시각보다 앞서면 이 시각으로 클램프한다.
+    last_significant_event_end_ns = play_start_ns
     state = _PlayState()
 
     # 구간 재생 범위 결정
@@ -279,6 +282,10 @@ def _play_loop(
         # 목표 실행 시각 계산 (core-beliefs 원칙 3)
         if event.delay_override_ms is not None:
             target_ns = last_event_end_ns + int(event.delay_override_ms * 1_000_000)
+            # 음수 딜레이 플로어: 마우스 이동이 아닌 이벤트는 직전 유의미한 이벤트
+            # 종료 시각보다 앞서 실행될 수 없다 (이벤트 순서 역전 방지).
+            if not isinstance(event, MouseMoveEvent):
+                target_ns = max(target_ns, last_significant_event_end_ns)
         else:
             target_ns = play_start_ns + int((event.timestamp_ns - base_ts_ns) / speed)
 
@@ -306,6 +313,10 @@ def _play_loop(
             on_event(orig_idx, event)
 
         last_event_end_ns = time.perf_counter_ns()
+
+        # 마우스 이동이 아닌 이벤트만 유의미한 이벤트 종료 시각 갱신
+        if not isinstance(event, MouseMoveEvent):
+            last_significant_event_end_ns = last_event_end_ns
 
         # ── 색/창 트리거 타이머 보정 ─────────────────────────────────────────
         # 색·창 트리거는 실제 로딩 시간만큼 대기하기 때문에 녹화 당시보다 오래
