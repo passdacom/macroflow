@@ -6,6 +6,31 @@
 
 ---
 
+## v0.2.7 — 2026-04-15
+
+### 보안 수정 2종 + mypy 오류 수정
+
+#### ① eval() AST 화이트리스트 검증 추가 (`script_engine.py`)
+- **원인**: `__builtins__: {}` 차단만으로는 Python 객체 그래프 순회
+  (`pixel_color.__class__.__mro__[-1].__subclasses__()` 등)로 샌드박스 탈출 가능
+- **수정**: `_validate_expression()` 추가 — eval 실행 전 AST 노드 화이트리스트 검증
+  - 허용 노드: 산술·비교·논리·상수·이름·함수 호출·튜플·리스트·인덱스·삼항
+  - `ast.Attribute` 미포함 → `.` 속성 접근 전면 차단 (객체 그래프 순회 차단)
+  - 허용 함수: `pixel_color`, `wait`, `random` 3개만
+  - 표현식 길이 상한: 512자
+
+#### ② 절대 경로 Path Traversal 우회 수정 (`script_engine.py`)
+- **원인**: `macro_path`가 절대 경로이면 검증 없이 파일시스템 전체 접근 가능
+- **수정**: 절대·상대 경로 공통으로 `.json` 확장자 검증 추가
+  → `.exe`, `.bat`, `.ps1` 등 비JSON 파일 로드 차단
+
+#### ③ favorites.py mypy union-attr 오류 수정 (CI 빌드 실패 수정)
+- **원인**: `QMenu.addAction()` → `QAction | None`, `QListWidget.viewport()` → `QWidget | None`
+  → mypy가 None 역참조 가능성 오류 발생 → GitHub Actions Lint 단계 실패
+- **수정**: `assert ... is not None` 추가로 mypy 통과
+
+---
+
 ## v0.2.6 — 2026-04-15
 
 ### 버그 수정 2종

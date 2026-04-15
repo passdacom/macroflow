@@ -15,6 +15,7 @@ ARCHITECTURE.md: Core Layer — PyQt6 임포트 금지.
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import json
 import logging
@@ -401,8 +402,7 @@ class FlowEngine:
         """매크로 JSON 파일을 동기적으로 재생하고 다음 노드 ID를 반환한다."""
         raw = Path(node.macro_path)
         if raw.is_absolute():
-            # 절대 경로: 시퀀서가 직접 생성한 경로이므로 그대로 사용
-            macro_path = raw
+            macro_path = raw.resolve()
         else:
             # 상대 경로: Path Traversal(../) 방지 검사 적용
             macro_path = (self._base_dir / raw).resolve()
@@ -419,6 +419,14 @@ class FlowEngine:
                 if self._on_node_done:
                     self._on_node_done(node.id, False, msg)
                 raise FlowError(msg) from e
+
+        # 절대·상대 경로 공통: .json 파일만 허용 (실행 파일·스크립트 로드 차단)
+        if macro_path.suffix.lower() != ".json":
+            msg = f"보안: .json 파일만 허용 ({node.macro_path!r})"
+            logger.error(msg)
+            if self._on_node_done:
+                self._on_node_done(node.id, False, msg)
+            raise FlowError(msg)
         if not macro_path.exists():
             msg = f"매크로 파일 없음: {macro_path}"
             if self._on_node_done:
@@ -498,6 +506,63 @@ class FlowEngine:
         return node.on_max_reached if reached else node.on_continue
 
 
+# ── expression 안전성 검증 ─────────────────────────────────────────────────────
+# 객체 그래프 순회(`__class__.__mro__[-1].__subclasses__()` 등)를 통한
+# 샌드박스 탈출을 AST 화이트리스트로 차단한다.
+# ast.Attribute 미포함 → `.` 속성 접근 전면 차단.
+
+_ALLOWED_EXPR_NODES: frozenset[type[ast.AST]] = frozenset({
+    ast.Expression,
+    ast.BoolOp, ast.And, ast.Or,
+    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.FloorDiv,
+    ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
+    ast.Compare,
+    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+    ast.Call,
+    ast.Constant,
+    ast.Name,
+    ast.Tuple, ast.List,
+    ast.Load,
+    ast.Subscript,
+    ast.Slice,
+    ast.IfExp,
+})
+_ALLOWED_FUNC_NAMES: frozenset[str] = frozenset({"pixel_color", "wait", "random"})
+_MAX_EXPRESSION_LEN: int = 512
+
+
+def _validate_expression(expr: str) -> None:
+    """표현식이 허용된 AST 노드만 포함하는지 검증한다.
+
+    Args:
+        expr: 검증할 표현식 문자열.
+
+    Raises:
+        ValueError: 허용되지 않은 노드(속성 접근 등) 또는 길이 초과 시.
+    """
+    if len(expr) > _MAX_EXPRESSION_LEN:
+        raise ValueError(
+            f"expression 길이 초과 ({len(expr)} > {_MAX_EXPRESSION_LEN})"
+        )
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as e:
+        raise ValueError(f"표현식 구문 오류: {e}") from e
+    for node in ast.walk(tree):
+        if type(node) not in _ALLOWED_EXPR_NODES:
+            raise ValueError(
+                f"허용되지 않은 표현식 요소: {type(node).__name__!r}"
+            )
+        if isinstance(node, ast.Call):
+            if (
+                not isinstance(node.func, ast.Name)
+                or node.func.id not in _ALLOWED_FUNC_NAMES
+            ):
+                raise ValueError(
+                    f"허용되지 않은 함수: {ast.unparse(node.func)!r}"
+                )
+
+
 # ── 인라인 ConditionEvent / LoopEvent 실행 ────────────────────────────────────
 
 def execute_condition(
@@ -541,6 +606,7 @@ def execute_condition(
     }
 
     try:
+        _validate_expression(event.expression)
         result = bool(eval(event.expression, sandbox_globals))  # noqa: S307
     except Exception as e:
         logger.error(f"ConditionEvent 표현식 오류 ({event.expression!r}): {e}")

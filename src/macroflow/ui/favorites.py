@@ -209,20 +209,22 @@ class FavoritesWidget(QWidget):
         menu = QMenu(self)
 
         act_open = menu.addAction("📂 에디터로 열기")
+        assert act_open is not None
         act_open.triggered.connect(lambda: self._open_item(item))
 
         act_seq = menu.addAction("📋 시퀀서에 추가")
+        assert act_seq is not None
         act_seq.triggered.connect(lambda: self._add_item_to_sequencer(item))
 
         menu.addSeparator()
 
         act_remove = menu.addAction("🗑 즐겨찾기에서 제거")
+        assert act_remove is not None
         act_remove.triggered.connect(lambda: self._remove_item(item))
 
-        if isinstance(pos, QPoint):
-            global_pos = self._list.viewport().mapToGlobal(pos)
-        else:
-            global_pos = self._list.viewport().mapToGlobal(QPoint(0, 0))
+        viewport = self._list.viewport()
+        assert viewport is not None
+        global_pos = viewport.mapToGlobal(pos if isinstance(pos, QPoint) else QPoint(0, 0))
         menu.exec(global_pos)
 
     def _open_item(self, item: QListWidgetItem) -> None:

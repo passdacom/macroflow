@@ -141,7 +141,7 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 
 ---
 
-## 8. 현재 진행 상태 (v0.2.6 — 2026-04-15 기준)
+## 8. 현재 진행 상태 (v0.2.7 — 2026-04-15 기준)
 
 ### 마일스톤
 - [x] M0: CI/CD 환경 — GitHub Actions, Windows EXE 빌드, Releases 자동 업로드
