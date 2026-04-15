@@ -904,7 +904,12 @@ class MainWindow(QMainWindow):
             return
 
         name = name.strip()
-        success = self._favorites.add_macro(self._macro, name)
+        try:
+            success = self._favorites.add_favorite(self._macro, name)
+        except Exception as e:
+            logger.exception(f"즐겨찾기 저장 중 예외: {e}")
+            QMessageBox.critical(self, "즐겨찾기 저장 오류", f"예상치 못한 오류가 발생했습니다:\n{e}")
+            return
         if success:
             self._tabs.setCurrentWidget(self._favorites)
             self._sb_state.setText(f"즐겨찾기 추가: {name}")

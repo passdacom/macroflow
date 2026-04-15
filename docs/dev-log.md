@@ -6,6 +6,23 @@
 
 ---
 
+## v0.2.8 — 2026-04-15
+
+### 버그 수정: 즐겨찾기 추가 시 앱 종료 + 미처리 예외 로그 누락
+
+#### ① 즐겨찾기 저장 시 앱 종료 수정 (`ui/main_window.py`)
+- **원인**: `_save_and_add_to_favorites()`에서 `self._favorites.add_macro()` 호출
+  → `favorites.py`의 실제 메서드명은 `add_favorite()` → `AttributeError`
+  → Qt 슬롯 미처리 예외 → 무음 앱 종료
+- **수정**: `add_macro` → `add_favorite()` 수정 + `try/except`로 예외를 로그·다이얼로그로 처리
+
+#### ② 미처리 예외 로그 누락 수정 (`main.py`)
+- **원인**: Qt 슬롯 내 예외는 `app.exec()` try/except 밖에서 발생
+  → 파일 핸들러 플러시 전에 프로세스 종료 → 로그 미기록
+- **수정**: `sys.excepthook` 등록 → 미처리 예외 발생 시 무조건 로그 기록 후 `logging.shutdown()` 호출
+
+---
+
 ## v0.2.7 — 2026-04-15
 
 ### 보안 수정 2종 + mypy 오류 수정

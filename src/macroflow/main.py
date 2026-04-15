@@ -102,6 +102,22 @@ def main() -> None:
         _fatal_dialog("MacroFlow — 오류", msg)
         sys.exit(1)
 
+    # ── 미처리 예외 훅 ────────────────────────────────────────────────────
+    # Qt 슬롯 내 AttributeError 등 미처리 예외가 앱을 무음 종료시키는 것을 방지.
+    # sys.excepthook 에 등록하면 Python 레벨 미처리 예외가 반드시 로그에 기록된다.
+    def _excepthook(
+        exc_type: type[BaseException],
+        exc_value: BaseException,
+        exc_tb: object,
+    ) -> None:
+        logger.critical(
+            "미처리 예외 — 앱이 비정상 종료됩니다",
+            exc_info=(exc_type, exc_value, exc_tb),
+        )
+        logging.shutdown()
+
+    sys.excepthook = _excepthook
+
     # ── QApplication + 메인 창 ─────────────────────────────────────────────
     try:
         app = QApplication(sys.argv)
