@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import traceback
+import types
 from datetime import datetime
 from pathlib import Path
 
@@ -108,7 +109,7 @@ def main() -> None:
     def _excepthook(
         exc_type: type[BaseException],
         exc_value: BaseException,
-        exc_tb: object,
+        exc_tb: types.TracebackType | None,
     ) -> None:
         logger.critical(
             "미처리 예외 — 앱이 비정상 종료됩니다",

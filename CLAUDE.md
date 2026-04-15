@@ -139,6 +139,29 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 | DPI 스케일링 미처리 | 다른 PC에서 좌표 어긋남 | 좌표 비율 정규화 + DPI Aware 선언 |
 | 미세 이동 중 클릭 | 클릭이 드래그로 오인식 | 거리 임계값 8px + 시간 임계값 300ms |
 
+### ⚠️ mypy CI 반복 실패 패턴 (로컬 mypy 없음 → 서버 코드 작성 시 주의)
+
+로컬에서 mypy를 실행할 수 없으므로 아래 규칙을 반드시 준수해야 CI 실패를 방지한다.
+
+**규칙 1 — PyQt6 반환값 None 가능성**
+`QMenu.addAction()`, `QListWidget.viewport()` 등 PyQt6 메서드는 mypy 타입이 `X | None`이다.
+→ `.triggered`, `.mapToGlobal()` 등을 바로 호출하면 `union-attr` 오류.
+→ **반드시** `assert result is not None` 추가 후 사용.
+
+**규칙 2 — sys.excepthook 세 번째 인자 타입**
+`sys.excepthook` 시그니처의 세 번째 파라미터는 `types.TracebackType | None`.
+→ `object`로 선언하면 `logging.critical(exc_info=...)` 호출 시 `arg-type` 오류.
+→ **반드시** `import types` 후 `types.TracebackType | None` 사용.
+
+**규칙 3 — 메서드명 불일치 (AttributeError → 무음 앱 종료)**
+Qt 슬롯에서 `AttributeError` 발생 시 로그 없이 앱이 종료된다.
+→ 새 메서드를 작성할 때 호출부(main_window.py)와 정의부(widget.py)의 메서드명을 반드시 교차 확인.
+→ `add_macro` vs `add_favorite` 같은 불일치가 실제로 발생한 사례.
+
+**규칙 4 — 표준 라이브러리 정밀 타입 사용**
+`logging.Logger.critical/error` 등의 `exc_info` 인자는 `bool | tuple[type[BaseException], BaseException, TracebackType | None] | ...` 형식을 요구.
+→ 커스텀 타입(`object`, `Any`)으로 넘기지 말 것. 정확한 stdlib 타입을 `import types`로 가져와 사용.
+
 ---
 
 ## 8. 현재 진행 상태 (v0.2.8 — 2026-04-15 기준)
