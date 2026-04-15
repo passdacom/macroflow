@@ -377,8 +377,10 @@ def get_pixel_color(x: int, y: int) -> tuple[int, int, int]:
         (R, G, B) 튜플.
     """
     hdc = _user32.GetDC(None)
-    color: int = _gdi32.GetPixel(hdc, x, y)
-    _user32.ReleaseDC(None, hdc)
+    try:
+        color: int = _gdi32.GetPixel(hdc, x, y)
+    finally:
+        _user32.ReleaseDC(None, hdc)
     return (color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF)
 
 

@@ -141,7 +141,7 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 
 ---
 
-## 8. 현재 진행 상태 (v0.2.5 — 2026-04-14 기준)
+## 8. 현재 진행 상태 (v0.2.6 — 2026-04-15 기준)
 
 ### 마일스톤
 - [x] M0: CI/CD 환경 — GitHub Actions, Windows EXE 빌드, Releases 자동 업로드
@@ -162,6 +162,8 @@ uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 - [x] 키 수정 버그 수정 — OEM 특수문자 VK 매핑 + VkKeyScanA 폴백
 - [x] 이전 매크로 복원 — F6 실수 시 1클릭 복원 (메모리+파일 백업)
 - [x] 음수 딜레이 이벤트 순서 역전 방지 — last_significant_event_end_ns 클램프
+- [x] drag sleep 100ms 제거 — 단일 SendInput 배치 호출로 타이밍 드리프트 수정
+- [x] GDI 핸들 누수 수정 — get_pixel_color() try/finally
 
 **현재 단계**: 기능 구현 완료. 실사용 피드백 기반 UX 개선 중.
 

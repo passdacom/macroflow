@@ -12,7 +12,6 @@ import ctypes
 import ctypes.wintypes
 import logging
 import sys
-import time
 
 assert sys.platform == "win32", "sendinput.py는 Windows에서만 실행 가능합니다"
 
@@ -178,16 +177,18 @@ def send_mouse_drag(x1: int, y1: int, x2: int, y2: int, button: str = "left") ->
     down_flag, up_flag = _BUTTON_FLAGS.get(button, _BUTTON_FLAGS["left"])
     steps = 10
 
-    _send(_mouse_input(x1, y1, MOUSEEVENTF_MOVE))
-    _send(_mouse_input(x1, y1, down_flag))
-
+    # core-beliefs 원칙 3: time.sleep 사용 금지 — 보간 이동은 sleep 없이 일괄 전송
+    inputs: list[_INPUT] = [
+        _mouse_input(x1, y1, MOUSEEVENTF_MOVE),
+        _mouse_input(x1, y1, down_flag),
+    ]
     for i in range(1, steps + 1):
         mx = x1 + (x2 - x1) * i // steps
         my = y1 + (y2 - y1) * i // steps
-        _send(_mouse_input(mx, my, MOUSEEVENTF_MOVE))
-        time.sleep(0.01)
+        inputs.append(_mouse_input(mx, my, MOUSEEVENTF_MOVE))
+    inputs.append(_mouse_input(x2, y2, up_flag))
 
-    _send(_mouse_input(x2, y2, up_flag))
+    _send(*inputs)
 
 
 def send_mouse_button(x: int, y: int, button: str, down: bool) -> None:
