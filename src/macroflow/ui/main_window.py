@@ -483,7 +483,10 @@ class MainWindow(QMainWindow):
             if sys.platform == "win32":
                 from macroflow.win32 import start_emergency_hook
                 start_emergency_hook(self._sig_emergency_stop.emit)
-            self._sequencer.run_sequence()
+            _speed_presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
+            idx = self._speed_combo.currentIndex()
+            speed = self._custom_speed if idx == 6 else _speed_presets[idx]
+            self._sequencer.run_sequence(speed=speed)
 
     def _toggle_playback(self) -> None:
         if self._state == "idle" and self._macro:

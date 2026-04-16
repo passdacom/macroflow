@@ -279,10 +279,10 @@ class MacroSequencerWidget(QWidget):
         """시퀀스가 실행 중인지 반환한다."""
         return self._engine is not None and self._engine.is_running()
 
-    def run_sequence(self) -> None:
+    def run_sequence(self, speed: float = 1.0) -> None:
         """외부(main_window)에서 시퀀스를 시작한다."""
         if self._items and not self.is_running():
-            self._run_sequence()
+            self._run_sequence(speed=speed)
 
     def stop_sequence(self) -> None:
         """외부(main_window)에서 시퀀스를 중지한다."""
@@ -464,7 +464,7 @@ class MacroSequencerWidget(QWidget):
 
     # ── 시퀀스 실행 ───────────────────────────────────────────────────────────
 
-    def _run_sequence(self) -> None:
+    def _run_sequence(self, speed: float = 1.0) -> None:
         if not self._items:
             return
 
@@ -490,9 +490,10 @@ class MacroSequencerWidget(QWidget):
             on_node_done=self._on_node_done,
             on_complete=lambda s: self.sequence_complete.emit(s),
             on_error=lambda m: self.sequence_error.emit(m),
+            speed=speed,
         )
         self._engine.start(flow)
-        self._log_message("시퀀스 실행 시작")
+        self._log_message(f"시퀀스 실행 시작 (속도 {speed:.1f}x)")
 
     def _stop_sequence(self) -> None:
         if self._engine:

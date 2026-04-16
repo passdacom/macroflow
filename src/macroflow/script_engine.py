@@ -299,6 +299,7 @@ class FlowEngine:
         on_node_done: Callable[[str, bool, str], None] | None = None,
         on_complete: Callable[[str], None] | None = None,
         on_error: Callable[[str], None] | None = None,
+        speed: float = 1.0,
     ) -> None:
         self._flow_path = Path(flow_path)
         self._base_dir = self._flow_path.parent
@@ -306,6 +307,7 @@ class FlowEngine:
         self._on_node_done = on_node_done
         self._on_complete = on_complete
         self._on_error = on_error
+        self._speed = speed
         self._stop_flag = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -455,7 +457,7 @@ class FlowEngine:
             result["msg"] = str(exc)
             done_event.set()
 
-        player.play(macro, on_complete=_on_complete, on_error=_on_error)
+        player.play(macro, speed=self._speed, on_complete=_on_complete, on_error=_on_error)
 
         # 재생 완료 또는 중단 신호까지 대기
         while not done_event.is_set() and not self._stop_flag.is_set():
