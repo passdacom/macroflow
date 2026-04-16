@@ -525,6 +525,11 @@ class MainWindow(QMainWindow):
             self._sequencer.run_sequence(speed=speed)
 
     def _toggle_playback(self) -> None:
+        # 시퀀서 탭에서는 단일 매크로 재생 대신 시퀀스 실행/중지로 위임
+        # (RegisterHotKey 폴백 QShortcut 경로에서도 일관된 동작 보장)
+        if self._is_sequencer_tab():
+            self._toggle_sequencer()
+            return
         if self._state == "idle" and self._macro:
             self._start_playback()
         elif self._state == "playing":
