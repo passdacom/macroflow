@@ -97,12 +97,18 @@ def _execute_event(
                 actual = get_pixel_color(x, y)
                 target = _hex_to_rgb(event.recorded_color)
                 if not _color_matches(actual, target, settings.color_check_click_tolerance):
-                    # 색 불일치 → 이 클릭 스킵, 대응하는 up도 스킵하도록 표시
+                    actual_hex = f"#{actual[0]:02X}{actual[1]:02X}{actual[2]:02X}"
+                    if event.color_check_on_mismatch == "stop":
+                        # stop 모드: 재생 전체를 즉시 중단
+                        raise PlaybackError(
+                            f"색 체크 불일치 → 재생 중단 "
+                            f"at ({x},{y}) 실제={actual_hex} 기록={event.recorded_color}"
+                        )
+                    # skip 모드: 이 클릭 스킵, 대응하는 up도 스킵하도록 표시
                     state.color_check_skip_button = event.button
                     logger.debug(
                         f"[color_check] skip click at ({x},{y}): "
-                        f"actual=#{actual[0]:02X}{actual[1]:02X}{actual[2]:02X} "
-                        f"target={event.recorded_color}"
+                        f"actual={actual_hex} target={event.recorded_color}"
                     )
                     return
             send_mouse_move(x, y)

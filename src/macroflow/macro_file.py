@@ -15,7 +15,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from macroflow.types import (
     AnyEvent,
@@ -82,6 +82,10 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
 
     match d["type"]:
         case "mouse_down" | "mouse_up":
+            raw_action = d.get("color_check_on_mismatch", "skip")
+            on_mismatch: Literal["skip", "stop"] = (
+                "stop" if raw_action == "stop" else "skip"
+            )
             return MouseButtonEvent(
                 **common,
                 x_ratio=d["x_ratio"],
@@ -89,6 +93,7 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
                 button=d.get("button", "left"),
                 recorded_color=d.get("recorded_color"),
                 color_check_enabled=d.get("color_check_enabled", False),
+                color_check_on_mismatch=on_mismatch,
             )
         case "mouse_move":
             return MouseMoveEvent(
@@ -495,6 +500,40 @@ def toggle_color_check(macro: MacroData, event_id: str) -> MacroData:
             if not isinstance(event, MouseButtonEvent):
                 raise TypeError(f"Event {event_id!r} is not a MouseButtonEvent")
             event.color_check_enabled = not event.color_check_enabled
+            return MacroData(
+                meta=macro.meta,
+                settings=macro.settings,
+                raw_events=macro.raw_events,
+                events=updated,
+                is_edited=True,
+            )
+    raise KeyError(f"Event id not found: {event_id!r}")
+
+
+def set_color_check_on_mismatch(
+    macro: MacroData, event_id: str, action: Literal["skip", "stop"]
+) -> MacroData:
+    """events에서 특정 mouse_down 이벤트의 color_check_on_mismatch를 변경한다.
+
+    Args:
+        macro: 원본 MacroData.
+        event_id: 수정할 mouse_down 이벤트 id.
+        action: "skip" — 불일치 시 해당 클릭만 스킵 후 계속 실행.
+                "stop" — 불일치 시 재생 전체 즉시 중단.
+
+    Returns:
+        color_check_on_mismatch가 변경된 새 MacroData (is_edited=True).
+
+    Raises:
+        KeyError: 해당 id를 가진 이벤트가 없는 경우.
+        TypeError: 해당 이벤트가 MouseButtonEvent가 아닌 경우.
+    """
+    updated = copy.deepcopy(macro.events)
+    for event in updated:
+        if event.id == event_id:
+            if not isinstance(event, MouseButtonEvent):
+                raise TypeError(f"Event {event_id!r} is not a MouseButtonEvent")
+            event.color_check_on_mismatch = action
             return MacroData(
                 meta=macro.meta,
                 settings=macro.settings,

@@ -47,6 +47,7 @@ class MouseButtonEvent(MacroEvent):
     button: Literal["left", "right", "middle"] = "left"
     recorded_color: str | None = None
     color_check_enabled: bool = False
+    color_check_on_mismatch: Literal["skip", "stop"] = "skip"
 
 
 @dataclass(kw_only=True)
