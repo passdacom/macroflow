@@ -47,6 +47,7 @@ from macroflow.macro_file import (
     reset_to_raw,
     set_delay_all,
     set_delay_single,
+    toggle_color_check,
 )
 from macroflow.types import (
     AnyEvent,
@@ -69,19 +70,21 @@ _MAX_UNDO = 50
 # ── 행 종류별 색상 ──────────────────────────────────────────────────────────────
 
 _KIND_COLORS: dict[str, QColor] = {
-    "click":          QColor(60, 110, 200),
-    "right_click":    QColor(80, 60, 180),
-    "drag":           QColor(40, 80, 160),
-    "right_drag":     QColor(60, 40, 140),
-    "key_press":      QColor(60, 145, 85),
-    "mouse_move":     QColor(90, 90, 90),
-    "mouse_wheel":    QColor(20, 150, 155),   # 청록색 — 휠 스크롤
-    "wait":           QColor(190, 120, 50),
-    "color_trigger":  QColor(140, 80, 170),
-    "window_trigger": QColor(140, 80, 170),
-    "condition":      QColor(170, 140, 40),
-    "loop":           QColor(170, 140, 40),
-    "orphan":         QColor(160, 60, 60),
+    "click":                 QColor(60, 110, 200),
+    "right_click":           QColor(80, 60, 180),
+    "drag":                  QColor(40, 80, 160),
+    "right_drag":            QColor(60, 40, 140),
+    "color_check_click":     QColor(200, 100, 30),   # 주황색 — 색 체크 활성 클릭
+    "color_check_right_click": QColor(180, 70, 20),  # 진한 주황 — 색 체크 활성 우클릭
+    "key_press":             QColor(60, 145, 85),
+    "mouse_move":            QColor(90, 90, 90),
+    "mouse_wheel":           QColor(20, 150, 155),   # 청록색 — 휠 스크롤
+    "wait":                  QColor(190, 120, 50),
+    "color_trigger":         QColor(140, 80, 170),
+    "window_trigger":        QColor(140, 80, 170),
+    "condition":             QColor(170, 140, 40),
+    "loop":                  QColor(170, 140, 40),
+    "orphan":                QColor(160, 60, 60),
 }
 
 _COLUMNS = ["#", "타입", "내용", "시간(ms)", "딜레이(ms)", "출처"]
@@ -101,6 +104,7 @@ class _DisplayRow:
     event_indices: list[int]  # 이 행이 나타내는 이벤트 인덱스들
     primary_idx: int          # 딜레이/편집 기준 이벤트 인덱스
     source_file: str = ""     # 출처 파일명 (병합 매크로에서 설정)
+    color_check_enabled: bool = False  # 색 체크 활성 여부 (색 체크 클릭 행)
 
 
 def _delay_str(event: AnyEvent) -> str:
@@ -143,6 +147,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             btn_ko = "왼쪽" if event.button == "left" else "오른쪽"
             x_s = f"{event.x_ratio * 100:.1f}%"
             y_s = f"{event.y_ratio * 100:.1f}%"
+            is_color_check = event.color_check_enabled and event.recorded_color is not None
 
             if up_idx is not None:
                 all_indices = [i] + move_indices + [up_idx]
@@ -150,13 +155,25 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 if len(move_indices) > 3:
                     kind = "drag" if event.button == "left" else "right_drag"
                     label = f"드래그({btn_ko})"
+                elif is_color_check:
+                    kind = ("color_check_click" if event.button == "left"
+                            else "color_check_right_click")
+                    label = f"클릭({btn_ko}) 🎨"
                 else:
                     kind = "click" if event.button == "left" else "right_click"
                     label = f"클릭({btn_ko})"
+                # 색 정보 표시: 체크 활성=색 강조, 비활성=회색 괄호
+                if event.recorded_color:
+                    color_tag = (f" 🎨{event.recorded_color}" if is_color_check
+                                 else f" [{event.recorded_color}]")
+                    detail = f"({x_s}, {y_s}){color_tag}"
+                else:
+                    detail = f"({x_s}, {y_s})"
                 rows.append(_DisplayRow(
-                    kind, label, f"({x_s}, {y_s})",
+                    kind, label, detail,
                     event.timestamp_ns / 1_000_000,
                     _delay_str(event), all_indices, i,
+                    color_check_enabled=is_color_check,
                 ))
             else:
                 consumed.add(i)
@@ -798,9 +815,25 @@ class EventEditorWidget(QWidget):
                 act_edit_key = menu.addAction("키 값 변경...")
                 act_edit_key.triggered.connect(lambda: self._edit_key(rows[0]))
 
-            if row.kind in ("click", "right_click", "drag", "right_drag", "orphan", "mouse_move"):
+            if row.kind in (
+                "click", "right_click", "drag", "right_drag",
+                "color_check_click", "color_check_right_click",
+                "orphan", "mouse_move",
+            ):
                 act_edit_pos = menu.addAction("위치 변경...")
+                assert act_edit_pos is not None
                 act_edit_pos.triggered.connect(lambda: self._edit_position(rows[0]))
+
+            # 색 체크 토글 — recorded_color가 있는 클릭/드래그에서만 표시
+            if row.kind in (
+                "click", "right_click", "drag", "right_drag",
+                "color_check_click", "color_check_right_click",
+            ) and isinstance(primary, MouseButtonEvent) and primary.recorded_color is not None:
+                is_checked = primary.color_check_enabled
+                check_text = "🎨 색 체크 끄기" if is_checked else "🎨 색 체크 켜기"
+                act_color = menu.addAction(check_text)
+                assert act_color is not None
+                act_color.triggered.connect(lambda: self._toggle_color_check(rows[0]))
 
             if row.kind == "mouse_wheel":
                 act_edit_wheel = menu.addAction("스크롤 편집...")
@@ -832,7 +865,11 @@ class EventEditorWidget(QWidget):
             primary = self._macro.events[display_row.primary_idx]
             if display_row.kind == "key_press" and isinstance(primary, KeyEvent):
                 self._edit_key(row)
-            elif display_row.kind in ("click", "right_click", "drag", "right_drag", "orphan", "mouse_move"):
+            elif display_row.kind in (
+                "click", "right_click", "drag", "right_drag",
+                "color_check_click", "color_check_right_click",
+                "orphan", "mouse_move",
+            ):
                 self._edit_position(row)
             elif display_row.kind == "mouse_wheel":
                 self._edit_wheel(row)
@@ -1263,6 +1300,29 @@ class EventEditorWidget(QWidget):
             return
         self._push_undo()
         self._macro = reset_to_raw(self._macro)
+        self._refresh()
+        self.macro_changed.emit(self._macro)
+
+    # ── 색 체크 토글 ─────────────────────────────────────────────────────────
+
+    def _toggle_color_check(self, row_idx: int) -> None:
+        """지정 행 클릭 이벤트의 색 체크(color_check_enabled)를 토글한다.
+
+        recorded_color가 없는 이벤트에서는 아무 동작도 하지 않는다.
+        """
+        if self._macro is None or row_idx >= len(self._rows):
+            return
+        row = self._rows[row_idx]
+        primary = self._macro.events[row.primary_idx]
+        if not isinstance(primary, MouseButtonEvent) or primary.recorded_color is None:
+            return
+        self._push_undo()
+        try:
+            new_macro = toggle_color_check(self._macro, primary.id)
+        except (KeyError, TypeError):
+            self._undo_stack.pop()
+            return
+        self._macro = new_macro
         self._refresh()
         self.macro_changed.emit(self._macro)
 

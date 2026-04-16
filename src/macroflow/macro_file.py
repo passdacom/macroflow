@@ -87,6 +87,8 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
                 x_ratio=d["x_ratio"],
                 y_ratio=d["y_ratio"],
                 button=d.get("button", "left"),
+                recorded_color=d.get("recorded_color"),
+                color_check_enabled=d.get("color_check_enabled", False),
             )
         case "mouse_move":
             return MouseMoveEvent(
@@ -463,6 +465,36 @@ def edit_position(
                 raise TypeError(f"Event {event_id!r} is not a mouse event")
             event.x_ratio = new_x_ratio
             event.y_ratio = new_y_ratio
+            return MacroData(
+                meta=macro.meta,
+                settings=macro.settings,
+                raw_events=macro.raw_events,
+                events=updated,
+                is_edited=True,
+            )
+    raise KeyError(f"Event id not found: {event_id!r}")
+
+
+def toggle_color_check(macro: MacroData, event_id: str) -> MacroData:
+    """events에서 특정 id의 mouse_down 이벤트의 color_check_enabled를 토글한다.
+
+    Args:
+        macro: 원본 MacroData.
+        event_id: 수정할 mouse_down 이벤트 id (8자리 hex).
+
+    Returns:
+        color_check_enabled가 반전된 새 MacroData (is_edited=True).
+
+    Raises:
+        KeyError: 해당 id를 가진 이벤트가 없는 경우.
+        TypeError: 해당 이벤트가 MouseButtonEvent가 아닌 경우.
+    """
+    updated = copy.deepcopy(macro.events)
+    for event in updated:
+        if event.id == event_id:
+            if not isinstance(event, MouseButtonEvent):
+                raise TypeError(f"Event {event_id!r} is not a MouseButtonEvent")
+            event.color_check_enabled = not event.color_check_enabled
             return MacroData(
                 meta=macro.meta,
                 settings=macro.settings,

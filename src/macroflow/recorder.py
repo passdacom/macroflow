@@ -33,6 +33,7 @@ from macroflow.types import (
 )
 from macroflow.win32 import (
     get_logical_screen_size,
+    get_pixel_color,
     pixel_to_ratio,
     start_hook,
     stop_hook,
@@ -155,11 +156,15 @@ def _convert_raw(
                 x_ratio=x_ratio, y_ratio=y_ratio,
             )
         if wParam in _MOUSE_DOWN_MAP:
+            # 클릭 시 해당 픽셀 색을 함께 저장 (색 체크 기능에 활용)
+            r, g, b = get_pixel_color(x_px, y_px)
+            recorded_color = f"#{r:02X}{g:02X}{b:02X}"
             return MouseButtonEvent(
                 id=eid, type="mouse_down",
                 timestamp_ns=rel_ts_ns,
                 x_ratio=x_ratio, y_ratio=y_ratio,
                 button=_MOUSE_DOWN_MAP[wParam],  # type: ignore[arg-type]
+                recorded_color=recorded_color,
             )
         if wParam in _MOUSE_UP_MAP:
             return MouseButtonEvent(

@@ -60,6 +60,8 @@ class _PlayState:
     pending_down_real_y: int = 0
     pending_down_time_ns: int = 0
     has_moves_since_down: bool = False
+    # 색 체크 불일치로 down을 스킵한 경우, 대응하는 up도 스킵하기 위한 버튼명
+    color_check_skip_button: str | None = None
 
 
 # ── 모듈 레벨 상태 ────────────────────────────────────────────────────────────
@@ -88,6 +90,21 @@ def _execute_event(
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
 
         if event.type == "mouse_down":
+            # 색 체크 활성화된 클릭: 마우스 이동 → hover 대기 → 픽셀 색 비교
+            if event.color_check_enabled and event.recorded_color is not None:
+                send_mouse_move(x, y)
+                time.sleep(0.05)  # hover 효과 대기
+                actual = get_pixel_color(x, y)
+                target = _hex_to_rgb(event.recorded_color)
+                if not _color_matches(actual, target, settings.color_check_click_tolerance):
+                    # 색 불일치 → 이 클릭 스킵, 대응하는 up도 스킵하도록 표시
+                    state.color_check_skip_button = event.button
+                    logger.debug(
+                        f"[color_check] skip click at ({x},{y}): "
+                        f"actual=#{actual[0]:02X}{actual[1]:02X}{actual[2]:02X} "
+                        f"target={event.recorded_color}"
+                    )
+                    return
             send_mouse_move(x, y)
             send_mouse_button(x, y, event.button, down=True)
             state.pending_down = event
@@ -97,6 +114,10 @@ def _execute_event(
             state.has_moves_since_down = False
 
         else:  # mouse_up
+            # 색 체크 불일치로 down이 스킵된 경우 up도 스킵
+            if state.color_check_skip_button == event.button:
+                state.color_check_skip_button = None
+                return
             if state.pending_down is not None and not state.has_moves_since_down:
                 dist = math.hypot(
                     x - state.pending_down_real_x,
@@ -172,10 +193,16 @@ def _color_matches(
 def _wait_for_color(event: ColorTriggerEvent) -> None:
     """목표 픽셀 색이 나타날 때까지 폴링한다.
 
+    마우스를 해당 위치로 먼저 이동한다. hover로 색이 변하는 UI 요소
+    (버튼 활성화 표시 등)에서도 올바르게 트리거하기 위함.
+
     Raises:
         PlaybackError: on_timeout=="error"이고 타임아웃 발생 시.
     """
     x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
+    # hover 효과 트리거: 색 체크 전 마우스를 해당 위치로 이동
+    send_mouse_move(x, y)
+    time.sleep(0.05)
     target = _hex_to_rgb(event.target_color)
     deadline_ns = time.perf_counter_ns() + event.timeout_ms * 1_000_000
     interval_s = event.check_interval_ms / 1000.0

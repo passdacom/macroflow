@@ -37,11 +37,16 @@ class MouseButtonEvent(MacroEvent):
         x_ratio: 화면 너비 대비 X 좌표 비율 (0.0~1.0).
         y_ratio: 화면 높이 대비 Y 좌표 비율 (0.0~1.0).
         button: 마우스 버튼 종류.
+        recorded_color: 녹화 시 해당 좌표의 픽셀 색 (#RRGGBB). None이면 미저장.
+        color_check_enabled: True이면 재생 시 클릭 전 recorded_color와 현재 픽셀 색을
+            비교하여 불일치 시 해당 클릭을 스킵한다.
     """
 
     x_ratio: float
     y_ratio: float
     button: Literal["left", "right", "middle"] = "left"
+    recorded_color: str | None = None
+    color_check_enabled: bool = False
 
 
 @dataclass(kw_only=True)
@@ -229,6 +234,7 @@ class MacroSettings:
     default_playback_speed: float = 1.0
     color_trigger_check_interval_ms: int = 50
     color_trigger_default_timeout_ms: int = 10000
+    color_check_click_tolerance: int = 10
 
 
 @dataclass(kw_only=True)

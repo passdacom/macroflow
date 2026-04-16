@@ -131,6 +131,7 @@ class MainWindow(QMainWindow):
         self._poll_timer.timeout.connect(self._poll_state)
 
         self._update_toolbar()
+        self._restore_settings()
 
     # ── 창 설정 ───────────────────────────────────────────────────────────────
 
@@ -334,8 +335,37 @@ class MainWindow(QMainWindow):
             player.stop()
         if sys.platform == "win32" and self._hotkeys_registered:
             self._unregister_hotkeys()
+        self._save_settings()
         self._overlay.close()
         super().closeEvent(event)
+
+    def _save_settings(self) -> None:
+        """창 위치·크기와 마지막 열었던 파일 경로를 QSettings에 저장한다."""
+        from PyQt6.QtCore import QSettings
+        s = QSettings("MacroFlow", "MacroFlow")
+        s.setValue("geometry", self.saveGeometry())
+        if self._current_file is not None:
+            s.setValue("last_file", str(self._current_file))
+
+    def _restore_settings(self) -> None:
+        """QSettings에서 창 위치·크기와 마지막 파일을 복원한다."""
+        from PyQt6.QtCore import QSettings
+        s = QSettings("MacroFlow", "MacroFlow")
+        geo = s.value("geometry")
+        if geo:
+            self.restoreGeometry(geo)
+        last_file = s.value("last_file", "")
+        if last_file and Path(str(last_file)).exists():
+            try:
+                from macroflow.macro_file import load
+                macro = load(str(last_file))
+                self._macro = macro
+                self._current_file = Path(str(last_file))
+                self._editor.load_macro(macro)
+                self._update_range_spinboxes()
+                logger.info(f"마지막 파일 복원: {last_file}")
+            except Exception as exc:
+                logger.warning(f"마지막 파일 복원 실패 ({last_file}): {exc}")
 
     def _register_hotkeys(self) -> None:
         if sys.platform == "win32":
@@ -410,8 +440,14 @@ class MainWindow(QMainWindow):
         return self._tabs.currentWidget() is self._favorites
 
     def _on_tab_changed(self, _index: int) -> None:
-        """탭 전환 시 툴바 버튼 상태를 갱신한다."""
+        """탭 전환 시 툴바 버튼 상태와 상태바 힌트를 갱신한다."""
         self._update_toolbar()
+        if self._is_sequencer_tab():
+            self._sb_hint.setText("F7: 시퀀스 실행/중지  |  ESC×3: 긴급 중지")
+        elif self._is_favorites_tab():
+            self._sb_hint.setText("더블클릭: 매크로 로드  |  우클릭: 시퀀서 추가")
+        else:
+            self._sb_hint.setText("F6: 녹화  |  F7: 재생/색트리거  |  ESC×3: 긴급 중지")
 
     # ── 상태 머신 ─────────────────────────────────────────────────────────────
 
@@ -659,11 +695,12 @@ class MainWindow(QMainWindow):
         logger.info(f"색상 체크 삽입: {color_hex} @ pixel ({x}, {y})")
 
     def _on_sequence_done(self, _msg: str = "") -> None:
-        """시퀀스 완료/오류 시 emergency hook 해제 후 툴바를 갱신한다."""
+        """시퀀스 완료/오류 시 emergency hook 해제 후 툴바·상태바를 갱신한다."""
         if sys.platform == "win32":
             from macroflow.win32 import stop_emergency_hook
             stop_emergency_hook()
         self._update_toolbar()
+        self._sb_state.setText("대기 중")
 
     def _start_range_playback(self) -> None:
         """구간 재생 전용 버튼: 구간이 설정된 경우에만 재생한다."""
@@ -769,6 +806,12 @@ class MainWindow(QMainWindow):
         self._act_save_seq.setEnabled(is_idle and self._macro is not None)
         self._act_save_fav.setEnabled(is_idle and self._macro is not None)
         self._act_restore_prev.setEnabled(is_idle and self._prev_macro is not None)
+
+        # 시퀀서 실행 중이거나 재생/녹화 중에는 속도·반복·간격 설정 불가
+        can_change_settings = is_idle and not seq_running
+        self._speed_combo.setEnabled(can_change_settings)
+        self._repeat_spin.setEnabled(can_change_settings)
+        self._interval_spin.setEnabled(can_change_settings)
 
     def _update_range_spinboxes(self) -> None:
         """매크로 로드 후 구간 SpinBox 범위를 갱신한다."""
