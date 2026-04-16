@@ -16,7 +16,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QDropEvent
@@ -287,7 +287,7 @@ class FavoritesWidget(QWidget):
     def _find_group(self, gid: str) -> dict[str, Any] | None:
         for g in self._index.get("groups", []):
             if g.get("id") == gid:
-                return g
+                return cast(dict[str, Any], g)
         return None
 
     def _all_indexed_filenames(self) -> set[str]:
@@ -302,7 +302,8 @@ class FavoritesWidget(QWidget):
         """파일명이 속한 그룹 ID를 반환한다."""
         for g in self._index.get("groups", []):
             if filename in g.get("items", []):
-                return g.get("id")
+                raw_id = g.get("id")
+                return str(raw_id) if raw_id is not None else None
         return None
 
     # ── 트리 갱신 ────────────────────────────────────────────────────────────

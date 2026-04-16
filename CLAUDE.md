@@ -162,6 +162,27 @@ Qt 슬롯에서 `AttributeError` 발생 시 로그 없이 앱이 종료된다.
 `logging.Logger.critical/error` 등의 `exc_info` 인자는 `bool | tuple[type[BaseException], BaseException, TracebackType | None] | ...` 형식을 요구.
 → 커스텀 타입(`object`, `Any`)으로 넘기지 말 것. 정확한 stdlib 타입을 `import types`로 가져와 사용.
 
+**규칙 5 — dict[str, Any] 반복 시 no-any-return**
+`dict[str, Any]`에서 `.get(key, [])` 로 꺼낸 요소는 `Any` 타입이다.
+→ 이를 `dict[str, Any] | None` 반환 함수에서 그대로 `return` 하면 `no-any-return` 오류.
+→ **반드시** `cast(dict[str, Any], g)` 또는 `str(raw) if raw is not None else None` 형태로 변환.
+
+```python
+# ❌ 실패
+for g in self._index.get("groups", []):
+    return g          # Returning Any
+
+# ✅ 수정
+from typing import cast
+for g in self._index.get("groups", []):
+    return cast(dict[str, Any], g)
+```
+
+**규칙 6 — 새 UI 파일 추가 시 pyproject.toml 확인**
+`src/macroflow/ui/` 하위 새 파일 추가 시 `pyproject.toml`의 `[[tool.mypy.overrides]]` 목록에
+`macroflow.ui.<파일명>` 이 포함되어 있는지 확인. 없으면 mypy strict 전체 검사 대상이 됨.
+→ 규칙 1~5를 완전히 지키거나, 목록에 추가(단, 타입 안전성 포기이므로 비권장).
+
 ---
 
 ## 8. 현재 진행 상태 (v1.0.0 — 2026-04-16 기준)
