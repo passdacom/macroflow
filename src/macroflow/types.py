@@ -47,7 +47,7 @@ class MouseButtonEvent(MacroEvent):
     button: Literal["left", "right", "middle"] = "left"
     recorded_color: str | None = None
     color_check_enabled: bool = False
-    color_check_on_mismatch: Literal["skip", "stop"] = "skip"
+    color_check_on_mismatch: Literal["skip", "stop", "wait"] = "skip"
 
 
 @dataclass(kw_only=True)
@@ -150,6 +150,20 @@ class WindowTriggerEvent(MacroEvent):
 
 
 @dataclass(kw_only=True)
+class TextInputEvent(MacroEvent):
+    """text_input 이벤트 — Unicode 문자열을 KEYEVENTF_UNICODE로 직접 입력.
+
+    키보드 배치·언어 설정과 무관하게 입력한 문자열을 그대로 전송한다.
+    한글·영문·숫자·특수문자 모두 지원. IME 우회.
+
+    Attributes:
+        text: 입력할 문자열.
+    """
+
+    text: str
+
+
+@dataclass(kw_only=True)
 class ConditionEvent(MacroEvent):
     """condition 이벤트 — DSL 표현식 기반 조건 분기.
 
@@ -186,6 +200,7 @@ AnyEvent = (
     | WaitEvent
     | ColorTriggerEvent
     | WindowTriggerEvent
+    | TextInputEvent
     | ConditionEvent
     | LoopEvent
 )
