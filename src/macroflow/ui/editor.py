@@ -61,6 +61,7 @@ from macroflow.types import (
     MouseButtonEvent,
     MouseMoveEvent,
     MouseWheelEvent,
+    TextInputEvent,
     WaitEvent,
     WindowTriggerEvent,
 )
@@ -80,6 +81,11 @@ _KIND_COLORS: dict[str, QColor] = {
     "color_check_right_click":     QColor(180, 70,  20),   # 진한 주황 — 우클릭 스킵 모드
     "color_check_click_stop":      QColor(210,  45,  45),   # 빨강 — 색 체크 중지 모드
     "color_check_right_click_stop": QColor(180, 30,  30),  # 진한 빨강 — 우클릭 중지 모드
+    # wait 색상 (파란 계열)
+    "color_check_click_wait":       QColor(40,  120, 210),  # 파랑 — 색 체크 대기 모드
+    "color_check_right_click_wait": QColor(30,   90, 180),  # 진한 파랑
+    # 텍스트 입력
+    "text_input":                   QColor(0,   170, 130),  # 녹청(teal)
     "key_press":             QColor(60, 145, 85),
     "mouse_move":            QColor(90, 90, 90),
     "mouse_wheel":           QColor(20, 150, 155),   # 청록색 — 휠 스크롤
@@ -109,7 +115,7 @@ class _DisplayRow:
     primary_idx: int          # 딜레이/편집 기준 이벤트 인덱스
     source_file: str = ""     # 출처 파일명 (병합 매크로에서 설정)
     color_check_enabled: bool = False         # 색 체크 활성 여부
-    color_check_on_mismatch: str = "skip"     # "skip" | "stop"
+    color_check_on_mismatch: str = "skip"     # "skip" | "stop" | "wait"
 
 
 def _delay_str(event: AnyEvent) -> str:
@@ -161,13 +167,24 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                     kind = "drag" if event.button == "left" else "right_drag"
                     label = f"드래그({btn_ko})"
                 elif is_color_check:
-                    is_stop = event.color_check_on_mismatch == "stop"
-                    emoji = "🛑" if is_stop else "🎨"
+                    mismatch = event.color_check_on_mismatch
+                    is_stop = mismatch == "stop"
+                    is_wait = mismatch == "wait"
+                    emoji = "🛑" if is_stop else ("⏳" if is_wait else "🎨")
                     if event.button == "left":
-                        kind = "color_check_click_stop" if is_stop else "color_check_click"
+                        if is_stop:
+                            kind = "color_check_click_stop"
+                        elif is_wait:
+                            kind = "color_check_click_wait"
+                        else:
+                            kind = "color_check_click"
                     else:
-                        kind = ("color_check_right_click_stop" if is_stop
-                                else "color_check_right_click")
+                        if is_stop:
+                            kind = "color_check_right_click_stop"
+                        elif is_wait:
+                            kind = "color_check_right_click_wait"
+                        else:
+                            kind = "color_check_right_click"
                     label = f"클릭({btn_ko}) {emoji}"
                 else:
                     is_stop = False
@@ -258,6 +275,16 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             consumed.add(i)
             rows.append(_DisplayRow(
                 "key_press", "키 뗌", event.key,
+                event.timestamp_ns / 1_000_000,
+                _delay_str(event), [i], i,
+            ))
+
+        # ── 텍스트 입력 ──────────────────────────────────────────────────────────────────────
+        elif isinstance(event, TextInputEvent):
+            consumed.add(i)
+            preview = event.text if len(event.text) <= 30 else event.text[:27] + "..."
+            rows.append(_DisplayRow(
+                "text_input", "텍스트 입력", f'"{preview}"',
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
@@ -823,53 +850,70 @@ class EventEditorWidget(QWidget):
             act_play_single.triggered.connect(lambda: self._play_single_event(rows[0]))
             menu.addSeparator()
 
-            act_edit_delay = menu.addAction("딜레이 설정...")
+            act_edit_delay = menu.addAction("딜레이 설정(&D)...")
             act_edit_delay.triggered.connect(lambda: self._edit_delay(rows[0]))
 
             if row.kind == "key_press" and isinstance(primary, KeyEvent):
-                act_edit_key = menu.addAction("키 값 변경...")
+                act_edit_key = menu.addAction("키 값 변경(&K)...")
+                assert act_edit_key is not None
                 act_edit_key.triggered.connect(lambda: self._edit_key(rows[0]))
 
             _COLOR_CHECK_KINDS = (
                 "click", "right_click", "drag", "right_drag",
                 "color_check_click", "color_check_right_click",
                 "color_check_click_stop", "color_check_right_click_stop",
+                "color_check_click_wait", "color_check_right_click_wait",
             )
 
             if row.kind in _COLOR_CHECK_KINDS + ("orphan", "mouse_move"):
-                act_edit_pos = menu.addAction("위치 변경...")
+                act_edit_pos = menu.addAction("위치 변경(&P)...")
                 assert act_edit_pos is not None
                 act_edit_pos.triggered.connect(lambda: self._edit_position(rows[0]))
 
             # 색 체크 토글 — recorded_color가 있는 클릭/드래그에서만 표시
             if row.kind in _COLOR_CHECK_KINDS and isinstance(primary, MouseButtonEvent) and primary.recorded_color is not None:
                 is_checked = primary.color_check_enabled
-                check_text = "🎨 색 체크 끄기" if is_checked else "🎨 색 체크 켜기"
+                check_text = "🎨 색 체크 끄기(&C)" if is_checked else "🎨 색 체크 켜기(&C)"
                 act_color = menu.addAction(check_text)
                 assert act_color is not None
                 act_color.triggered.connect(lambda: self._toggle_color_check(rows[0]))
 
-                # 불일치 동작 전환 (색 체크 활성화된 경우만)
+                # 불일치 동작 전환 (색 체크 활성화된 경우만) — skip→stop→wait→skip 순환
                 if is_checked:
-                    if primary.color_check_on_mismatch == "skip":
-                        act_mode = menu.addAction("⏹ 불일치 시: 중지로 변경")
-                    else:
-                        act_mode = menu.addAction("▶ 불일치 시: 스킵으로 변경")
+                    mismatch = primary.color_check_on_mismatch
+                    if mismatch == "skip":
+                        mode_text = "⏹ 불일치 시: 중지로 변경(&M)"
+                    elif mismatch == "stop":
+                        mode_text = "⏳ 불일치 시: 대기로 변경(&M)"
+                    else:  # wait
+                        mode_text = "▶ 불일치 시: 스킵으로 변경(&M)"
+                    act_mode = menu.addAction(mode_text)
                     assert act_mode is not None
                     act_mode.triggered.connect(
                         lambda: self._toggle_color_check_mode(rows[0])
                     )
 
             if row.kind == "mouse_wheel":
-                act_edit_wheel = menu.addAction("스크롤 편집...")
+                act_edit_wheel = menu.addAction("스크롤 편집(&W)...")
+                assert act_edit_wheel is not None
                 act_edit_wheel.triggered.connect(lambda: self._edit_wheel(rows[0]))
 
-            act_remark = menu.addAction("📝 비고 편집...")
+            if row.kind == "text_input" and isinstance(primary, TextInputEvent):
+                act_edit_text = menu.addAction("💬 텍스트 편집(&E)...")
+                assert act_edit_text is not None
+                act_edit_text.triggered.connect(lambda: self._edit_text_input(rows[0]))
+
+            act_text_insert = menu.addAction("💬 텍스트 입력 추가(&T)...")
+            assert act_text_insert is not None
+            act_text_insert.triggered.connect(lambda: self._insert_text_input(rows[0]))
+
+            act_remark = menu.addAction("📝 비고 편집(&N)...")
+            assert act_remark is not None
             act_remark.triggered.connect(lambda: self._edit_remark(rows[0]))
 
             menu.addSeparator()
 
-        act_delete = menu.addAction(f"행 삭제 ({len(rows)}개)")
+        act_delete = menu.addAction(f"행 삭제(&X) ({len(rows)}개)")
         act_delete.triggered.connect(lambda: self._delete_rows(rows))
 
         if isinstance(pos, QPoint):
@@ -894,11 +938,14 @@ class EventEditorWidget(QWidget):
                 "click", "right_click", "drag", "right_drag",
                 "color_check_click", "color_check_right_click",
                 "color_check_click_stop", "color_check_right_click_stop",
+                "color_check_click_wait", "color_check_right_click_wait",
                 "orphan", "mouse_move",
             ):
                 self._edit_position(row)
             elif display_row.kind == "mouse_wheel":
                 self._edit_wheel(row)
+            elif display_row.kind == "text_input":
+                self._edit_text_input(row)
             else:
                 self._edit_remark(row)  # 나머지 타입(wait, color_trigger 등)
 
@@ -1353,15 +1400,18 @@ class EventEditorWidget(QWidget):
         self.macro_changed.emit(self._macro)
 
     def _toggle_color_check_mode(self, row_idx: int) -> None:
-        """지정 행 클릭 이벤트의 color_check_on_mismatch를 skip ↔ stop으로 전환한다."""
+        """지정 행 클릭 이벤트의 color_check_on_mismatch를 skip → stop → wait → skip 순환으로 전환한다."""
         if self._macro is None or row_idx >= len(self._rows):
             return
         row = self._rows[row_idx]
         primary = self._macro.events[row.primary_idx]
         if not isinstance(primary, MouseButtonEvent) or not primary.color_check_enabled:
             return
-        new_mode: Literal["skip", "stop"] = (
-            "stop" if primary.color_check_on_mismatch == "skip" else "skip"
+        _cycle: dict[str, Literal["skip", "stop", "wait"]] = {
+            "skip": "stop", "stop": "wait", "wait": "skip",
+        }
+        new_mode: Literal["skip", "stop", "wait"] = _cycle.get(
+            primary.color_check_on_mismatch, "skip"
         )
         self._push_undo()
         try:
@@ -1372,6 +1422,83 @@ class EventEditorWidget(QWidget):
         self._macro = new_macro
         self._refresh()
         self.macro_changed.emit(self._macro)
+
+    def _insert_text_input(self, row_idx: int) -> None:
+        """선택 행 다음에 TextInputEvent를 삽입한다.
+
+        QInputDialog로 입력할 텍스트를 받아 이벤트 목록에 삽입.
+        타임스탬프는 직전 이벤트 + 1초. 이후 이벤트는 1초 시프트.
+        """
+        if self._macro is None:
+            return
+
+        text, ok = QInputDialog.getText(
+            self, "텍스트 입력 추가",
+            "입력할 텍스트를 입력하세요:\n"
+            "(한글·영문·숫자·특수문자 모두 지원. 키보드 배치 무관.)",
+        )
+        if not ok or not text:
+            return
+
+        rows = self._selected_row_indices()
+        if rows:
+            last_row = self._rows[rows[-1]]
+            insert_after_event_idx = max(last_row.event_indices)
+        else:
+            insert_after_event_idx = len(self._macro.events) - 1
+
+        _BUDGET_NS = 1_000_000_000  # 1초
+
+        evs = self._macro.events
+        if 0 <= insert_after_event_idx < len(evs):
+            prev_ts_ns = evs[insert_after_event_idx].timestamp_ns
+        elif evs:
+            prev_ts_ns = evs[-1].timestamp_ns
+        else:
+            prev_ts_ns = 0
+
+        new_event = TextInputEvent(
+            id=secrets.token_hex(4),
+            type="text_input",
+            timestamp_ns=prev_ts_ns + _BUDGET_NS,
+            delay_override_ms=None,
+            text=text,
+        )
+        self._push_undo()
+        events = list(self._macro.events)
+        events.insert(insert_after_event_idx + 1, new_event)
+
+        # 삽입 지점 이후 이벤트 1초 시프트 → 타이밍 보존
+        for i in range(insert_after_event_idx + 2, len(events)):
+            ev = events[i]
+            events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + _BUDGET_NS)
+
+        self._apply_events(events)
+
+    def _edit_text_input(self, row_idx: int) -> None:
+        """TextInputEvent의 텍스트를 수정한다."""
+        if self._macro is None or row_idx >= len(self._rows):
+            return
+        row = self._rows[row_idx]
+        primary = self._macro.events[row.primary_idx]
+        if not isinstance(primary, TextInputEvent):
+            return
+
+        text, ok = QInputDialog.getText(
+            self, "텍스트 편집",
+            "입력할 텍스트를 수정하세요:",
+            text=primary.text,
+        )
+        if not ok:
+            return
+
+        self._push_undo()
+        updated = copy.deepcopy(self._macro.events)
+        for i, ev in enumerate(updated):
+            if ev.id == primary.id and isinstance(ev, TextInputEvent):
+                updated[i] = dataclasses.replace(ev, text=text)
+                break
+        self._apply_events(updated)
 
     # ── 비고(Remark) 편집 ────────────────────────────────────────────────────
 
