@@ -20,7 +20,9 @@ from macroflow.types import (
     MacroData,
     MacroMeta,
     MacroSettings,
+    MouseButtonEvent,
     MouseMoveEvent,
+    TextInputEvent,
     WaitEvent,
 )
 
@@ -226,3 +228,95 @@ class TestPlaybackTiming:
             gap_ms = (times[1] - times[0]) * 1000
             # delay_override_ms=80ms, 오차 ±20ms 허용
             assert 60 <= gap_ms <= 200
+
+
+# ── TextInputEvent 재생 ──────────────────────────────────────────────────────
+
+class TestTextInputPlayback:
+    @pytest.fixture(autouse=True)
+    def mock_win32(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import macroflow.win32 as w32
+        monkeypatch.setattr(w32, "send_mouse_move", MagicMock())
+        monkeypatch.setattr(w32, "send_mouse_button", MagicMock())
+        monkeypatch.setattr(w32, "send_key", MagicMock())
+        monkeypatch.setattr(w32, "ratio_to_pixel", lambda xr, yr: (int(xr * 1920), int(yr * 1080)))
+        monkeypatch.setattr(player, "send_mouse_move", MagicMock())
+        monkeypatch.setattr(player, "send_key", MagicMock())
+        monkeypatch.setattr(player, "ratio_to_pixel", lambda xr, yr: (int(xr * 1920), int(yr * 1080)))
+
+    def test_text_input_calls_send_text(self, mock_win32: object) -> None:
+        """TextInputEvent 실행 시 send_text가 호출되어야 한다."""
+        from unittest.mock import patch
+        event = TextInputEvent(
+            id="aa11bb22", type="text_input", timestamp_ns=1_000_000_000,
+            text="Hello",
+        )
+        settings = MacroSettings()
+        state = _PlayState()
+        with patch("macroflow.player.send_text") as mock_send:
+            _execute_event(event, settings, state)
+        mock_send.assert_called_once_with("Hello")
+
+    def test_text_input_empty_string(self, mock_win32: object) -> None:
+        """빈 문자열 TextInputEvent는 send_text를 호출하지 않아야 한다."""
+        from unittest.mock import patch
+        event = TextInputEvent(
+            id="bb22cc33", type="text_input", timestamp_ns=1_000_000_000,
+            text="",
+        )
+        settings = MacroSettings()
+        state = _PlayState()
+        with patch("macroflow.player.send_text") as mock_send:
+            _execute_event(event, settings, state)
+        mock_send.assert_not_called()
+
+
+# ── 색 체크 wait 모드 ────────────────────────────────────────────────────────
+
+class TestColorCheckWait:
+    @pytest.fixture(autouse=True)
+    def mock_win32(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import macroflow.win32 as w32
+        monkeypatch.setattr(w32, "send_mouse_move", MagicMock())
+        monkeypatch.setattr(w32, "send_mouse_button", MagicMock())
+        monkeypatch.setattr(w32, "send_key", MagicMock())
+        monkeypatch.setattr(w32, "ratio_to_pixel", lambda xr, yr: (int(xr * 1920), int(yr * 1080)))
+        monkeypatch.setattr(player, "send_mouse_move", MagicMock())
+        monkeypatch.setattr(player, "send_key", MagicMock())
+        monkeypatch.setattr(player, "ratio_to_pixel", lambda xr, yr: (int(xr * 1920), int(yr * 1080)))
+
+    def test_wait_mode_polls_until_match(self, mock_win32: object) -> None:
+        """wait 모드: 픽셀 색이 일치할 때까지 폴링 후 클릭이 진행되어야 한다."""
+        from unittest.mock import patch, call  # noqa: F401
+        import macroflow.win32 as w32
+
+        down = MouseButtonEvent(
+            id="cc33dd44", type="mouse_down", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, button="left",
+            recorded_color="#FF0000",
+            color_check_enabled=True,
+            color_check_on_mismatch="wait",
+        )
+        settings = MacroSettings(color_check_click_tolerance=10)
+        state = _PlayState()
+
+        call_count = 0
+        def side_effect(x: int, y: int) -> tuple[int, int, int]:
+            nonlocal call_count
+            call_count += 1
+            # 처음 두 번은 불일치, 세 번째부터 일치
+            if call_count < 3:
+                return (0, 0, 0)
+            return (255, 0, 0)  # #FF0000
+
+        with patch.object(w32, "get_pixel_color", side_effect=side_effect), \
+             patch.object(w32, "send_mouse_move"), \
+             patch.object(w32, "send_mouse_button") as mock_button, \
+             patch.object(player, "send_mouse_move"), \
+             patch.object(player, "send_mouse_button") as mock_player_button, \
+             patch.object(player, "get_pixel_color", side_effect=side_effect):
+            _execute_event(down, settings, state)
+
+        # 픽셀이 일치한 후 클릭이 실행되어야 함
+        assert mock_player_button.called or mock_button.called
+        assert call_count >= 3
