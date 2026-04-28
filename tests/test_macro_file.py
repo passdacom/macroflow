@@ -17,6 +17,7 @@ from macroflow.macro_file import (
     set_delay_single,
 )
 from macroflow.types import (
+    AnyEvent,
     ColorTriggerEvent,
     KeyEvent,
     MacroData,
@@ -25,6 +26,7 @@ from macroflow.types import (
     MouseButtonEvent,
     MouseMoveEvent,
     MouseWheelEvent,
+    TextInputEvent,
     WaitEvent,
 )
 
@@ -255,3 +257,95 @@ def test_reset_to_raw() -> None:
     assert len(restored.events) == len(restored.raw_events)
     # raw_events와 events는 동일한 내용이지만 독립적인 객체여야 한다
     assert restored.events is not restored.raw_events
+
+
+# ── TextInputEvent 직렬화 ────────────────────────────────────────────────────
+
+def test_text_input_event_roundtrip(tmp_path: Path) -> None:
+    """TextInputEvent가 저장 후 동일하게 로드되어야 한다."""
+    events: list[AnyEvent] = [
+        TextInputEvent(
+            id="aa11bb22", type="text_input", timestamp_ns=1_000_000_000,
+            text="0031KO01",
+        ),
+    ]
+    macro = MacroData(
+        meta=MacroMeta(
+            version="1.0", app_version="1.0.0",
+            created_at="2026-04-28T00:00:00",
+            screen_width=1920, screen_height=1080, dpi_scale=1.0,
+        ),
+        settings=MacroSettings(),
+        raw_events=copy.deepcopy(events),
+        events=events,
+    )
+    path = str(tmp_path / "text_input.json")
+    save(macro, path)
+    loaded = load(path)
+
+    assert len(loaded.events) == 1
+    ev = loaded.events[0]
+    assert isinstance(ev, TextInputEvent)
+    assert ev.text == "0031KO01"
+    assert ev.type == "text_input"
+
+
+def test_text_input_korean_roundtrip(tmp_path: Path) -> None:
+    """한글 TextInputEvent가 저장 후 동일하게 로드되어야 한다."""
+    events: list[AnyEvent] = [
+        TextInputEvent(
+            id="cc33dd44", type="text_input", timestamp_ns=1_000_000_000,
+            text="안녕하세요ABC123",
+        ),
+    ]
+    macro = MacroData(
+        meta=MacroMeta(
+            version="1.0", app_version="1.0.0",
+            created_at="2026-04-28T00:00:00",
+            screen_width=1920, screen_height=1080, dpi_scale=1.0,
+        ),
+        settings=MacroSettings(),
+        raw_events=copy.deepcopy(events),
+        events=events,
+    )
+    path = str(tmp_path / "korean.json")
+    save(macro, path)
+    loaded = load(path)
+
+    ev = loaded.events[0]
+    assert isinstance(ev, TextInputEvent)
+    assert ev.text == "안녕하세요ABC123"
+
+
+def test_color_check_wait_roundtrip(tmp_path: Path) -> None:
+    """color_check_on_mismatch='wait'가 저장 후 동일하게 로드되어야 한다."""
+    events: list[AnyEvent] = [
+        MouseButtonEvent(
+            id="ee55ff66", type="mouse_down", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, button="left",
+            recorded_color="#FFFFFF",
+            color_check_enabled=True,
+            color_check_on_mismatch="wait",
+        ),
+        MouseButtonEvent(
+            id="ff66aa77", type="mouse_up", timestamp_ns=1_100_000_000,
+            x_ratio=0.5, y_ratio=0.5, button="left",
+        ),
+    ]
+    macro = MacroData(
+        meta=MacroMeta(
+            version="1.0", app_version="1.0.0",
+            created_at="2026-04-28T00:00:00",
+            screen_width=1920, screen_height=1080, dpi_scale=1.0,
+        ),
+        settings=MacroSettings(),
+        raw_events=copy.deepcopy(events),
+        events=events,
+    )
+    path = str(tmp_path / "wait.json")
+    save(macro, path)
+    loaded = load(path)
+
+    ev = loaded.events[0]
+    assert isinstance(ev, MouseButtonEvent)
+    assert ev.color_check_on_mismatch == "wait"

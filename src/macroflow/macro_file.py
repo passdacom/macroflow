@@ -29,6 +29,7 @@ from macroflow.types import (
     MouseButtonEvent,
     MouseMoveEvent,
     MouseWheelEvent,
+    TextInputEvent,
     WaitEvent,
     WindowTriggerEvent,
 )
@@ -83,8 +84,10 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
     match d["type"]:
         case "mouse_down" | "mouse_up":
             raw_action = d.get("color_check_on_mismatch", "skip")
-            on_mismatch: Literal["skip", "stop"] = (
-                "stop" if raw_action == "stop" else "skip"
+            on_mismatch: Literal["skip", "stop", "wait"] = (
+                "stop" if raw_action == "stop"
+                else "wait" if raw_action == "wait"
+                else "skip"
             )
             return MouseButtonEvent(
                 **common,
@@ -134,6 +137,11 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
                 window_title_contains=d["window_title_contains"],
                 timeout_ms=d.get("timeout_ms", 10000),
                 on_timeout=d.get("on_timeout", "error"),
+            )
+        case "text_input":
+            return TextInputEvent(
+                **common,
+                text=d.get("text", ""),
             )
         case "condition":
             return ConditionEvent(
@@ -511,7 +519,7 @@ def toggle_color_check(macro: MacroData, event_id: str) -> MacroData:
 
 
 def set_color_check_on_mismatch(
-    macro: MacroData, event_id: str, action: Literal["skip", "stop"]
+    macro: MacroData, event_id: str, action: Literal["skip", "stop", "wait"]
 ) -> MacroData:
     """events에서 특정 mouse_down 이벤트의 color_check_on_mismatch를 변경한다.
 
@@ -520,6 +528,7 @@ def set_color_check_on_mismatch(
         event_id: 수정할 mouse_down 이벤트 id.
         action: "skip" — 불일치 시 해당 클릭만 스킵 후 계속 실행.
                 "stop" — 불일치 시 재생 전체 즉시 중단.
+                "wait" — 색이 일치할 때까지 대기.
 
     Returns:
         color_check_on_mismatch가 변경된 새 MacroData (is_edited=True).
