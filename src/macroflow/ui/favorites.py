@@ -599,6 +599,12 @@ class FavoritesWidget(QWidget):
 
         menu.addSeparator()
 
+        act_rename = menu.addAction("✏️ 이름 변경")
+        assert act_rename is not None
+        act_rename.triggered.connect(lambda: self._rename_item(item))
+
+        menu.addSeparator()
+
         # 그룹 이동 서브메뉴
         move_menu = menu.addMenu("📁 그룹으로 이동")
         assert move_menu is not None
@@ -651,6 +657,60 @@ class FavoritesWidget(QWidget):
             data: dict[str, Any] = item.data(0, _ROLE) or {}
             if data.get("type") == "item":
                 self._remove_item(item)
+
+    def _rename_item(self, item: QTreeWidgetItem) -> None:
+        """즐겨찾기 항목의 이름을 변경하고 실제 파일도 rename한다.
+
+        인덱스의 filename과 파일 경로를 동시에 업데이트한다.
+        """
+        if self._favorites_dir is None:
+            return
+        data: dict[str, Any] = item.data(0, _ROLE) or {}
+        old_path = Path(data.get("path", ""))
+        if not old_path.exists():
+            QMessageBox.warning(self, "파일 없음", f"파일을 찾을 수 없습니다:\n{old_path}")
+            self._refresh_tree()
+            return
+
+        old_stem = old_path.stem
+        new_stem, ok = QInputDialog.getText(
+            self, "이름 변경", "새 이름:", text=old_stem
+        )
+        if not ok or not new_stem.strip():
+            return
+
+        safe_name = _sanitize_filename(new_stem.strip())
+        if not safe_name:
+            QMessageBox.warning(self, "오류", "사용할 수 없는 이름입니다.")
+            return
+
+        new_path = self._favorites_dir / f"{safe_name}.json"
+        if new_path.exists() and new_path != old_path:
+            QMessageBox.warning(
+                self, "중복 이름",
+                f"이미 같은 이름의 파일이 있습니다:\n{new_path.name}"
+            )
+            return
+
+        try:
+            old_path.rename(new_path)
+        except OSError as e:
+            QMessageBox.warning(self, "이름 변경 오류", str(e))
+            return
+
+        # 인덱스 업데이트
+        old_filename = old_path.name
+        new_filename = new_path.name
+        for g in self._index.get("groups", []):
+            items: list[str] = g.get("items", [])
+            if old_filename in items:
+                idx = items.index(old_filename)
+                items[idx] = new_filename
+                break
+
+        self._save_index()
+        self._refresh_tree()
+        logger.info(f"즐겨찾기 이름 변경: {old_filename} → {new_filename}")
 
     def _remove_item(self, item: QTreeWidgetItem) -> None:
         data: dict[str, Any] = item.data(0, _ROLE) or {}
