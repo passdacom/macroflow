@@ -6,6 +6,39 @@
 
 ---
 
+## v1.1.0 — 2026-04-28
+
+### 신규 기능 6종
+
+#### ① 텍스트 입력 이벤트 (`types.py`, `macro_file.py`, `win32/sendinput.py`, `player.py`, `editor.py`)
+- 새 이벤트 타입: `TextInputEvent(text: str)` — `KEYEVENTF_UNICODE`로 문자 단위 전송
+- 키보드 배치·IME·언어 설정 무관. 한글·영문·숫자·특수문자·이모지(서로게이트 쌍) 모두 지원
+- 에디터 우클릭 → "💬 텍스트 입력 추가" → 선택 행 다음에 삽입, 에디터 표시: 녹청(teal) 색
+
+#### ② 색 체크 wait 모드 (`types.py`, `macro_file.py`, `player.py`, `editor.py`)
+- `color_check_on_mismatch` 세 번째 옵션 추가: `"wait"` — 픽셀 색 일치 시까지 폴링 후 클릭
+- 타임아웃(기본 10초) 시 경고 로그만 남기고 클릭 계속 진행
+- 에디터 표시: 파란색(⏳), skip→stop→wait→skip 순환 우클릭 토글
+
+#### ③ 즐겨찾기 항목 이름 변경 (`favorites.py`)
+- 즐겨찾기 항목 우클릭 → "✏️ 이름 변경" — 실제 파일 rename + `_index.json` 동시 업데이트
+- 중복 이름·파일 없음·OS 오류 모두 경고 다이얼로그로 처리
+
+#### ④ 파일 덮어쓰기 저장 (`main_window.py`)
+- Ctrl+S(저장): 현재 파일에 덮어쓰기 확인 다이얼로그 후 저장. 파일 미지정 시 다른 이름으로 저장
+- 툴바에 "저장"과 "다른 이름으로 저장" 버튼 분리
+
+#### ⑤ 우클릭 메뉴 accelerator (`editor.py`)
+- 컨텍스트 메뉴 항목에 `(&X)` 형식 Qt accelerator 추가
+- D=딜레이, K=키 변경, P=위치, C=색 체크, M=모드, W=휠, T=텍스트 추가, E=텍스트 편집, N=비고, X=삭제
+
+### CI/mypy 검증
+- `ruff check src/` → 오류 없음
+- `mypy src/` → 18개 파일 이슈 0건 (strict)
+- `pytest tests/` → 54개 모두 통과
+
+---
+
 ## v0.2.8 — 2026-04-15
 
 ### 버그 수정: 즐겨찾기 추가 시 앱 종료 + 미처리 예외 로그 누락
