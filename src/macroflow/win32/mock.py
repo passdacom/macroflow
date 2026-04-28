@@ -100,6 +100,10 @@ def send_key(vk_code: int, is_down: bool) -> None:
     logger.debug(f"[Mock] send_key(vk={vk_code:#04x}, down={is_down})")
 
 
+def send_text(text: str) -> None:
+    logger.debug(f"[Mock] send_text({text!r})")
+
+
 # ── DPI / 해상도 ──────────────────────────────────────────
 
 _mock_screen_size: tuple[int, int] = (1920, 1080)

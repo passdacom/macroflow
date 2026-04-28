@@ -38,6 +38,7 @@ MOUSEEVENTF_ABSOLUTE: int = 0x8000
 
 KEYEVENTF_KEYUP: int = 0x0002
 KEYEVENTF_SCANCODE: int = 0x0008
+KEYEVENTF_UNICODE: int = 0x0004
 
 # 버튼 이름 → (down flag, up flag) 매핑
 _BUTTON_FLAGS: dict[str, tuple[int, int]] = {
@@ -247,3 +248,49 @@ def send_key(vk_code: int, is_down: bool) -> None:
         dwFlags=flags, time=0, dwExtraInfo=0,
     )
     _send(inp)
+
+
+def send_text(text: str) -> None:
+    """Unicode 문자열을 KEYEVENTF_UNICODE로 문자 단위 전송한다.
+
+    키보드 배치·IME 상태에 무관하게 입력한 문자를 그대로 전송한다.
+    한글·영문·숫자·특수문자·이모지(서로게이트 쌍) 모두 지원.
+
+    Args:
+        text: 입력할 문자열.
+    """
+    inputs: list[_INPUT] = []
+    for ch in text:
+        code = ord(ch)
+        if code > 0xFFFF:
+            # 보충 문자(U+10000 이상): UTF-16 서로게이트 쌍으로 분리
+            code -= 0x10000
+            high = 0xD800 + (code >> 10)
+            low = 0xDC00 + (code & 0x3FF)
+            for scan in (high, low):
+                inp_down = _INPUT(type=INPUT_KEYBOARD)
+                inp_down._input.ki = _KEYBDINPUT(
+                    wVk=0, wScan=scan,
+                    dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=0,
+                )
+                inp_up = _INPUT(type=INPUT_KEYBOARD)
+                inp_up._input.ki = _KEYBDINPUT(
+                    wVk=0, wScan=scan,
+                    dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=0,
+                )
+                inputs.extend([inp_down, inp_up])
+        else:
+            inp_down = _INPUT(type=INPUT_KEYBOARD)
+            inp_down._input.ki = _KEYBDINPUT(
+                wVk=0, wScan=code,
+                dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=0,
+            )
+            inp_up = _INPUT(type=INPUT_KEYBOARD)
+            inp_up._input.ki = _KEYBDINPUT(
+                wVk=0, wScan=code,
+                dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=0,
+            )
+            inputs.extend([inp_down, inp_up])
+
+    if inputs:
+        _send(*inputs)

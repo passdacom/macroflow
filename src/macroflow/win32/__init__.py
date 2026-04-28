@@ -25,6 +25,7 @@ if sys.platform == "win32":
         send_mouse_drag,
         send_mouse_move,
         send_mouse_wheel,
+        send_text,
     )
 else:
     # 비-Windows 환경: Mock 자동 주입 (개발·테스트용)
@@ -41,6 +42,7 @@ else:
         send_mouse_drag,
         send_mouse_move,
         send_mouse_wheel,
+        send_text,
         start_emergency_hook,
         start_hook,
         stop_emergency_hook,
@@ -61,6 +63,7 @@ __all__ = [
     "send_mouse_move",
     "send_mouse_wheel",
     "send_key",
+    "send_text",
     "get_logical_screen_size",
     "ratio_to_pixel",
     "pixel_to_ratio",
