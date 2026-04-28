@@ -19,6 +19,7 @@ from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,  # noqa: F401  — Task 2(NEW-02)에서 사용 예정
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -28,6 +29,7 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -1068,8 +1070,12 @@ class EventEditorWidget(QWidget):
             "버튼 클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요."
         )
 
-        def _on_f6_captured(x_r: float, y_r: float, _color: str) -> None:
+        captured_color: list[str] = []
+
+        def _on_f6_captured(x_r: float, y_r: float, color: str) -> None:
             """F6 캡처 콜백 — 다이얼로그 복원 및 SpinBox 갱신."""
+            captured_color.clear()
+            captured_color.append(color)
             x_spin.setValue(x_r * 100)
             y_spin.setValue(y_r * 100)
             capture_label.setText(f"✅ 캡처됨: ({x_r * 100:.1f}%, {y_r * 100:.1f}%)")
@@ -1128,6 +1134,15 @@ class EventEditorWidget(QWidget):
                     new_macro = edit_position(new_macro, ev.id, new_x, new_y)
                 except (KeyError, TypeError):
                     pass
+
+        # F6 캡처로 위치를 지정한 경우 primary 이벤트의 recorded_color도 업데이트.
+        if captured_color and isinstance(primary, MouseButtonEvent):
+            new_events = list(new_macro.events)
+            for i, ev in enumerate(new_events):
+                if ev.id == primary.id and isinstance(ev, MouseButtonEvent):
+                    new_events[i] = dataclasses.replace(ev, recorded_color=captured_color[0])
+                    break
+            new_macro = dataclasses.replace(new_macro, events=new_events, is_edited=True)
 
         self._macro = new_macro
         self._refresh()
@@ -1426,19 +1441,48 @@ class EventEditorWidget(QWidget):
     def _insert_text_input(self, row_idx: int) -> None:
         """선택 행 다음에 TextInputEvent를 삽입한다.
 
-        QInputDialog로 입력할 텍스트를 받아 이벤트 목록에 삽입.
-        타임스탬프는 직전 이벤트 + 1초. 이후 이벤트는 1초 시프트.
+        커스텀 QDialog로 텍스트와 딜레이(ms)를 받아 이벤트 목록에 삽입.
+        타임스탬프는 직전 이벤트 + 딜레이. 이후 이벤트도 같은 값만큼 시프트.
         """
         if self._macro is None:
             return
 
-        text, ok = QInputDialog.getText(
-            self, "텍스트 입력 추가",
-            "입력할 텍스트를 입력하세요:\n"
-            "(한글·영문·숫자·특수문자 모두 지원. 키보드 배치 무관.)",
+        dialog = QDialog(self)
+        dialog.setWindowTitle("텍스트 입력 추가")
+        dialog.setFixedWidth(360)
+
+        form = QFormLayout()
+
+        text_edit = QLineEdit()
+        text_edit.setPlaceholderText("한글·영문·숫자·특수문자·이모지 모두 지원")
+        form.addRow("텍스트:", text_edit)
+
+        delay_spin = QSpinBox()
+        delay_spin.setRange(0, 30000)
+        delay_spin.setValue(1000)
+        delay_spin.setSuffix(" ms")
+        form.addRow("딜레이:", delay_spin)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        if not ok or not text:
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        v = QVBoxLayout(dialog)
+        v.addLayout(form)
+        v.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+
+        text = text_edit.text()
+        if not text:
+            return
+
+        delay_ms = delay_spin.value()
+        _BUDGET_NS = max(delay_ms * 1_000_000, 1_000_000)  # 최소 1ms
+        delay_override_ms = delay_ms if delay_ms > 0 else None
 
         rows = self._selected_row_indices()
         if rows:
@@ -1446,8 +1490,6 @@ class EventEditorWidget(QWidget):
             insert_after_event_idx = max(last_row.event_indices)
         else:
             insert_after_event_idx = len(self._macro.events) - 1
-
-        _BUDGET_NS = 1_000_000_000  # 1초
 
         evs = self._macro.events
         if 0 <= insert_after_event_idx < len(evs):
@@ -1461,14 +1503,14 @@ class EventEditorWidget(QWidget):
             id=secrets.token_hex(4),
             type="text_input",
             timestamp_ns=prev_ts_ns + _BUDGET_NS,
-            delay_override_ms=None,
+            delay_override_ms=delay_override_ms,
             text=text,
         )
         self._push_undo()
         events = list(self._macro.events)
         events.insert(insert_after_event_idx + 1, new_event)
 
-        # 삽입 지점 이후 이벤트 1초 시프트 → 타이밍 보존
+        # 삽입 지점 이후 이벤트 딜레이만큼 시프트 → 타이밍 보존
         for i in range(insert_after_event_idx + 2, len(events)):
             ev = events[i]
             events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + _BUDGET_NS)
