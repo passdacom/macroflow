@@ -287,7 +287,8 @@ class TestColorCheckWait:
 
     def test_wait_mode_polls_until_match(self, mock_win32: object) -> None:
         """wait 모드: 픽셀 색이 일치할 때까지 폴링 후 클릭이 진행되어야 한다."""
-        from unittest.mock import patch, call  # noqa: F401
+        from unittest.mock import call, patch  # noqa: F401
+
         import macroflow.win32 as w32
 
         down = MouseButtonEvent(
