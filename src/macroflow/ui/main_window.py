@@ -281,9 +281,15 @@ class MainWindow(QMainWindow):
         self._act_open.triggered.connect(self._open_file)
         tb3.addAction(self._act_open)
 
-        self._act_save = QAction("💾 다른 이름으로 저장", self)
+        self._act_save = QAction("💾 저장  Ctrl+S", self)
+        self._act_save.setToolTip("현재 파일에 덮어쓰기 저장 (파일이 없으면 다른 이름으로 저장)")
         self._act_save.triggered.connect(self._save_file)
         tb3.addAction(self._act_save)
+
+        self._act_save_as = QAction("💾 다른 이름으로 저장", self)
+        self._act_save_as.setToolTip("새 경로를 지정하여 저장")
+        self._act_save_as.triggered.connect(self._save_file_as)
+        tb3.addAction(self._act_save_as)
 
         self._act_save_seq = QAction("📋 시퀀서에 추가", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
@@ -808,6 +814,7 @@ class MainWindow(QMainWindow):
             is_idle and self._macro is not None and not is_seq_tab
         )
         self._act_save.setEnabled(is_idle and self._macro is not None)
+        self._act_save_as.setEnabled(is_idle and self._macro is not None)
         self._act_save_seq.setEnabled(is_idle and self._macro is not None)
         self._act_save_fav.setEnabled(is_idle and self._macro is not None)
         self._act_restore_prev.setEnabled(is_idle and self._prev_macro is not None)
@@ -892,8 +899,26 @@ class MainWindow(QMainWindow):
         logger.info(f"시퀀서 병합 로드: {count}개 이벤트")
 
     def _save_file(self) -> None:
-        """항상 '다른 이름으로 저장' 다이얼로그를 열어 저장 경로를 지정한다."""
-        self._save_file_as()
+        """현재 파일에 덮어쓰기 저장한다.
+
+        _current_file이 설정된 경우: 확인 다이얼로그 후 덮어쓰기.
+        _current_file이 없는 경우: _save_file_as()로 위임.
+        """
+        if not self._macro:
+            return
+        if self._current_file is None:
+            self._save_file_as()
+            return
+        reply = QMessageBox.question(
+            self,
+            "덮어쓰기 저장",
+            f"현재 파일에 덮어씁니다:\n\n{self._current_file}\n\n계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._do_save(str(self._current_file))
 
     def _save_file_as(self) -> None:
         if not self._macro:
