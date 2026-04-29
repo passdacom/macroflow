@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QToolBar,
@@ -164,6 +165,13 @@ class FavoritesWidget(QWidget):
         self._hint.setContentsMargins(8, 6, 8, 6)
         self._hint.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(self._hint)
+
+        # 검색창
+        self._search_box = QLineEdit()
+        self._search_box.setPlaceholderText("🔍 즐겨찾기 검색...")
+        self._search_box.setClearButtonEnabled(True)
+        self._search_box.textChanged.connect(self._apply_search_filter)
+        layout.addWidget(self._search_box)
 
         # 트리 위젯
         self._tree = FavoritesTreeWidget(self)
@@ -378,6 +386,46 @@ class FavoritesWidget(QWidget):
             if total_items > 0 else "즐겨찾기 없음"
         )
         self._act_remove.setEnabled(False)
+
+    def _apply_search_filter(self, text: str) -> None:
+        """검색어에 따라 트리 항목 표시/숨김을 적용한다.
+
+        검색어가 비어있으면 모두 표시.
+        검색어가 있으면 이름에 검색어(대소문자 무시)가 포함된 항목만 표시.
+        보이는 자식이 없는 그룹은 숨김.
+        """
+        q = text.strip().lower()
+        root = self._tree.invisibleRootItem()
+        if root is None:
+            return
+        group_count = root.childCount()
+
+        for g_idx in range(group_count):
+            group_item = root.child(g_idx)
+            if group_item is None:
+                continue
+            child_count = group_item.childCount()
+            any_visible = False
+
+            for c_idx in range(child_count):
+                child = group_item.child(c_idx)
+                if child is None:
+                    continue
+                if not q:
+                    child.setHidden(False)
+                    any_visible = True
+                else:
+                    match = q in child.text(0).lower()
+                    child.setHidden(not match)
+                    if match:
+                        any_visible = True
+
+            if not q:
+                group_item.setHidden(False)
+            else:
+                group_item.setHidden(not any_visible)
+                if any_visible:
+                    group_item.setExpanded(True)
 
     # ── 그룹 관리 ────────────────────────────────────────────────────────────
 
