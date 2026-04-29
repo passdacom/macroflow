@@ -19,7 +19,7 @@ from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,  # noqa: F401  — Task 2(NEW-02)에서 사용 예정
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -118,6 +118,7 @@ class _DisplayRow:
     source_file: str = ""     # 출처 파일명 (병합 매크로에서 설정)
     color_check_enabled: bool = False         # 색 체크 활성 여부
     color_check_on_mismatch: str = "skip"     # "skip" | "stop" | "wait"
+    time_ms_rel: float = 0.0                  # 이전 이벤트 대비 delta(ms). 상대 시간 표시용.
 
 
 def _delay_str(event: AnyEvent) -> str:
@@ -380,6 +381,17 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 _delay_str(event), [i], i,
             ))
 
+    # 상대 시간 계산: 각 행의 primary 이벤트 기준
+    for i, row in enumerate(rows):
+        ev = events[row.primary_idx]
+        if ev.delay_override_ms is not None:
+            row.time_ms_rel = float(ev.delay_override_ms)
+        elif i == 0:
+            row.time_ms_rel = row.time_ms  # 첫 행은 절대값 그대로
+        else:
+            prev_ev = events[rows[i - 1].primary_idx]
+            row.time_ms_rel = (ev.timestamp_ns - prev_ev.timestamp_ns) / 1_000_000
+
     return rows
 
 
@@ -509,6 +521,7 @@ class EventEditorWidget(QWidget):
         self._remarks: dict[str, str] = {}
         # 재생 하이라이트: 마지막으로 하이라이트된 행 인덱스 (-1 = 없음).
         self._last_highlight_row: int = -1
+        self._relative_time: bool = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -574,6 +587,17 @@ class EventEditorWidget(QWidget):
         self._act_reset.triggered.connect(self._reset_to_raw)
         self._act_reset.setEnabled(False)
         toolbar.addAction(self._act_reset)
+
+        toolbar.addSeparator()
+
+        self._chk_relative_time = QCheckBox("⏱ 상대 시간")
+        self._chk_relative_time.setToolTip(
+            "체크: 시간(ms) 열을 이전 이벤트 대비 delta로 표시\n"
+            "해제: 녹화 시작 기준 절대 시간 표시"
+        )
+        self._chk_relative_time.setChecked(False)
+        self._chk_relative_time.toggled.connect(self._on_relative_time_toggled)
+        toolbar.addWidget(self._chk_relative_time)
 
         layout.addWidget(toolbar)
 
@@ -708,6 +732,11 @@ class EventEditorWidget(QWidget):
             self._f6_capture_cb = None
             self.f6_capture_ended.emit()
 
+    def _on_relative_time_toggled(self, checked: bool) -> None:
+        """상대 시간 체크박스 토글 — 테이블을 다시 렌더링한다."""
+        self._relative_time = checked
+        self._refresh()
+
     def get_event_range_for_rows(
         self, start_row: int, end_row: int,
     ) -> tuple[int, int] | None:
@@ -771,7 +800,7 @@ class EventEditorWidget(QWidget):
                 _cell(str(row_idx + 1)),
                 _cell(row.label),
                 _cell(row.detail),
-                _cell(f"{row.time_ms:.0f}"),
+                _cell(f"{row.time_ms_rel:.0f}" if self._relative_time else f"{row.time_ms:.0f}"),
                 _cell(row.delay_str),
                 source_item,
             ]
