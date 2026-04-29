@@ -938,6 +938,10 @@ class EventEditorWidget(QWidget):
             assert act_text_insert is not None
             act_text_insert.triggered.connect(lambda: self._insert_text_input(rows[0]))
 
+            act_click_insert = menu.addAction("🖱 클릭 추가(&L)...")
+            assert act_click_insert is not None
+            act_click_insert.triggered.connect(lambda: self._insert_click(rows[0]))
+
             act_remark = menu.addAction("📝 비고 편집(&N)...")
             assert act_remark is not None
             act_remark.triggered.connect(lambda: self._edit_remark(rows[0]))
@@ -1543,6 +1547,178 @@ class EventEditorWidget(QWidget):
         for i in range(insert_after_event_idx + 2, len(events)):
             ev = events[i]
             events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + _BUDGET_NS)
+
+        self._apply_events(events)
+
+    def _insert_click(self, row_idx: int) -> None:
+        """선택 행 다음에 MouseButtonEvent (클릭/더블클릭)를 삽입한다.
+
+        다이얼로그: 위치(X/Y%), F6 직접 지정, 버튼 종류, 딜레이.
+        좌/우클릭: mouse_down + mouse_up 2개 이벤트.
+        더블클릭: down+up+down+up 4개 이벤트, 50ms 간격.
+        첫 번째 mouse_down에만 delay_override_ms 적용.
+        """
+        if self._macro is None:
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("클릭 추가")
+        dialog.setFixedWidth(360)
+
+        layout_v = QVBoxLayout(dialog)
+
+        # ── 위치 ────────────────────────────────────────────────────────────
+        form = QFormLayout()
+        x_spin = QDoubleSpinBox()
+        x_spin.setRange(-500.0, 500.0)
+        x_spin.setDecimals(2)
+        x_spin.setSuffix(" %")
+        x_spin.setValue(50.0)
+        form.addRow("X 위치:", x_spin)
+
+        y_spin = QDoubleSpinBox()
+        y_spin.setRange(-500.0, 500.0)
+        y_spin.setDecimals(2)
+        y_spin.setSuffix(" %")
+        y_spin.setValue(50.0)
+        form.addRow("Y 위치:", y_spin)
+        layout_v.addLayout(form)
+
+        # ── F6 직접 지정 ────────────────────────────────────────────────────
+        capture_label = QLabel("")
+        capture_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        capture_label.setStyleSheet("color: #c07000; font-weight: bold;")
+
+        btn_capture = QPushButton("📍 화면에서 직접 지정 (F6으로 지정)")
+        btn_capture.setToolTip("버튼 클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요.")
+
+        captured_color: list[str] = []
+
+        def _on_f6_captured(x_r: float, y_r: float, color: str) -> None:
+            captured_color.clear()
+            captured_color.append(color)
+            x_spin.setValue(x_r * 100)
+            y_spin.setValue(y_r * 100)
+            capture_label.setText(f"✅ 캡처됨: ({x_r * 100:.1f}%, {y_r * 100:.1f}%)")
+            dialog.showNormal()
+            dialog.raise_()
+            btn_capture.setEnabled(True)
+
+        def _start_capture() -> None:
+            btn_capture.setEnabled(False)
+            capture_label.setText("⏳ F6을 눌러 위치를 지정하세요...")
+            self._f6_capture_cb = _on_f6_captured
+            self.f6_capture_started.emit()
+            dialog.showMinimized()
+
+        def _on_dialog_finished(_result: int) -> None:
+            self.cancel_f6_capture()
+
+        btn_capture.clicked.connect(_start_capture)
+        dialog.finished.connect(_on_dialog_finished)
+        layout_v.addWidget(btn_capture)
+        layout_v.addWidget(capture_label)
+
+        # ── 버튼 종류 ────────────────────────────────────────────────────────
+        btn_group = QGroupBox("버튼 종류")
+        btn_layout = QHBoxLayout(btn_group)
+        radio_left = QRadioButton("좌클릭")
+        radio_right = QRadioButton("우클릭")
+        radio_double = QRadioButton("더블클릭")
+        radio_left.setChecked(True)
+        btn_layout.addWidget(radio_left)
+        btn_layout.addWidget(radio_right)
+        btn_layout.addWidget(radio_double)
+        layout_v.addWidget(btn_group)
+
+        # ── 딜레이 ──────────────────────────────────────────────────────────
+        delay_form = QFormLayout()
+        delay_spin = QSpinBox()
+        delay_spin.setRange(0, 30000)
+        delay_spin.setValue(1000)
+        delay_spin.setSuffix(" ms")
+        delay_form.addRow("딜레이:", delay_spin)
+        layout_v.addLayout(delay_form)
+
+        # ── 버튼 ────────────────────────────────────────────────────────────
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout_v.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        x_ratio = x_spin.value() / 100.0
+        y_ratio = y_spin.value() / 100.0
+        delay_ms = delay_spin.value()
+        rec_color = captured_color[0] if captured_color else None
+
+        if radio_right.isChecked():
+            button_str = "right"
+        else:
+            button_str = "left"
+
+        is_double = radio_double.isChecked()
+        budget_ns = max(delay_ms * 1_000_000, 1_000_000)
+
+        rows = self._selected_row_indices()
+        if rows:
+            last_row = self._rows[rows[-1]]
+            insert_after_event_idx = max(last_row.event_indices)
+        else:
+            insert_after_event_idx = len(self._macro.events) - 1
+
+        evs = self._macro.events
+        if 0 <= insert_after_event_idx < len(evs):
+            base_ts = evs[insert_after_event_idx].timestamp_ns
+        elif evs:
+            base_ts = evs[-1].timestamp_ns
+        else:
+            base_ts = 0
+
+        _50ms = 50_000_000
+        _100ms = 100_000_000
+
+        def _make_down(ts: int, dly: int | None) -> MouseButtonEvent:
+            return MouseButtonEvent(
+                id=secrets.token_hex(4), type="mouse_down", timestamp_ns=ts,
+                x_ratio=x_ratio, y_ratio=y_ratio, button=button_str,
+                delay_override_ms=dly,
+                recorded_color=rec_color,
+            )
+
+        def _make_up(ts: int) -> MouseButtonEvent:
+            return MouseButtonEvent(
+                id=secrets.token_hex(4), type="mouse_up", timestamp_ns=ts,
+                x_ratio=x_ratio, y_ratio=y_ratio, button=button_str,
+            )
+
+        if is_double:
+            new_events: list[AnyEvent] = [
+                _make_down(base_ts + budget_ns, delay_ms if delay_ms > 0 else None),
+                _make_up(base_ts + budget_ns + _50ms),
+                _make_down(base_ts + budget_ns + _100ms, None),
+                _make_up(base_ts + budget_ns + _100ms + _50ms),
+            ]
+            total_budget = budget_ns + _100ms + _50ms
+        else:
+            new_events = [
+                _make_down(base_ts + budget_ns, delay_ms if delay_ms > 0 else None),
+                _make_up(base_ts + budget_ns + _100ms),
+            ]
+            total_budget = budget_ns + _100ms
+
+        self._push_undo()
+        events = list(self._macro.events)
+        for offset, ne in enumerate(new_events):
+            events.insert(insert_after_event_idx + 1 + offset, ne)
+
+        for i in range(insert_after_event_idx + 1 + len(new_events), len(events)):
+            ev = events[i]
+            events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + total_budget)
 
         self._apply_events(events)
 
