@@ -115,6 +115,36 @@ class MacroFlow:
     nodes: dict[str, AnyFlowNode]
 
 
+def iter_linear_macro_paths(flow: MacroFlow, flow_path: str | Path) -> list[Path]:
+    """선형 MacroFlow에서 매크로 경로를 실행 순서대로 추출한다.
+
+    MacroSequencerWidget이 저장하는 단순 시퀀스는 MacroNode 사이에
+    WaitFixedNode가 들어갈 수 있다. 이 함수는 해당 대기 노드를 건너뛰며
+    다음 매크로 노드까지 순회한다.
+    """
+    base = Path(flow_path).parent
+    paths: list[Path] = []
+    current_id: str | None = flow.start_node_id
+    visited: set[str] = set()
+
+    while current_id and current_id in flow.nodes and current_id not in visited:
+        visited.add(current_id)
+        node = flow.nodes[current_id]
+
+        if isinstance(node, MacroNode):
+            raw_path = Path(node.macro_path)
+            paths.append(raw_path if raw_path.is_absolute() else base / raw_path)
+            current_id = node.next_on_success
+        elif isinstance(node, WaitFixedNode):
+            current_id = node.next
+        elif isinstance(node, EndNode):
+            break
+        else:
+            break
+
+    return paths
+
+
 # ── FlowEngine 오류 ────────────────────────────────────────────────────────────
 
 class FlowError(Exception):

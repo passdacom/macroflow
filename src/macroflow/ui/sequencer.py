@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QBrush, QColor, QDragEnterEvent, QDropEvent
+from PyQt6.QtGui import QAction, QBrush, QColor, QDragEnterEvent, QDropEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -40,6 +40,7 @@ from macroflow.script_engine import (
     FlowEngine,
     MacroFlow,
     MacroNode,
+    iter_linear_macro_paths,
     load_flow,
     save_flow,
 )
@@ -128,11 +129,21 @@ class MacroSequencerWidget(QWidget):
         self._act_open_flow.triggered.connect(self._open_flow)
         toolbar.addAction(self._act_open_flow)
 
-        self._act_save_flow = QAction("💾 플로우 저장", self)
-        self._act_save_flow.setToolTip("현재 시퀀스를 .macroflow 파일로 저장합니다")
+        self._act_save_flow = QAction("💾 저장  Ctrl+S", self)
+        self._act_save_flow.setToolTip(
+            "현재 .macroflow 파일에 덮어쓰기 저장합니다 (파일이 없으면 다른 이름으로 저장)"
+        )
+        self._act_save_flow.setShortcut(QKeySequence("Ctrl+S"))
+        self._act_save_flow.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._act_save_flow.triggered.connect(self._save_flow)
         self._act_save_flow.setEnabled(False)
         toolbar.addAction(self._act_save_flow)
+
+        self._act_save_flow_as = QAction("💾 다른 이름으로 저장", self)
+        self._act_save_flow_as.setToolTip("새 경로를 지정하여 .macroflow 파일로 저장합니다")
+        self._act_save_flow_as.triggered.connect(self._save_flow_as)
+        self._act_save_flow_as.setEnabled(False)
+        toolbar.addAction(self._act_save_flow_as)
 
         toolbar.addSeparator()
 
@@ -288,6 +299,14 @@ class MacroSequencerWidget(QWidget):
         """외부(main_window)에서 시퀀스를 중지한다."""
         self._stop_sequence()
 
+    def save_flow(self) -> None:
+        """외부(main_window)에서 현재 플로우를 저장한다."""
+        self._save_flow()
+
+    def save_flow_as(self) -> None:
+        """외부(main_window)에서 현재 플로우를 다른 이름으로 저장한다."""
+        self._save_flow_as()
+
     def _get_default_dir(self) -> str:
         """파일 다이얼로그 초기 폴더를 반환한다."""
         if getattr(sys, "frozen", False):
@@ -351,20 +370,11 @@ class MacroSequencerWidget(QWidget):
             return
 
         self._items.clear()
-        base = path.parent
 
-        # 선형 플로우에서 매크로 노드만 순서대로 추출
-        current_id: str | None = flow.start_node_id
-        visited: set[str] = set()
-        while current_id and current_id in flow.nodes and current_id not in visited:
-            visited.add(current_id)
-            node = flow.nodes[current_id]
-            if isinstance(node, MacroNode):
-                macro_path = base / node.macro_path
-                self._items.append(_MacroItem(macro_path))
-                current_id = node.next_on_success
-            else:
-                break
+        # 선형 플로우에서 매크로 노드만 순서대로 추출한다.
+        # 저장 시 매크로 사이에 WaitFixedNode가 삽입될 수 있으므로 대기 노드는 건너뛴다.
+        for macro_path in iter_linear_macro_paths(flow, path):
+            self._items.append(_MacroItem(macro_path))
 
         self._current_flow_path = path
         self._refresh_all()
@@ -374,20 +384,36 @@ class MacroSequencerWidget(QWidget):
     def _save_flow(self) -> None:
         if not self._items:
             return
-        if self._current_flow_path:
-            self._do_save_flow(self._current_flow_path)
-        else:
-            path, _ = QFileDialog.getSaveFileName(
-                self, "플로우 저장",
-                self._get_default_dir(),
-                "MacroFlow (*.macroflow)",
-            )
-            if not path:
-                return
-            if not path.endswith(".macroflow"):
-                path += ".macroflow"
-            self._current_flow_path = Path(path)
-            self._do_save_flow(self._current_flow_path)
+        if self._current_flow_path is None:
+            self._save_flow_as()
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "플로우 덮어쓰기",
+            f"현재 파일을 덮어쓸까요?\n{self._current_flow_path}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        self._do_save_flow(self._current_flow_path)
+
+    def _save_flow_as(self) -> None:
+        if not self._items:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "다른 이름으로 플로우 저장",
+            self._get_default_dir(),
+            "MacroFlow (*.macroflow)",
+        )
+        if not path:
+            return
+        if not path.endswith(".macroflow"):
+            path += ".macroflow"
+        self._current_flow_path = Path(path)
+        self._do_save_flow(self._current_flow_path)
 
     def _do_save_flow(self, path: Path) -> None:
         flow = self._build_flow(path)
@@ -578,6 +604,7 @@ class MacroSequencerWidget(QWidget):
     def _update_buttons(self) -> None:
         has_items = bool(self._items)
         self._act_save_flow.setEnabled(has_items)
+        self._act_save_flow_as.setEnabled(has_items)
         self._act_merge.setEnabled(len(self._items) >= 2)
 
     # ── 로그 ──────────────────────────────────────────────────────────────────

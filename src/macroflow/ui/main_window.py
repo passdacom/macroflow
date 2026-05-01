@@ -426,8 +426,8 @@ class MainWindow(QMainWindow):
                         # 시퀀서 탭: F7 → 시퀀스 실행/중지
                         self._toggle_sequencer()
                     elif self._is_favorites_tab():
-                        # 즐겨찾기 탭: F7 → 일반 재생
-                        self._toggle_playback()
+                        # 즐겨찾기 탭: 재생 대상이 없으므로 F7 무시
+                        return True, 0
                     elif self._state == "recording":
                         self._insert_color_trigger()
                     else:
@@ -535,6 +535,8 @@ class MainWindow(QMainWindow):
         # (RegisterHotKey 폴백 QShortcut 경로에서도 일관된 동작 보장)
         if self._is_sequencer_tab():
             self._toggle_sequencer()
+            return
+        if self._is_favorites_tab():
             return
         if self._state == "idle" and self._macro:
             self._start_playback()
@@ -805,6 +807,9 @@ class MainWindow(QMainWindow):
         if is_seq_tab:
             self._act_play.setEnabled(bool(self._sequencer.has_items()))
             self._act_play.setText("⏹ 중지 (F7)" if seq_running else "▶ 시퀀스 실행 (F7)")
+        elif is_fav_tab:
+            self._act_play.setEnabled(False)
+            self._act_play.setText("▶ 재생 (F7)")
         else:
             self._act_play.setEnabled(is_idle and self._macro is not None)
             self._act_play.setText("⏸ 일시정지 (F7)" if is_play else "▶ 재생 (F7)")
@@ -904,6 +909,9 @@ class MainWindow(QMainWindow):
         _current_file이 설정된 경우: 확인 다이얼로그 후 덮어쓰기.
         _current_file이 없는 경우: _save_file_as()로 위임.
         """
+        if self._is_sequencer_tab():
+            self._sequencer.save_flow()
+            return
         if not self._macro:
             return
         if self._current_file is None:
@@ -921,6 +929,9 @@ class MainWindow(QMainWindow):
         self._do_save(str(self._current_file))
 
     def _save_file_as(self) -> None:
+        if self._is_sequencer_tab():
+            self._sequencer.save_flow_as()
+            return
         if not self._macro:
             return
         path, _ = QFileDialog.getSaveFileName(
@@ -994,10 +1005,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "즐겨찾기 저장 오류", f"'{name}' 저장에 실패했습니다.")
 
     def _add_favorite_to_sequencer(self, path: str) -> None:
-        """즐겨찾기 항목을 시퀀서에 추가하고 시퀀서 탭으로 전환한다."""
+        """즐겨찾기 항목을 시퀀서에 추가한다."""
         from pathlib import Path as _Path
         self._sequencer.add_macro_file(_Path(path))
-        self._tabs.setCurrentWidget(self._sequencer)
         self._sb_state.setText(f"시퀀서 추가: {_Path(path).name}")
 
     def _restore_prev_macro(self) -> None:
