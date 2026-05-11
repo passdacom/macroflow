@@ -82,6 +82,7 @@ def main() -> None:
     try:
         from PyQt6.QtWidgets import QApplication
 
+        from macroflow import __version__
         from macroflow.ui import MainWindow
         logger.info("PyQt6 import OK")
     except ImportError:
@@ -123,7 +124,7 @@ def main() -> None:
     try:
         app = QApplication(sys.argv)
         app.setApplicationName("MacroFlow")
-        app.setApplicationVersion("0.1.0")
+        app.setApplicationVersion(__version__)
         logger.info("QApplication created")
 
         window = MainWindow()

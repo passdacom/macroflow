@@ -120,7 +120,7 @@ class ColorTriggerEvent(MacroEvent):
         y_ratio: 감지할 픽셀의 Y 좌표 비율.
         target_color: 기다릴 목표 색상 (#RRGGBB 형식).
         tolerance: RGB 채널별 허용 오차 (±tolerance). 기본 10.
-        timeout_ms: 최대 대기 시간 (밀리초).
+        timeout_ms: 최대 대기 시간 (밀리초). 0 이하면 색이 나올 때까지 무제한 대기.
         check_interval_ms: 폴링 주기 (밀리초).
         on_timeout: 타임아웃 시 동작.
     """
@@ -129,7 +129,7 @@ class ColorTriggerEvent(MacroEvent):
     y_ratio: float
     target_color: str  # "#RRGGBB"
     tolerance: int = 10
-    timeout_ms: int = 10000
+    timeout_ms: int = 0
     check_interval_ms: int = 50
     on_timeout: Literal["error", "skip", "retry"] = "error"
 

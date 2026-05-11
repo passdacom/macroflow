@@ -127,7 +127,7 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
                 y_ratio=d["y_ratio"],
                 target_color=d["target_color"],
                 tolerance=d.get("tolerance", 10),
-                timeout_ms=d.get("timeout_ms", 10000),
+                timeout_ms=0,
                 check_interval_ms=d.get("check_interval_ms", 50),
                 on_timeout=d.get("on_timeout", "error"),
             )
@@ -528,7 +528,7 @@ def set_color_check_on_mismatch(
         event_id: 수정할 mouse_down 이벤트 id.
         action: "skip" — 불일치 시 해당 클릭만 스킵 후 계속 실행.
                 "stop" — 불일치 시 재생 전체 즉시 중단.
-                "wait" — 색이 일치할 때까지 대기.
+                "wait" — 최대 10초 동안 색 일치를 기다린 뒤 클릭 진행.
 
     Returns:
         color_check_on_mismatch가 변경된 새 MacroData (is_edited=True).

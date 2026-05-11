@@ -13,6 +13,7 @@ from macroflow.macro_file import (
     load,
     reset_to_raw,
     save,
+    set_color_check_on_mismatch,
     set_delay_all,
     set_delay_single,
 )
@@ -349,3 +350,83 @@ def test_color_check_wait_roundtrip(tmp_path: Path) -> None:
     ev = loaded.events[0]
     assert isinstance(ev, MouseButtonEvent)
     assert ev.color_check_on_mismatch == "wait"
+
+
+def test_color_trigger_load_normalizes_timeout_to_infinite(tmp_path: Path) -> None:
+    """기존 파일에 timeout_ms가 없거나 10초로 저장되어 있어도 색 트리거는 무제한 대기(0)로 로드한다."""
+    path = tmp_path / "legacy_color_trigger.json"
+    path.write_text(
+        """
+{
+  "meta": {
+    "version": "1.0",
+    "app_version": "1.2.0",
+    "created_at": "2026-05-11T00:00:00",
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "dpi_scale": 1.0
+  },
+  "settings": {},
+  "raw_events": [],
+  "events": [
+    {
+      "id": "11223344",
+      "type": "color_trigger",
+      "timestamp_ns": 1000000000,
+      "delay_override_ms": null,
+      "x_ratio": 0.5,
+      "y_ratio": 0.5,
+      "target_color": "#FFFFFF"
+    },
+    {
+      "id": "55667788",
+      "type": "color_trigger",
+      "timestamp_ns": 2000000000,
+      "delay_override_ms": null,
+      "x_ratio": 0.25,
+      "y_ratio": 0.75,
+      "target_color": "#000000",
+      "timeout_ms": 10000
+    }
+  ]
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    loaded = load(str(path))
+
+    for event in loaded.events:
+        assert isinstance(event, ColorTriggerEvent)
+        assert event.timeout_ms == 0
+
+
+def test_color_check_click_default_timeout_remains_ten_seconds() -> None:
+    """클릭 색 체크의 wait 모드는 MacroSettings 기본 10초 예산을 계속 사용한다."""
+    assert MacroSettings().color_trigger_default_timeout_ms == 10000
+
+
+def test_set_color_check_on_mismatch_selects_target_mode_directly() -> None:
+    """색 체크 불일치 동작은 순환이 아니라 원하는 모드를 바로 저장할 수 있어야 한다."""
+    event = MouseButtonEvent(
+        id="aa11bb22", type="mouse_down", timestamp_ns=1_000_000_000,
+        x_ratio=0.5, y_ratio=0.5, button="left",
+        recorded_color="#FFFFFF", color_check_enabled=True,
+        color_check_on_mismatch="skip",
+    )
+    macro = MacroData(
+        meta=MacroMeta(
+            version="1.0", app_version="1.2.0",
+            created_at="2026-05-11T00:00:00",
+            screen_width=1920, screen_height=1080, dpi_scale=1.0,
+        ),
+        settings=MacroSettings(),
+        raw_events=[copy.deepcopy(event)],
+        events=[event],
+    )
+
+    for mode in ("skip", "stop", "wait"):
+        updated = set_color_check_on_mismatch(macro, "aa11bb22", mode)
+        updated_event = updated.events[0]
+        assert isinstance(updated_event, MouseButtonEvent)
+        assert updated_event.color_check_on_mismatch == mode

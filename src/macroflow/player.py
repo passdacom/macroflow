@@ -256,10 +256,13 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
     send_mouse_move(x, y)
     time.sleep(0.05)
     target = _hex_to_rgb(event.target_color)
-    deadline_ns = time.perf_counter_ns() + event.timeout_ms * 1_000_000
+    deadline_ns = (
+        None if event.timeout_ms <= 0
+        else time.perf_counter_ns() + event.timeout_ms * 1_000_000
+    )
     interval_s = event.check_interval_ms / 1000.0
 
-    while time.perf_counter_ns() < deadline_ns:
+    while deadline_ns is None or time.perf_counter_ns() < deadline_ns:
         if _stop_flag.is_set():
             return
         actual = get_pixel_color(x, y)

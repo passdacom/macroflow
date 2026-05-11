@@ -238,7 +238,7 @@ null  → timestamp_ns 기준 절대 시간으로 재생 (원래 타이밍)
   "y_ratio": 0.75,
   "target_color": "#FF0000",
   "tolerance": 10,
-  "timeout_ms": 10000,
+  "timeout_ms": 0,
   "check_interval_ms": 50,
   "on_timeout": "error"
 }
@@ -249,7 +249,7 @@ null  → timestamp_ns 기준 절대 시간으로 재생 (원래 타이밍)
 | x_ratio / y_ratio | float | 감지할 픽셀 좌표 (화면 비율) |
 | target_color | string | 기다릴 목표 색상 (#RRGGBB) |
 | tolerance | int | RGB 채널별 허용 오차 (기본 10). ±10 내면 일치 판정 |
-| timeout_ms | int | 최대 대기 시간 |
+| timeout_ms | int | 최대 대기 시간. `0` 이하이면 색이 나올 때까지 무제한 대기 |
 | check_interval_ms | int | 폴링 주기 (기본 50ms) |
 | on_timeout | string | "error"(재생 중단) \| "skip"(다음 진행) \| "retry"(처음부터) |
 

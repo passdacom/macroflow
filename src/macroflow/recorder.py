@@ -357,7 +357,7 @@ def inject_color_trigger(x_ratio: float, y_ratio: float, color_hex: str) -> None
         y_ratio=y_ratio,
         target_color=color_hex,
         tolerance=10,
-        timeout_ms=10000,
+        timeout_ms=0,
         check_interval_ms=50,
         on_timeout="skip",
     )

@@ -119,10 +119,42 @@ class _DisplayRow:
     color_check_enabled: bool = False         # 색 체크 활성 여부
     color_check_on_mismatch: str = "skip"     # "skip" | "stop" | "wait"
     time_ms_rel: float = 0.0                  # 이전 이벤트 대비 delta(ms). 상대 시간 표시용.
+    color_hex: str | None = None              # 내용 열 옆 색상 박스에 표시할 #RRGGBB 값.
 
 
 def _delay_str(event: AnyEvent) -> str:
     return str(event.delay_override_ms) if event.delay_override_ms is not None else ""
+
+
+def _is_hex_color(value: str | None) -> bool:
+    """QSS 색상 박스에 안전하게 사용할 수 있는 #RRGGBB 값인지 검사한다."""
+    if value is None or len(value) != 7 or not value.startswith("#"):
+        return False
+    return all(c in "0123456789abcdefABCDEF" for c in value[1:])
+
+
+def _color_detail_widget(detail: str, color_hex: str | None) -> QWidget:
+    """내용 텍스트와 실제 색상 swatch 박스를 함께 보여주는 셀 위젯."""
+    widget = QWidget()
+    layout = QHBoxLayout(widget)
+    layout.setContentsMargins(4, 0, 4, 0)
+    layout.setSpacing(6)
+
+    text_label = QLabel(detail)
+    text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(text_label)
+
+    if _is_hex_color(color_hex):
+        swatch = QLabel()
+        swatch.setFixedSize(18, 18)
+        swatch.setToolTip(color_hex)
+        swatch.setStyleSheet(
+            f"background-color: {color_hex}; border: 1px solid #666; border-radius: 2px;"
+        )
+        layout.addWidget(swatch)
+
+    layout.addStretch(1)
+    return widget
 
 
 def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
@@ -209,6 +241,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                     _delay_str(event), all_indices, i,
                     color_check_enabled=is_color_check,
                     color_check_on_mismatch=event.color_check_on_mismatch,
+                    color_hex=event.recorded_color,
                 ))
             else:
                 consumed.add(i)
@@ -350,6 +383,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 f"({x_s}, {y_s}) {event.target_color}",
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
+                color_hex=event.target_color,
             ))
 
         # ── 창 트리거 ─────────────────────────────────────────────────────────
@@ -778,6 +812,8 @@ class EventEditorWidget(QWidget):
             return
 
         events = self._macro.events
+        for row_idx in range(self._table.rowCount()):
+            self._table.removeCellWidget(row_idx, 2)
         self._rows = _build_rows(events, self._show_moves)
         # 출처 열: primary 이벤트의 source_file을 각 행에 반영
         for row in self._rows:
@@ -812,6 +848,9 @@ class EventEditorWidget(QWidget):
                 if col != 5:  # 출처 열은 이미 정렬 지정됨
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_idx, col, item)
+
+            if _is_hex_color(row.color_hex):
+                self._table.setCellWidget(row_idx, 2, _color_detail_widget(row.detail, row.color_hex))
 
         total = len(events)
         raw_total = len(self._macro.raw_events)
@@ -909,20 +948,24 @@ class EventEditorWidget(QWidget):
                 assert act_color is not None
                 act_color.triggered.connect(lambda: self._toggle_color_check(rows[0]))
 
-                # 불일치 동작 전환 (색 체크 활성화된 경우만) — skip→stop→wait→skip 순환
+                # 불일치 동작 선택 (색 체크 활성화된 경우만) — 원하는 모드를 한 번에 선택
                 if is_checked:
-                    mismatch = primary.color_check_on_mismatch
-                    if mismatch == "skip":
-                        mode_text = "⏹ 불일치 시: 중지로 변경(&M)"
-                    elif mismatch == "stop":
-                        mode_text = "⏳ 불일치 시: 대기로 변경(&M)"
-                    else:  # wait
-                        mode_text = "▶ 불일치 시: 스킵으로 변경(&M)"
-                    act_mode = menu.addAction(mode_text)
-                    assert act_mode is not None
-                    act_mode.triggered.connect(
-                        lambda: self._toggle_color_check_mode(rows[0])
+                    mode_menu = menu.addMenu("불일치 시 동작(&M)")
+                    assert mode_menu is not None
+                    current_mode = primary.color_check_on_mismatch
+                    mode_labels: tuple[tuple[Literal["skip", "stop", "wait"], str], ...] = (
+                        ("skip", "▶ 스킵(&S)"),
+                        ("stop", "⏹ 중지(&T)"),
+                        ("wait", "⏳ 대기(&W)"),
                     )
+                    for mode, label in mode_labels:
+                        act_mode = mode_menu.addAction(label)
+                        assert act_mode is not None
+                        act_mode.setCheckable(True)
+                        act_mode.setChecked(mode == current_mode)
+                        act_mode.triggered.connect(
+                            lambda _checked=False, mode=mode: self._set_color_check_mode(rows[0], mode)
+                        )
 
             if row.kind == "mouse_wheel":
                 act_edit_wheel = menu.addAction("스크롤 편집(&W)...")
@@ -1347,7 +1390,7 @@ class EventEditorWidget(QWidget):
                 y_ratio=y_r,
                 target_color=color_hex,
                 tolerance=10,
-                timeout_ms=10000,
+                timeout_ms=0,
             )
             self._push_undo()
             events = list(self._macro.events)
@@ -1447,23 +1490,21 @@ class EventEditorWidget(QWidget):
         self._refresh()
         self.macro_changed.emit(self._macro)
 
-    def _toggle_color_check_mode(self, row_idx: int) -> None:
-        """지정 행 클릭 이벤트의 color_check_on_mismatch를 skip → stop → wait → skip 순환으로 전환한다."""
+    def _set_color_check_mode(
+        self,
+        row_idx: int,
+        mode: Literal["skip", "stop", "wait"],
+    ) -> None:
+        """지정 행 클릭 이벤트의 color_check_on_mismatch를 선택한 모드로 즉시 설정한다."""
         if self._macro is None or row_idx >= len(self._rows):
             return
         row = self._rows[row_idx]
         primary = self._macro.events[row.primary_idx]
         if not isinstance(primary, MouseButtonEvent) or not primary.color_check_enabled:
             return
-        _cycle: dict[str, Literal["skip", "stop", "wait"]] = {
-            "skip": "stop", "stop": "wait", "wait": "skip",
-        }
-        new_mode: Literal["skip", "stop", "wait"] = _cycle.get(
-            primary.color_check_on_mismatch, "skip"
-        )
         self._push_undo()
         try:
-            new_macro = set_color_check_on_mismatch(self._macro, primary.id, new_mode)
+            new_macro = set_color_check_on_mismatch(self._macro, primary.id, mode)
         except (KeyError, TypeError):
             self._undo_stack.pop()
             return

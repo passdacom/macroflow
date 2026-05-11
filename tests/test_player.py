@@ -16,6 +16,7 @@ from macroflow.player import (
 )
 from macroflow.types import (
     AnyEvent,
+    ColorTriggerEvent,
     KeyEvent,
     MacroData,
     MacroMeta,
@@ -321,3 +322,30 @@ class TestColorCheckWait:
         # 픽셀이 일치한 후 클릭이 실행되어야 함
         assert mock_player_button.called or mock_button.called
         assert call_count >= 3
+
+
+class TestColorTriggerInfiniteWait:
+    def test_timeout_zero_waits_until_match_without_raising_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """timeout_ms=0 색 트리거는 타임아웃 없이 색이 나올 때까지 대기해야 한다."""
+        event = ColorTriggerEvent(
+            id="dd44ee55", type="color_trigger", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, target_color="#00FF00",
+            tolerance=0, timeout_ms=0, check_interval_ms=1, on_timeout="error",
+        )
+
+        calls = 0
+
+        def fake_get_pixel_color(x: int, y: int) -> tuple[int, int, int]:
+            nonlocal calls
+            calls += 1
+            if calls < 3:
+                return (0, 0, 0)
+            return (0, 255, 0)
+
+        monkeypatch.setattr(player, "ratio_to_pixel", lambda xr, yr: (960, 540))
+        monkeypatch.setattr(player, "send_mouse_move", lambda x, y: None)
+        monkeypatch.setattr(player, "get_pixel_color", fake_get_pixel_color)
+
+        player._wait_for_color(event)
+
+        assert calls == 3
