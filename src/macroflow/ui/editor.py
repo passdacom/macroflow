@@ -63,7 +63,32 @@ from macroflow.types import (
     MouseWheelEvent,
     TextInputEvent,
 )
-from macroflow.ui.editor_rows import _build_rows, _DisplayRow
+from macroflow.ui.editor_rows import (
+    COLOR_CHECK_CLICK_KINDS,
+    KIND_CLICK,
+    KIND_COLOR_CHECK_CLICK,
+    KIND_COLOR_CHECK_CLICK_STOP,
+    KIND_COLOR_CHECK_CLICK_WAIT,
+    KIND_COLOR_CHECK_RIGHT_CLICK,
+    KIND_COLOR_CHECK_RIGHT_CLICK_STOP,
+    KIND_COLOR_CHECK_RIGHT_CLICK_WAIT,
+    KIND_COLOR_TRIGGER,
+    KIND_CONDITION,
+    KIND_DRAG,
+    KIND_KEY_PRESS,
+    KIND_LOOP,
+    KIND_MOUSE_MOVE,
+    KIND_MOUSE_WHEEL,
+    KIND_ORPHAN,
+    KIND_RIGHT_CLICK,
+    KIND_RIGHT_DRAG,
+    KIND_TEXT_INPUT,
+    KIND_WAIT,
+    KIND_WINDOW_TRIGGER,
+    POSITION_EDIT_KINDS,
+    _build_rows,
+    _DisplayRow,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,28 +97,28 @@ _MAX_UNDO = 50
 # ── 행 종류별 색상 ──────────────────────────────────────────────────────────────
 
 _KIND_COLORS: dict[str, QColor] = {
-    "click":                 QColor(60, 110, 200),
-    "right_click":           QColor(80, 60, 180),
-    "drag":                  QColor(40, 80, 160),
-    "right_drag":            QColor(60, 40, 140),
-    "color_check_click":           QColor(200, 100, 30),   # 주황 — 색 체크 스킵 모드
-    "color_check_right_click":     QColor(180, 70,  20),   # 진한 주황 — 우클릭 스킵 모드
-    "color_check_click_stop":      QColor(210,  45,  45),   # 빨강 — 색 체크 중지 모드
-    "color_check_right_click_stop": QColor(180, 30,  30),  # 진한 빨강 — 우클릭 중지 모드
+    KIND_CLICK:                 QColor(60, 110, 200),
+    KIND_RIGHT_CLICK:           QColor(80, 60, 180),
+    KIND_DRAG:                  QColor(40, 80, 160),
+    KIND_RIGHT_DRAG:            QColor(60, 40, 140),
+    KIND_COLOR_CHECK_CLICK:           QColor(200, 100, 30),   # 주황 — 색 체크 스킵 모드
+    KIND_COLOR_CHECK_RIGHT_CLICK:     QColor(180, 70,  20),   # 진한 주황 — 우클릭 스킵 모드
+    KIND_COLOR_CHECK_CLICK_STOP:      QColor(210,  45,  45),   # 빨강 — 색 체크 중지 모드
+    KIND_COLOR_CHECK_RIGHT_CLICK_STOP: QColor(180, 30,  30),  # 진한 빨강 — 우클릭 중지 모드
     # wait 색상 (파란 계열)
-    "color_check_click_wait":       QColor(40,  120, 210),  # 파랑 — 색 체크 대기 모드
-    "color_check_right_click_wait": QColor(30,   90, 180),  # 진한 파랑
+    KIND_COLOR_CHECK_CLICK_WAIT:       QColor(40,  120, 210),  # 파랑 — 색 체크 대기 모드
+    KIND_COLOR_CHECK_RIGHT_CLICK_WAIT: QColor(30,   90, 180),  # 진한 파랑
     # 텍스트 입력
-    "text_input":                   QColor(0,   170, 130),  # 녹청(teal)
-    "key_press":             QColor(60, 145, 85),
-    "mouse_move":            QColor(90, 90, 90),
-    "mouse_wheel":           QColor(20, 150, 155),   # 청록색 — 휠 스크롤
-    "wait":                  QColor(190, 120, 50),
-    "color_trigger":         QColor(140, 80, 170),
-    "window_trigger":        QColor(140, 80, 170),
-    "condition":             QColor(170, 140, 40),
-    "loop":                  QColor(170, 140, 40),
-    "orphan":                QColor(160, 60, 60),
+    KIND_TEXT_INPUT:                   QColor(0,   170, 130),  # 녹청(teal)
+    KIND_KEY_PRESS:             QColor(60, 145, 85),
+    KIND_MOUSE_MOVE:            QColor(90, 90, 90),
+    KIND_MOUSE_WHEEL:           QColor(20, 150, 155),   # 청록색 — 휠 스크롤
+    KIND_WAIT:                  QColor(190, 120, 50),
+    KIND_COLOR_TRIGGER:         QColor(140, 80, 170),
+    KIND_WINDOW_TRIGGER:        QColor(140, 80, 170),
+    KIND_CONDITION:             QColor(170, 140, 40),
+    KIND_LOOP:                  QColor(170, 140, 40),
+    KIND_ORPHAN:                QColor(160, 60, 60),
 }
 
 _COLUMNS = ["#", "타입", "내용", "시간(ms)", "딜레이(ms)", "출처"]
@@ -624,25 +649,18 @@ class EventEditorWidget(QWidget):
             act_edit_delay = menu.addAction("딜레이 설정(&D)...")
             act_edit_delay.triggered.connect(lambda: self._edit_delay(rows[0]))
 
-            if row.kind == "key_press" and isinstance(primary, KeyEvent):
+            if row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
                 act_edit_key = menu.addAction("키 값 변경(&K)...")
                 assert act_edit_key is not None
                 act_edit_key.triggered.connect(lambda: self._edit_key(rows[0]))
 
-            _COLOR_CHECK_KINDS = (
-                "click", "right_click", "drag", "right_drag",
-                "color_check_click", "color_check_right_click",
-                "color_check_click_stop", "color_check_right_click_stop",
-                "color_check_click_wait", "color_check_right_click_wait",
-            )
-
-            if row.kind in _COLOR_CHECK_KINDS + ("orphan", "mouse_move"):
+            if row.kind in POSITION_EDIT_KINDS:
                 act_edit_pos = menu.addAction("위치 변경(&P)...")
                 assert act_edit_pos is not None
                 act_edit_pos.triggered.connect(lambda: self._edit_position(rows[0]))
 
             # 색 체크 토글 — recorded_color가 있는 클릭/드래그에서만 표시
-            if row.kind in _COLOR_CHECK_KINDS and isinstance(primary, MouseButtonEvent) and primary.recorded_color is not None:
+            if row.kind in COLOR_CHECK_CLICK_KINDS and isinstance(primary, MouseButtonEvent) and primary.recorded_color is not None:
                 is_checked = primary.color_check_enabled
                 check_text = "🎨 색 체크 끄기(&C)" if is_checked else "🎨 색 체크 켜기(&C)"
                 act_color = menu.addAction(check_text)
@@ -668,12 +686,12 @@ class EventEditorWidget(QWidget):
                             lambda _checked=False, mode=mode: self._set_color_check_mode(rows[0], mode)
                         )
 
-            if row.kind == "mouse_wheel":
+            if row.kind == KIND_MOUSE_WHEEL:
                 act_edit_wheel = menu.addAction("스크롤 편집(&W)...")
                 assert act_edit_wheel is not None
                 act_edit_wheel.triggered.connect(lambda: self._edit_wheel(rows[0]))
 
-            if row.kind == "text_input" and isinstance(primary, TextInputEvent):
+            if row.kind == KIND_TEXT_INPUT and isinstance(primary, TextInputEvent):
                 act_edit_text = menu.addAction("💬 텍스트 편집(&E)...")
                 assert act_edit_text is not None
                 act_edit_text.triggered.connect(lambda: self._edit_text_input(rows[0]))
@@ -711,19 +729,13 @@ class EventEditorWidget(QWidget):
             self._edit_remark(row)
         elif col == 2:  # 내용 셀
             primary = self._macro.events[display_row.primary_idx]
-            if display_row.kind == "key_press" and isinstance(primary, KeyEvent):
+            if display_row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
                 self._edit_key(row)
-            elif display_row.kind in (
-                "click", "right_click", "drag", "right_drag",
-                "color_check_click", "color_check_right_click",
-                "color_check_click_stop", "color_check_right_click_stop",
-                "color_check_click_wait", "color_check_right_click_wait",
-                "orphan", "mouse_move",
-            ):
+            elif display_row.kind in POSITION_EDIT_KINDS:
                 self._edit_position(row)
-            elif display_row.kind == "mouse_wheel":
+            elif display_row.kind == KIND_MOUSE_WHEEL:
                 self._edit_wheel(row)
-            elif display_row.kind == "text_input":
+            elif display_row.kind == KIND_TEXT_INPUT:
                 self._edit_text_input(row)
             else:
                 self._edit_remark(row)  # 나머지 타입(wait, color_trigger 등)

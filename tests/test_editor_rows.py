@@ -17,8 +17,18 @@ for _mod in [
     if _mod not in sys.modules:
         sys.modules[_mod] = unittest.mock.MagicMock()  # type: ignore[assignment]
 
-from macroflow.types import ColorTriggerEvent, MouseButtonEvent, MouseMoveEvent  # noqa: E402
-from macroflow.ui.editor_rows import _build_rows  # noqa: E402
+from macroflow.types import (  # noqa: E402
+    ColorTriggerEvent,
+    MouseButtonEvent,
+    MouseMoveEvent,
+    WaitEvent,
+)
+from macroflow.ui.editor_rows import (  # noqa: E402
+    COLOR_CHECK_CLICK_KINDS,
+    DISPLAY_ROW_KINDS,
+    POSITION_EDIT_KINDS,
+    _build_rows,
+)
 
 
 def _mouse_down(
@@ -86,6 +96,9 @@ def test_color_check_click_modes_are_displayed_without_changing_semantics(
 
     assert len(rows) == 1
     assert rows[0].kind == expected_kind
+    assert rows[0].kind in DISPLAY_ROW_KINDS
+    assert rows[0].kind in COLOR_CHECK_CLICK_KINDS
+    assert rows[0].kind in POSITION_EDIT_KINDS
     assert rows[0].label == expected_label
     expected_detail = {
         "skip": "(25.0%, 75.0%) 🎨#A1B2C3",
@@ -109,6 +122,9 @@ def test_recorded_color_without_color_check_remains_passive_swatch_metadata() ->
     )
 
     assert rows[0].kind == "click"
+    assert rows[0].kind in DISPLAY_ROW_KINDS
+    assert rows[0].kind in COLOR_CHECK_CLICK_KINDS
+    assert rows[0].kind in POSITION_EDIT_KINDS
     assert rows[0].label == "클릭(왼쪽)"
     assert rows[0].detail == "(25.0%, 75.0%) [#123ABC]"
     assert rows[0].color_check_enabled is False
@@ -130,10 +146,41 @@ def test_color_trigger_row_preserves_target_color_and_infinite_timeout_metadata(
     rows = _build_rows([event], show_moves=False)
 
     assert rows[0].kind == "color_trigger"
+    assert rows[0].kind in DISPLAY_ROW_KINDS
+    assert rows[0].kind not in COLOR_CHECK_CLICK_KINDS
+    assert rows[0].kind not in POSITION_EDIT_KINDS
     assert rows[0].label == "색 트리거"
     assert rows[0].detail == "(25.0%, 75.0%) #FFFFFF"
     assert rows[0].color_hex == "#FFFFFF"
     assert event.timeout_ms == 0
+
+
+def test_position_edit_policy_covers_drag_orphan_and_visible_moves_only() -> None:
+    """위치 편집 대상 kind 정책은 드래그/고아 클릭/표시된 이동을 포함하고 대기 행은 제외한다."""
+    drag_events = [
+        _mouse_down("drag-down", 100_000_000),
+        MouseMoveEvent(id="m1", type="mouse_move", timestamp_ns=110_000_000, x_ratio=0.1, y_ratio=0.1),
+        MouseMoveEvent(id="m2", type="mouse_move", timestamp_ns=120_000_000, x_ratio=0.2, y_ratio=0.2),
+        MouseMoveEvent(id="m3", type="mouse_move", timestamp_ns=130_000_000, x_ratio=0.3, y_ratio=0.3),
+        MouseMoveEvent(id="m4", type="mouse_move", timestamp_ns=140_000_000, x_ratio=0.4, y_ratio=0.4),
+        _mouse_up("drag-up", 150_000_000),
+    ]
+    orphan_events = [_mouse_down("orphan", 200_000_000)]
+    move_events = [MouseMoveEvent(id="move", type="mouse_move", timestamp_ns=300_000_000, x_ratio=0.5, y_ratio=0.5)]
+    wait_events = [WaitEvent(id="wait", type="wait", timestamp_ns=400_000_000, duration_ms=500)]
+
+    drag_row = _build_rows(drag_events, show_moves=False)[0]
+    orphan_row = _build_rows(orphan_events, show_moves=False)[0]
+    move_row = _build_rows(move_events, show_moves=True)[0]
+    wait_row = _build_rows(wait_events, show_moves=False)[0]
+
+    assert drag_row.kind == "drag"
+    assert orphan_row.kind == "orphan"
+    assert move_row.kind == "mouse_move"
+    assert wait_row.kind == "wait"
+    assert {drag_row.kind, orphan_row.kind, move_row.kind} <= set(POSITION_EDIT_KINDS)
+    assert wait_row.kind not in POSITION_EDIT_KINDS
+    assert all(row.kind in DISPLAY_ROW_KINDS for row in [drag_row, orphan_row, move_row, wait_row])
 
 
 def test_hidden_mouse_moves_do_not_change_relative_time_anchor() -> None:

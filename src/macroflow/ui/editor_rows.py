@@ -22,6 +22,57 @@ from macroflow.types import (
     WindowTriggerEvent,
 )
 
+# ── 표시 행 정책 ─────────────────────────────────────────────────────────────
+
+KIND_CLICK = "click"
+KIND_RIGHT_CLICK = "right_click"
+KIND_DRAG = "drag"
+KIND_RIGHT_DRAG = "right_drag"
+KIND_COLOR_CHECK_CLICK = "color_check_click"
+KIND_COLOR_CHECK_RIGHT_CLICK = "color_check_right_click"
+KIND_COLOR_CHECK_CLICK_STOP = "color_check_click_stop"
+KIND_COLOR_CHECK_RIGHT_CLICK_STOP = "color_check_right_click_stop"
+KIND_COLOR_CHECK_CLICK_WAIT = "color_check_click_wait"
+KIND_COLOR_CHECK_RIGHT_CLICK_WAIT = "color_check_right_click_wait"
+KIND_TEXT_INPUT = "text_input"
+KIND_KEY_PRESS = "key_press"
+KIND_MOUSE_MOVE = "mouse_move"
+KIND_MOUSE_WHEEL = "mouse_wheel"
+KIND_WAIT = "wait"
+KIND_COLOR_TRIGGER = "color_trigger"
+KIND_WINDOW_TRIGGER = "window_trigger"
+KIND_CONDITION = "condition"
+KIND_LOOP = "loop"
+KIND_ORPHAN = "orphan"
+
+COLOR_CHECK_CLICK_KINDS = (
+    KIND_CLICK,
+    KIND_RIGHT_CLICK,
+    KIND_DRAG,
+    KIND_RIGHT_DRAG,
+    KIND_COLOR_CHECK_CLICK,
+    KIND_COLOR_CHECK_RIGHT_CLICK,
+    KIND_COLOR_CHECK_CLICK_STOP,
+    KIND_COLOR_CHECK_RIGHT_CLICK_STOP,
+    KIND_COLOR_CHECK_CLICK_WAIT,
+    KIND_COLOR_CHECK_RIGHT_CLICK_WAIT,
+)
+
+POSITION_EDIT_KINDS = COLOR_CHECK_CLICK_KINDS + (KIND_ORPHAN, KIND_MOUSE_MOVE)
+
+DISPLAY_ROW_KINDS = (
+    *POSITION_EDIT_KINDS,
+    KIND_TEXT_INPUT,
+    KIND_KEY_PRESS,
+    KIND_MOUSE_WHEEL,
+    KIND_WAIT,
+    KIND_COLOR_TRIGGER,
+    KIND_WINDOW_TRIGGER,
+    KIND_CONDITION,
+    KIND_LOOP,
+)
+
+
 # ── 표시 행 데이터 ─────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass
@@ -88,7 +139,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 all_indices = [i] + move_indices + [up_idx]
                 consumed.update(all_indices)
                 if len(move_indices) > 3:
-                    kind = "drag" if event.button == "left" else "right_drag"
+                    kind = KIND_DRAG if event.button == "left" else KIND_RIGHT_DRAG
                     label = f"드래그({btn_ko})"
                 elif is_color_check:
                     mismatch = event.color_check_on_mismatch
@@ -97,23 +148,23 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                     emoji = "🛑" if is_stop else ("⏳" if is_wait else "🎨")
                     if event.button == "left":
                         if is_stop:
-                            kind = "color_check_click_stop"
+                            kind = KIND_COLOR_CHECK_CLICK_STOP
                         elif is_wait:
-                            kind = "color_check_click_wait"
+                            kind = KIND_COLOR_CHECK_CLICK_WAIT
                         else:
-                            kind = "color_check_click"
+                            kind = KIND_COLOR_CHECK_CLICK
                     else:
                         if is_stop:
-                            kind = "color_check_right_click_stop"
+                            kind = KIND_COLOR_CHECK_RIGHT_CLICK_STOP
                         elif is_wait:
-                            kind = "color_check_right_click_wait"
+                            kind = KIND_COLOR_CHECK_RIGHT_CLICK_WAIT
                         else:
-                            kind = "color_check_right_click"
+                            kind = KIND_COLOR_CHECK_RIGHT_CLICK
                     label = f"클릭({btn_ko}) {emoji}"
                 else:
                     is_stop = False
                     emoji = "🎨"
-                    kind = "click" if event.button == "left" else "right_click"
+                    kind = KIND_CLICK if event.button == "left" else KIND_RIGHT_CLICK
                     label = f"클릭({btn_ko})"
                 # 색 정보 표시: 체크 활성=색 강조, 비활성=회색 괄호
                 if event.recorded_color:
@@ -135,7 +186,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             else:
                 consumed.add(i)
                 rows.append(_DisplayRow(
-                    "orphan", f"눌림({btn_ko})", f"({x_s}, {y_s})",
+                    KIND_ORPHAN, f"눌림({btn_ko})", f"({x_s}, {y_s})",
                     event.timestamp_ns / 1_000_000,
                     _delay_str(event), [i], i,
                 ))
@@ -147,7 +198,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             x_s = f"{event.x_ratio * 100:.1f}%"
             y_s = f"{event.y_ratio * 100:.1f}%"
             rows.append(_DisplayRow(
-                "orphan", f"뗌({btn_ko})", f"({x_s}, {y_s})",
+                KIND_ORPHAN, f"뗌({btn_ko})", f"({x_s}, {y_s})",
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
@@ -159,7 +210,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 x_s = f"{event.x_ratio * 100:.1f}%"
                 y_s = f"{event.y_ratio * 100:.1f}%"
                 rows.append(_DisplayRow(
-                    "mouse_move", "마우스 이동", f"({x_s}, {y_s})",
+                    KIND_MOUSE_MOVE, "마우스 이동", f"({x_s}, {y_s})",
                     event.timestamp_ns / 1_000_000,
                     _delay_str(event), [i], i,
                 ))
@@ -183,14 +234,14 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 consumed.add(i)
                 consumed.add(up_idx)
                 rows.append(_DisplayRow(
-                    "key_press", "키 입력", event.key,
+                    KIND_KEY_PRESS, "키 입력", event.key,
                     event.timestamp_ns / 1_000_000,
                     _delay_str(event), [i, up_idx], i,
                 ))
             else:
                 consumed.add(i)
                 rows.append(_DisplayRow(
-                    "key_press", "키 누름", event.key,
+                    KIND_KEY_PRESS, "키 누름", event.key,
                     event.timestamp_ns / 1_000_000,
                     _delay_str(event), [i], i,
                 ))
@@ -199,7 +250,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
         elif isinstance(event, KeyEvent) and event.type == "key_up":
             consumed.add(i)
             rows.append(_DisplayRow(
-                "key_press", "키 뗌", event.key,
+                KIND_KEY_PRESS, "키 뗌", event.key,
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
@@ -209,7 +260,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             consumed.add(i)
             preview = event.text if len(event.text) <= 30 else event.text[:27] + "..."
             rows.append(_DisplayRow(
-                "text_input", "텍스트 입력", f'"{preview}"',
+                KIND_TEXT_INPUT, "텍스트 입력", f'"{preview}"',
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
@@ -218,7 +269,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
         elif isinstance(event, WaitEvent):
             consumed.add(i)
             rows.append(_DisplayRow(
-                "wait", "대기", f"{event.duration_ms}ms",
+                KIND_WAIT, "대기", f"{event.duration_ms}ms",
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
@@ -257,7 +308,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 f"  @ ({x_s}, {y_s})"
             )
             rows.append(_DisplayRow(
-                "mouse_wheel", label, detail,
+                KIND_MOUSE_WHEEL, label, detail,
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), group_indices, i,
             ))
@@ -268,7 +319,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             x_s = f"{event.x_ratio * 100:.1f}%"
             y_s = f"{event.y_ratio * 100:.1f}%"
             rows.append(_DisplayRow(
-                "color_trigger", "색 트리거",
+                KIND_COLOR_TRIGGER, "색 트리거",
                 f"({x_s}, {y_s}) {event.target_color}",
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
@@ -279,7 +330,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
         elif isinstance(event, WindowTriggerEvent):
             consumed.add(i)
             rows.append(_DisplayRow(
-                "window_trigger", "창 트리거",
+                KIND_WINDOW_TRIGGER, "창 트리거",
                 event.window_title_contains,
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
@@ -289,7 +340,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
         elif isinstance(event, ConditionEvent):
             consumed.add(i)
             rows.append(_DisplayRow(
-                "condition", "조건 분기",
+                KIND_CONDITION, "조건 분기",
                 event.expression[:30],
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
@@ -299,7 +350,7 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
         elif isinstance(event, LoopEvent):
             consumed.add(i)
             rows.append(_DisplayRow(
-                "loop", "반복", f"×{event.count}",
+                KIND_LOOP, "반복", f"×{event.count}",
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
