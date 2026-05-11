@@ -121,7 +121,14 @@ _KIND_COLORS: dict[str, QColor] = {
     KIND_ORPHAN:                QColor(160, 60, 60),
 }
 
-_COLUMNS = ["#", "타입", "내용", "시간(ms)", "딜레이(ms)", "출처"]
+COL_INDEX = 0
+COL_TYPE = 1
+COL_CONTENT = 2
+COL_REMARK = 3
+COL_TIME = 4
+COL_DELAY = 5
+COL_SOURCE = 6
+_COLUMNS = ["#", "타입", "내용", "비고", "시간(ms)", "딜레이(ms)", "출처"]
 
 
 # ── 키 이름 → VK 코드 매핑 ────────────────────────────────────────────────────
@@ -238,8 +245,6 @@ class EventEditorWidget(QWidget):
         # F6 캡처 콜백: (x_ratio, y_ratio, color_hex) 형태.
         # 위치 편집은 color 무시, 색 트리거 삽입은 모두 활용.
         self._f6_capture_cb: Callable[[float, float, str], None] | None = None
-        # 비고(remark): event_id → 비고 문자열. 내용 열 표시를 대체.
-        self._remarks: dict[str, str] = {}
         # 재생 하이라이트: 마지막으로 하이라이트된 행 인덱스 (-1 = 없음).
         self._last_highlight_row: int = -1
         self._relative_time: bool = False
@@ -332,12 +337,13 @@ class EventEditorWidget(QWidget):
         self._table.verticalHeader().setVisible(False)
 
         hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_INDEX, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_TYPE, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_CONTENT, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(COL_REMARK, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_TIME, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_DELAY, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_SOURCE, QHeaderView.ResizeMode.ResizeToContents)
 
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
@@ -366,7 +372,6 @@ class EventEditorWidget(QWidget):
         self._macro = macro
         self._undo_stack.clear()
         self._redo_stack.clear()
-        self._remarks.clear()
         self._last_highlight_row = -1
         self._refresh()
         self._act_toggle_moves.setEnabled(True)
@@ -423,7 +428,7 @@ class EventEditorWidget(QWidget):
             item = self._table.item(row_idx, col)
             if item is None:
                 continue
-            if col == 1:  # 타입 열은 kind 색 유지
+            if col == COL_TYPE:  # 타입 열은 kind 색 유지
                 item.setBackground(QBrush(kind_color))
             else:
                 item.setData(Qt.ItemDataRole.BackgroundRole, None)  # 기본(교대색) 복원
@@ -500,16 +505,11 @@ class EventEditorWidget(QWidget):
 
         events = self._macro.events
         for row_idx in range(self._table.rowCount()):
-            self._table.removeCellWidget(row_idx, 2)
+            self._table.removeCellWidget(row_idx, COL_CONTENT)
         self._rows = _build_rows(events, self._show_moves)
         # 출처 열: primary 이벤트의 source_file을 각 행에 반영
         for row in self._rows:
             row.source_file = events[row.primary_idx].source_file
-        # 비고: 있으면 내용 열을 대체
-        for row in self._rows:
-            eid = events[row.primary_idx].id
-            if eid in self._remarks:
-                row.detail = f"📝 {self._remarks[eid]}"
         self._last_highlight_row = -1  # 갱신 시 하이라이트 초기화
         self._table.setRowCount(len(self._rows))
 
@@ -519,25 +519,27 @@ class EventEditorWidget(QWidget):
             source_item = _cell(row.source_file)
             source_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
+            content_item = _cell("" if _is_hex_color(row.color_hex) else row.detail)
             items = [
                 _cell(str(row_idx + 1)),
                 _cell(row.label),
-                _cell(row.detail),
+                content_item,
+                _cell(f"📝 {row.remark}" if row.remark else ""),
                 _cell(f"{row.time_ms_rel:.0f}" if self._relative_time else f"{row.time_ms:.0f}"),
                 _cell(row.delay_str),
                 source_item,
             ]
 
-            items[1].setBackground(QBrush(color))
-            items[1].setForeground(QBrush(QColor(255, 255, 255)))
+            items[COL_TYPE].setBackground(QBrush(color))
+            items[COL_TYPE].setForeground(QBrush(QColor(255, 255, 255)))
 
             for col, item in enumerate(items):
-                if col != 5:  # 출처 열은 이미 정렬 지정됨
+                if col != COL_SOURCE:  # 출처 열은 이미 정렬 지정됨
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_idx, col, item)
 
             if _is_hex_color(row.color_hex):
-                self._table.setCellWidget(row_idx, 2, _color_detail_widget(row.detail, row.color_hex))
+                self._table.setCellWidget(row_idx, COL_CONTENT, _color_detail_widget(row.detail, row.color_hex))
 
         total = len(events)
         raw_total = len(self._macro.raw_events)
@@ -684,11 +686,11 @@ class EventEditorWidget(QWidget):
         if row >= len(self._rows) or self._macro is None:
             return
         display_row = self._rows[row]
-        if col == 4:  # 딜레이 셀
+        if col == COL_DELAY:  # 딜레이 셀
             self._edit_delay(row)
-        elif col == 1:  # 타입 셀 → 비고 편집
+        elif col in (COL_TYPE, COL_REMARK):  # 타입/비고 셀 → 비고 편집
             self._edit_remark(row)
-        elif col == 2:  # 내용 셀
+        elif col == COL_CONTENT:  # 내용 셀
             primary = self._macro.events[display_row.primary_idx]
             if display_row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
                 self._edit_key(row)
@@ -1465,47 +1467,41 @@ class EventEditorWidget(QWidget):
     # ── 비고(Remark) 편집 ────────────────────────────────────────────────────
 
     def _edit_remark(self, row: int) -> None:
-        """지정 행에 비고를 설정한다.
+        """지정 행의 primary 이벤트에 비고를 설정한다.
 
-        비고가 있으면 내용 열에 📝 prefix와 함께 원래 내용 대신 표시된다.
-        비워두면 비고가 삭제되어 원래 내용이 복원된다.
+        비고는 내용 열을 대체하지 않고 별도 비고 열에 표시되며, MacroEvent.remark로 저장된다.
+        비워두면 비고가 삭제되어 빈 비고 열로 복원된다.
         """
         if self._macro is None or row >= len(self._rows):
             return
         display_row = self._rows[row]
-        event_id = self._macro.events[display_row.primary_idx].id
-        current = self._remarks.get(event_id, "")
+        primary = self._macro.events[display_row.primary_idx]
+        current = primary.remark
 
         text, ok = QInputDialog.getText(
             self, "비고 편집",
-            f"행 #{row + 1}  비고 (비워두면 기본 표시로 복원):",
+            f"행 #{row + 1}  비고 (비워두면 비고 삭제):",
             text=current,
         )
         if not ok:
             return
 
         stripped = text.strip()
-        if stripped:
-            self._remarks[event_id] = stripped
-        else:
-            self._remarks.pop(event_id, None)
+        if stripped == current:
+            return
 
-        # 해당 셀만 갱신 — 전체 refresh 불필요
-        detail_text = f"📝 {stripped}" if stripped else display_row.detail
-        # _DisplayRow.detail 갱신 후 셀 텍스트 업데이트
-        display_row.detail = detail_text
-        item = self._table.item(row, 2)
-        if item is not None:
-            # detail이 원래 내용이면 remark 없음 → 직접 재계산
-            if not stripped:
-                # 원래 detail을 재계산하기 위해 해당 행만 다시 빌드
-                events = self._macro.events
-                rebuilt = _build_rows(events, self._show_moves)
-                if row < len(rebuilt):
-                    src_row = rebuilt[row]
-                    src_row.source_file = events[src_row.primary_idx].source_file
-                    display_row.detail = src_row.detail
-            item.setText(display_row.detail)
+        self._push_undo()
+        updated = copy.deepcopy(self._macro.events)
+        for i, ev in enumerate(updated):
+            if ev.id == primary.id:
+                updated[i] = dataclasses.replace(ev, remark=stripped)
+                break
+        else:
+            self._undo_stack.pop()
+            QMessageBox.warning(self, "오류", "이벤트를 찾을 수 없습니다.")
+            return
+
+        self._apply_events(updated)
 
     # ── 단일 이벤트 실행 ──────────────────────────────────────────────────────
 

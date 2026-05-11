@@ -79,6 +79,7 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
         "timestamp_ns":     d["timestamp_ns"],
         "delay_override_ms": d.get("delay_override_ms"),
         "source_file":      d.get("source_file", ""),
+        "remark":           d.get("remark", ""),
     }
 
     match d["type"]:

@@ -106,7 +106,9 @@ is_edited  → false
   "id": "a1b2c3d4",
   "type": "이벤트_타입",
   "timestamp_ns": 1234567890,
-  "delay_override_ms": null
+  "delay_override_ms": null,
+  "source_file": "",
+  "remark": ""
 }
 ```
 
@@ -116,6 +118,8 @@ is_edited  → false
 | type | string | 이벤트 종류 |
 | timestamp_ns | int | 녹화 시작 기준 경과 나노초 (perf_counter_ns). raw_events에서 절대 변경 안 함 |
 | delay_override_ms | int \| null | null이면 timestamp_ns 기준 절대시간 재생. 값이 있으면 직전 이벤트 후 N ms 대기 |
+| source_file | string | 병합 매크로의 출처 파일명. 빈 문자열이면 단일 파일/출처 없음 |
+| remark | string | 이벤트 에디터 비고. 없거나 빈 문자열이면 비고 없음. 기존 파일 호환을 위해 누락 시 빈 문자열로 처리 |
 
 ### id 생성 규칙
 ```python

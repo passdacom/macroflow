@@ -39,6 +39,7 @@ def _mouse_down(
     recorded_color: str | None = None,
     color_check_enabled: bool = False,
     color_check_on_mismatch: str = "skip",
+    remark: str = "",
 ) -> MouseButtonEvent:
     return MouseButtonEvent(
         id=id_,
@@ -50,6 +51,7 @@ def _mouse_down(
         recorded_color=recorded_color,
         color_check_enabled=color_check_enabled,
         color_check_on_mismatch=color_check_on_mismatch,  # type: ignore[arg-type]
+        remark=remark,
     )
 
 
@@ -153,6 +155,40 @@ def test_color_trigger_row_preserves_target_color_and_infinite_timeout_metadata(
     assert rows[0].detail == "(25.0%, 75.0%) #FFFFFF"
     assert rows[0].color_hex == "#FFFFFF"
     assert event.timeout_ms == 0
+
+
+def test_display_row_keeps_color_detail_and_remark_separate() -> None:
+    """비고가 있어도 내용/detail과 색상 swatch 메타데이터는 별도로 유지한다."""
+    rows = _build_rows(
+        [
+            _mouse_down(
+                "down",
+                100_000_000,
+                recorded_color="#123ABC",
+                remark="확인 버튼",
+            ),
+            _mouse_up("up", 120_000_000),
+        ],
+        show_moves=False,
+    )
+
+    assert rows[0].detail == "(25.0%, 75.0%) [#123ABC]"
+    assert rows[0].color_hex == "#123ABC"
+    assert rows[0].remark == "확인 버튼"
+
+
+def test_grouped_row_uses_primary_event_remark() -> None:
+    """그룹 행 비고는 primary event(mouse_down/key_down 등)의 remark를 표시한다."""
+    rows = _build_rows(
+        [
+            _mouse_down("down", 100_000_000, remark="primary remark"),
+            _mouse_up("up", 120_000_000),
+        ],
+        show_moves=False,
+    )
+
+    assert rows[0].primary_idx == 0
+    assert rows[0].remark == "primary remark"
 
 
 def test_position_edit_policy_covers_drag_orphan_and_visible_moves_only() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,9 @@ from macroflow.macro_file import (
 from macroflow.types import (
     AnyEvent,
     ColorTriggerEvent,
+    ConditionEvent,
     KeyEvent,
+    LoopEvent,
     MacroData,
     MacroMeta,
     MacroSettings,
@@ -104,6 +107,116 @@ def test_load_missing_file(tmp_path: Path) -> None:
     """존재하지 않는 파일을 로드하면 FileNotFoundError가 발생해야 한다."""
     with pytest.raises(FileNotFoundError):
         load(str(tmp_path / "nonexistent.json"))
+
+
+def test_legacy_event_without_remark_loads_with_empty_remark(tmp_path: Path) -> None:
+    """기존 JSON처럼 remark 필드가 없어도 빈 비고로 정상 로드해야 한다."""
+    path = tmp_path / "legacy_no_remark.json"
+    path.write_text(
+        json.dumps(
+            {
+                "meta": {
+                    "version": "1.0",
+                    "app_version": "1.2.0",
+                    "created_at": "2026-05-11T00:00:00",
+                    "screen_width": 1920,
+                    "screen_height": 1080,
+                    "dpi_scale": 1.0,
+                },
+                "settings": {},
+                "raw_events": [],
+                "events": [
+                    {
+                        "id": "11223344",
+                        "type": "mouse_down",
+                        "timestamp_ns": 1_000_000_000,
+                        "x_ratio": 0.5,
+                        "y_ratio": 0.5,
+                        "button": "left",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = load(str(path))
+
+    assert loaded.events[0].remark == ""
+
+
+def test_event_remark_roundtrip_and_json_field(tmp_path: Path) -> None:
+    """이벤트 비고는 저장 JSON에 기록되고 다시 로드되어야 한다."""
+    macro = _make_macro()
+    macro.events[0].remark = "청구 입력 버튼"
+    path = tmp_path / "remark.json"
+
+    save(macro, str(path))
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    loaded = load(str(path))
+
+    assert saved["events"][0]["remark"] == "청구 입력 버튼"
+    assert loaded.events[0].remark == "청구 입력 버튼"
+
+
+def test_nested_event_remark_roundtrip(tmp_path: Path) -> None:
+    """condition/loop 내부 이벤트의 비고도 저장·로드되어야 한다."""
+    condition = ConditionEvent(
+        id="cc000001",
+        type="condition",
+        timestamp_ns=1_000_000_000,
+        expression="True",
+        if_true=[
+            WaitEvent(
+                id="cc000002",
+                type="wait",
+                timestamp_ns=1_100_000_000,
+                duration_ms=100,
+                remark="조건 true 대기",
+            )
+        ],
+        if_false=[],
+        remark="조건 비고",
+    )
+    loop = LoopEvent(
+        id="dd000001",
+        type="loop",
+        timestamp_ns=2_000_000_000,
+        count=2,
+        events=[
+            TextInputEvent(
+                id="dd000002",
+                type="text_input",
+                timestamp_ns=2_100_000_000,
+                text="ABC",
+                remark="반복 입력",
+            )
+        ],
+        remark="반복 비고",
+    )
+    macro = MacroData(
+        meta=MacroMeta(
+            version="1.0", app_version="1.2.0",
+            created_at="2026-05-11T00:00:00",
+            screen_width=1920, screen_height=1080, dpi_scale=1.0,
+        ),
+        settings=MacroSettings(),
+        raw_events=[copy.deepcopy(condition), copy.deepcopy(loop)],
+        events=[condition, loop],
+    )
+    path = tmp_path / "nested_remark.json"
+
+    save(macro, str(path))
+    loaded = load(str(path))
+
+    loaded_condition = loaded.events[0]
+    assert isinstance(loaded_condition, ConditionEvent)
+    assert loaded_condition.remark == "조건 비고"
+    assert loaded_condition.if_true[0].remark == "조건 true 대기"
+    loaded_loop = loaded.events[1]
+    assert isinstance(loaded_loop, LoopEvent)
+    assert loaded_loop.remark == "반복 비고"
+    assert loaded_loop.events[0].remark == "반복 입력"
 
 
 def test_event_types_roundtrip(tmp_path: Path) -> None:

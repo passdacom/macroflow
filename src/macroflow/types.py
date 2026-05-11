@@ -20,6 +20,8 @@ class MacroEvent:
         timestamp_ns: 녹화 시작 기준 경과 나노초 (perf_counter_ns).
         delay_override_ms: None이면 timestamp_ns 기준 절대 시간으로 재생.
             값이 있으면 직전 이벤트 후 N ms 대기.
+        source_file: 병합 매크로의 출처 파일명. 빈 문자열이면 단일 파일/출처 없음.
+        remark: 사용자가 이벤트 에디터에서 입력한 비고. 빈 문자열이면 비고 없음.
     """
 
     id: str
@@ -27,6 +29,7 @@ class MacroEvent:
     timestamp_ns: int
     delay_override_ms: int | None = None
     source_file: str = ""
+    remark: str = ""
 
 
 @dataclass(kw_only=True)

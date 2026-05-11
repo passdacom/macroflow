@@ -91,6 +91,7 @@ class _DisplayRow:
     color_check_on_mismatch: str = "skip"     # "skip" | "stop" | "wait"
     time_ms_rel: float = 0.0                  # 이전 이벤트 대비 delta(ms). 상대 시간 표시용.
     color_hex: str | None = None              # 내용 열 옆 색상 박스에 표시할 #RRGGBB 값.
+    remark: str = ""                          # 비고 열에 표시할 사용자 메모.
 
 
 def _delay_str(event: AnyEvent) -> str:
@@ -354,6 +355,10 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
                 event.timestamp_ns / 1_000_000,
                 _delay_str(event), [i], i,
             ))
+
+    # primary 이벤트 기준으로 비고를 표시한다. 그룹 내부 secondary 이벤트의 비고는 저장/로드로 보존하되 UI 행에는 직접 표시하지 않는다.
+    for row in rows:
+        row.remark = events[row.primary_idx].remark
 
     # 상대 시간 계산: 각 행의 primary 이벤트 기준
     for i, row in enumerate(rows):
