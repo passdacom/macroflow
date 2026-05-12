@@ -19,6 +19,26 @@ class _Signal:
         self.emit = MagicMock()
 
 
+class _FakeTableForWidth:
+    def __init__(self, width_after_resize: int) -> None:
+        self.width_after_resize = width_after_resize
+        self.width: int | None = None
+        self.resized_column: int | None = None
+        self.set_width_calls: list[tuple[int, int]] = []
+
+    def resizeColumnToContents(self, col: int) -> None:
+        self.resized_column = col
+        self.width = self.width_after_resize
+
+    def columnWidth(self, _col: int) -> int:
+        assert self.width is not None
+        return self.width
+
+    def setColumnWidth(self, col: int, width: int) -> None:
+        self.set_width_calls.append((col, width))
+        self.width = width
+
+
 class _FakeWidget:
     pass
 
@@ -130,6 +150,36 @@ def test_editor_columns_split_content_and_remark(
     assert editor.COL_REMARK == 3
     assert editor.COL_DELAY == 5
     assert editor.COL_SOURCE == 6
+
+
+def test_content_column_has_compact_auto_fit_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    editor = _import_editor(monkeypatch, request)
+
+    assert editor.CONTENT_COLUMN_REFERENCE_TEXT == "(00.0%, 00.0%) [#000000] 색깔"
+    assert 200 <= editor.CONTENT_COLUMN_MIN_WIDTH <= 280
+
+
+def test_content_column_width_fits_contents_but_keeps_reference_minimum(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    editor = _import_editor(monkeypatch, request)
+    widget = editor.EventEditorWidget.__new__(editor.EventEditorWidget)
+
+    short_table = _FakeTableForWidth(editor.CONTENT_COLUMN_MIN_WIDTH - 50)
+    widget._table = short_table
+    widget._fit_content_column()
+    assert short_table.resized_column == editor.COL_CONTENT
+    assert short_table.set_width_calls == [(editor.COL_CONTENT, editor.CONTENT_COLUMN_MIN_WIDTH)]
+
+    long_table = _FakeTableForWidth(editor.CONTENT_COLUMN_MIN_WIDTH + 80)
+    widget._table = long_table
+    widget._fit_content_column()
+    assert long_table.resized_column == editor.COL_CONTENT
+    assert long_table.set_width_calls == []
 
 
 def test_edit_remark_updates_macro_event_and_marks_edited(

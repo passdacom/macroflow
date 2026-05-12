@@ -6,7 +6,6 @@ Undo/Redo, 마우스 이동 숨김 토글, 더블클릭 편집 지원.
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import logging
 import secrets
@@ -61,6 +60,7 @@ from macroflow.types import (
     MouseWheelEvent,
     TextInputEvent,
 )
+from macroflow.ui.editor_history import copy_events, macro_with_events
 from macroflow.ui.editor_keys import key_name_to_vk
 from macroflow.ui.editor_rows import (
     COLOR_CHECK_CLICK_KINDS,
@@ -128,7 +128,10 @@ COL_REMARK = 3
 COL_TIME = 4
 COL_DELAY = 5
 COL_SOURCE = 6
-_COLUMNS = ["#", "타입", "내용", "비고", "시간(ms)", "딜레이(ms)", "출처"]
+COLUMNS = ["#", "타입", "내용", "비고", "시간(ms)", "딜레이(ms)", "출처"]
+_COLUMNS = COLUMNS
+CONTENT_COLUMN_REFERENCE_TEXT = "(00.0%, 00.0%) [#000000] 색깔"
+CONTENT_COLUMN_MIN_WIDTH = len(CONTENT_COLUMN_REFERENCE_TEXT) * 9
 
 
 class EventEditorWidget(QWidget):
@@ -255,8 +258,8 @@ class EventEditorWidget(QWidget):
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(COL_INDEX, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(COL_TYPE, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(COL_CONTENT, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(COL_REMARK, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(COL_CONTENT, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(COL_REMARK, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(COL_TIME, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(COL_DELAY, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(COL_SOURCE, QHeaderView.ResizeMode.ResizeToContents)
@@ -457,6 +460,8 @@ class EventEditorWidget(QWidget):
             if _is_hex_color(row.color_hex):
                 self._table.setCellWidget(row_idx, COL_CONTENT, _color_detail_widget(row.detail, row.color_hex))
 
+        self._fit_content_column()
+
         total = len(events)
         raw_total = len(self._macro.raw_events)
         move_count = sum(1 for e in events if e.type == "mouse_move")
@@ -467,32 +472,32 @@ class EventEditorWidget(QWidget):
             f"  |  이동: {move_count}개{edited_tag}"
         )
 
+    def _fit_content_column(self) -> None:
+        """내용 열을 대표 색상 행 정도로 줄이되, 더 긴 내용은 자동으로 맞춘다."""
+        self._table.resizeColumnToContents(COL_CONTENT)
+        if self._table.columnWidth(COL_CONTENT) < CONTENT_COLUMN_MIN_WIDTH:
+            self._table.setColumnWidth(COL_CONTENT, CONTENT_COLUMN_MIN_WIDTH)
+
     # ── Undo / Redo ───────────────────────────────────────────────────────────
 
     def _push_undo(self) -> None:
         if self._macro is None:
             return
-        self._undo_stack.append(copy.deepcopy(self._macro.events))
+        self._undo_stack.append(copy_events(self._macro.events))
         self._redo_stack.clear()
         self._act_undo.setEnabled(True)
         self._act_redo.setEnabled(False)
 
     def _apply_events(self, events: list[AnyEvent]) -> None:
         assert self._macro is not None
-        self._macro = MacroData(
-            meta=self._macro.meta,
-            settings=self._macro.settings,
-            raw_events=self._macro.raw_events,
-            events=events,
-            is_edited=True,
-        )
+        self._macro = macro_with_events(self._macro, events)
         self._refresh()
         self.macro_changed.emit(self._macro)
 
     def _undo(self) -> None:
         if not self._undo_stack or self._macro is None:
             return
-        self._redo_stack.append(copy.deepcopy(self._macro.events))
+        self._redo_stack.append(copy_events(self._macro.events))
         events = self._undo_stack.pop()
         self._act_undo.setEnabled(bool(self._undo_stack))
         self._act_redo.setEnabled(True)
@@ -501,7 +506,7 @@ class EventEditorWidget(QWidget):
     def _redo(self) -> None:
         if not self._redo_stack or self._macro is None:
             return
-        self._undo_stack.append(copy.deepcopy(self._macro.events))
+        self._undo_stack.append(copy_events(self._macro.events))
         events = self._redo_stack.pop()
         self._act_undo.setEnabled(True)
         self._act_redo.setEnabled(bool(self._redo_stack))
@@ -1373,7 +1378,7 @@ class EventEditorWidget(QWidget):
             return
 
         self._push_undo()
-        updated = copy.deepcopy(self._macro.events)
+        updated = copy_events(self._macro.events)
         for i, ev in enumerate(updated):
             if ev.id == primary.id and isinstance(ev, TextInputEvent):
                 updated[i] = dataclasses.replace(ev, text=text)
@@ -1407,7 +1412,7 @@ class EventEditorWidget(QWidget):
             return
 
         self._push_undo()
-        updated = copy.deepcopy(self._macro.events)
+        updated = copy_events(self._macro.events)
         for i, ev in enumerate(updated):
             if ev.id == primary.id:
                 updated[i] = dataclasses.replace(ev, remark=stripped)
