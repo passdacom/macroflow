@@ -98,7 +98,7 @@ _VK_NAMES: dict[int, str] = {
     0xA0: "lshift", 0xA1: "rshift",
     0xA2: "lctrl",  0xA3: "rctrl",
     0xA4: "lalt",   0xA5: "ralt",
-    # OEM 특수문자 (US 표준 키보드 — editor.py _NAME_TO_VK 와 동일한 이름 사용)
+    # OEM 특수문자 (US 표준 키보드 — ui/editor_keys.py NAME_TO_VK 와 동일한 이름 사용)
     0xBA: ";",   0xBB: "=",   0xBC: ",",   0xBD: "-",   0xBE: ".",
     0xBF: "/",   0xC0: "`",
     0xDB: "[",   0xDC: "\\",  0xDD: "]",   0xDE: "'",
