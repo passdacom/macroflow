@@ -60,6 +60,7 @@ from macroflow.types import (
     MouseWheelEvent,
     TextInputEvent,
 )
+from macroflow.ui import editor_table as _editor_table
 from macroflow.ui.editor_history import copy_events, macro_with_events
 from macroflow.ui.editor_keys import key_name_to_vk
 from macroflow.ui.editor_rows import (
@@ -88,7 +89,20 @@ from macroflow.ui.editor_rows import (
     _build_rows,
     _DisplayRow,
 )
-from macroflow.ui.editor_table import _cell, _color_detail_widget, _is_hex_color
+from macroflow.ui.editor_table import (
+    COL_CONTENT,
+    COL_DELAY,
+    COL_INDEX,
+    COL_REMARK,
+    COL_SOURCE,
+    COL_TIME,
+    COL_TYPE,
+    COLUMNS,
+    CONTENT_COLUMN_MIN_WIDTH,
+    _color_detail_widget,
+    _is_hex_color,
+    _table_row_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,17 +135,8 @@ _KIND_COLORS: dict[str, QColor] = {
     KIND_ORPHAN:                QColor(160, 60, 60),
 }
 
-COL_INDEX = 0
-COL_TYPE = 1
-COL_CONTENT = 2
-COL_REMARK = 3
-COL_TIME = 4
-COL_DELAY = 5
-COL_SOURCE = 6
-COLUMNS = ["#", "타입", "내용", "비고", "시간(ms)", "딜레이(ms)", "출처"]
 _COLUMNS = COLUMNS
-CONTENT_COLUMN_REFERENCE_TEXT = "(00.0%, 00.0%) [#000000] 색깔"
-CONTENT_COLUMN_MIN_WIDTH = len(CONTENT_COLUMN_REFERENCE_TEXT) * 9
+CONTENT_COLUMN_REFERENCE_TEXT = _editor_table.CONTENT_COLUMN_REFERENCE_TEXT
 
 
 class EventEditorWidget(QWidget):
@@ -434,27 +439,14 @@ class EventEditorWidget(QWidget):
 
         for row_idx, row in enumerate(self._rows):
             color = _KIND_COLORS.get(row.kind, QColor(80, 80, 80))
-
-            source_item = _cell(row.source_file)
-            source_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
-            content_item = _cell("" if _is_hex_color(row.color_hex) else row.detail)
-            items = [
-                _cell(str(row_idx + 1)),
-                _cell(row.label),
-                content_item,
-                _cell(f"📝 {row.remark}" if row.remark else ""),
-                _cell(f"{row.time_ms_rel:.0f}" if self._relative_time else f"{row.time_ms:.0f}"),
-                _cell(row.delay_str),
-                source_item,
-            ]
-
-            items[COL_TYPE].setBackground(QBrush(color))
-            items[COL_TYPE].setForeground(QBrush(QColor(255, 255, 255)))
+            items = _table_row_items(
+                row,
+                row_number=row_idx + 1,
+                relative_time=self._relative_time,
+                kind_color=color,
+            )
 
             for col, item in enumerate(items):
-                if col != COL_SOURCE:  # 출처 열은 이미 정렬 지정됨
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_idx, col, item)
 
             if _is_hex_color(row.color_hex):

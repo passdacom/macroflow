@@ -77,6 +77,8 @@ class _QTableWidgetItem:
         self.text = text
         self._flags = 0xFFFF
         self.alignment: int | None = None
+        self.background: object | None = None
+        self.foreground: object | None = None
 
     def flags(self) -> int:
         return self._flags
@@ -87,10 +89,29 @@ class _QTableWidgetItem:
     def setTextAlignment(self, alignment: int) -> None:
         self.alignment = alignment
 
+    def setBackground(self, background: object) -> None:
+        self.background = background
+
+    def setForeground(self, foreground: object) -> None:
+        self.foreground = foreground
+
+
+class _QColor:
+    def __init__(self, red: int, green: int, blue: int) -> None:
+        self.rgb = (red, green, blue)
+
+
+class _QBrush:
+    def __init__(self, color: object) -> None:
+        self.color = color
+
 
 def _install_fake_pyqt(monkeypatch: pytest.MonkeyPatch) -> None:
     qtcore = types.ModuleType("PyQt6.QtCore")
     qtcore.Qt = _Qt
+    qtgui = types.ModuleType("PyQt6.QtGui")
+    qtgui.QBrush = _QBrush
+    qtgui.QColor = _QColor
     qtwidgets = types.ModuleType("PyQt6.QtWidgets")
     qtwidgets.QHBoxLayout = _QHBoxLayout
     qtwidgets.QLabel = _QLabel
@@ -98,9 +119,11 @@ def _install_fake_pyqt(monkeypatch: pytest.MonkeyPatch) -> None:
     qtwidgets.QWidget = _QWidget
     pyqt = types.ModuleType("PyQt6")
     pyqt.QtCore = qtcore
+    pyqt.QtGui = qtgui
     pyqt.QtWidgets = qtwidgets
     monkeypatch.setitem(sys.modules, "PyQt6", pyqt)
     monkeypatch.setitem(sys.modules, "PyQt6.QtCore", qtcore)
+    monkeypatch.setitem(sys.modules, "PyQt6.QtGui", qtgui)
     monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", qtwidgets)
 
 
@@ -163,3 +186,66 @@ def test_color_detail_widget_adds_swatch_only_for_valid_hex_color(
     assert isinstance(invalid_widget.layout, _QHBoxLayout)
     assert len(invalid_widget.layout.widgets) == 1
     assert invalid_widget.layout.widgets[0].text == "색"
+
+
+def test_table_row_items_apply_column_text_alignment_and_type_color(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    table = _import_editor_table(monkeypatch, request)
+    row = types.SimpleNamespace(
+        label="클릭",
+        detail="(10.0%, 20.0%)",
+        remark="확인",
+        time_ms=1234.0,
+        time_ms_rel=34.0,
+        delay_str="100",
+        source_file="macro.json",
+        color_hex=None,
+    )
+    kind_color = _QColor(1, 2, 3)
+
+    items = table._table_row_items(row, row_number=2, relative_time=True, kind_color=kind_color)
+
+    assert [item.text for item in items] == [
+        "2",
+        "클릭",
+        "(10.0%, 20.0%)",
+        "📝 확인",
+        "34",
+        "100",
+        "macro.json",
+    ]
+    assert items[table.COL_SOURCE].alignment == (_AlignmentFlag.AlignLeft | _AlignmentFlag.AlignVCenter)
+    assert all(
+        item.alignment == _AlignmentFlag.AlignCenter
+        for col, item in enumerate(items)
+        if col != table.COL_SOURCE
+    )
+    assert isinstance(items[table.COL_TYPE].background, _QBrush)
+    assert items[table.COL_TYPE].background.color is kind_color
+    assert isinstance(items[table.COL_TYPE].foreground, _QBrush)
+    assert items[table.COL_TYPE].foreground.color.rgb == (255, 255, 255)
+
+
+def test_table_row_items_uses_empty_content_text_when_swatch_widget_will_be_used(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    table = _import_editor_table(monkeypatch, request)
+    row = types.SimpleNamespace(
+        label="색 체크",
+        detail="[#ABCDEF] 색깔",
+        remark="",
+        time_ms=1000.0,
+        time_ms_rel=1000.0,
+        delay_str="0",
+        source_file="",
+        color_hex="#ABCDEF",
+    )
+
+    items = table._table_row_items(row, row_number=1, relative_time=False, kind_color=_QColor(4, 5, 6))
+
+    assert items[table.COL_CONTENT].text == ""
+    assert items[table.COL_TIME].text == "1000"
+    assert items[table.COL_REMARK].text == ""
