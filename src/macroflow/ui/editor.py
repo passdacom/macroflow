@@ -89,6 +89,7 @@ from macroflow.ui.editor_rows import (
     _build_rows,
     _DisplayRow,
 )
+from macroflow.ui.editor_summary import _summary_text
 from macroflow.ui.editor_table import (
     COL_CONTENT,
     COL_DELAY,
@@ -454,14 +455,13 @@ class EventEditorWidget(QWidget):
 
         self._fit_content_column()
 
-        total = len(events)
-        raw_total = len(self._macro.raw_events)
-        move_count = sum(1 for e in events if e.type == "mouse_move")
-        display_count = len(self._rows)
-        edited_tag = " [편집됨]" if self._macro.is_edited else ""
         self._summary.setText(
-            f"표시: {display_count}개  (원본: {total}개, raw: {raw_total}개)"
-            f"  |  이동: {move_count}개{edited_tag}"
+            _summary_text(
+                events,
+                raw_total=len(self._macro.raw_events),
+                display_count=len(self._rows),
+                is_edited=self._macro.is_edited,
+            )
         )
 
     def _fit_content_column(self) -> None:
