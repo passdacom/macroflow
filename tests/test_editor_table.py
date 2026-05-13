@@ -249,3 +249,14 @@ def test_table_row_items_uses_empty_content_text_when_swatch_widget_will_be_used
     assert items[table.COL_CONTENT].text == ""
     assert items[table.COL_TIME].text == "1000"
     assert items[table.COL_REMARK].text == ""
+
+
+def test_should_use_color_detail_widget_accepts_only_valid_row_colors(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    table = _import_editor_table(monkeypatch, request)
+
+    assert table._should_use_color_detail_widget(types.SimpleNamespace(color_hex="#ABCDEF")) is True
+    assert table._should_use_color_detail_widget(types.SimpleNamespace(color_hex="not-a-color")) is False
+    assert table._should_use_color_detail_widget(types.SimpleNamespace(color_hex=None)) is False

@@ -56,6 +56,11 @@ def _color_detail_widget(detail: str, color_hex: str | None) -> QWidget:
     return widget
 
 
+def _should_use_color_detail_widget(row: Any) -> bool:
+    """표시 row가 내용 열에 색상 swatch 위젯을 사용해야 하면 True를 반환한다."""
+    return _is_hex_color(row.color_hex)
+
+
 def _cell(text: str) -> QTableWidgetItem:
     item = QTableWidgetItem(text)
     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -73,7 +78,7 @@ def _table_row_items(
     source_item = _cell(row.source_file)
     source_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-    content_item = _cell("" if _is_hex_color(row.color_hex) else row.detail)
+    content_item = _cell("" if _should_use_color_detail_widget(row) else row.detail)
     items = [
         _cell(str(row_number)),
         _cell(row.label),

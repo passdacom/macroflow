@@ -100,7 +100,7 @@ from macroflow.ui.editor_table import (
     COLUMNS,
     CONTENT_COLUMN_MIN_WIDTH,
     _color_detail_widget,
-    _is_hex_color,
+    _should_use_color_detail_widget,
     _table_row_items,
 )
 
@@ -449,7 +449,7 @@ class EventEditorWidget(QWidget):
             for col, item in enumerate(items):
                 self._table.setItem(row_idx, col, item)
 
-            if _is_hex_color(row.color_hex):
+            if _should_use_color_detail_widget(row):
                 self._table.setCellWidget(row_idx, COL_CONTENT, _color_detail_widget(row.detail, row.color_hex))
 
         self._fit_content_column()
