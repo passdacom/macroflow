@@ -538,6 +538,74 @@ class EventEditorWidget(QWidget):
 
     # ── 컨텍스트 메뉴 / 더블클릭 ─────────────────────────────────────────────
 
+    def _add_context_action(
+        self,
+        menu: QMenu,
+        text: str,
+        callback: Callable[..., None],
+    ) -> None:
+        """Add a context-menu action and connect it to a callback."""
+        action = menu.addAction(text)
+        assert action is not None
+        action.triggered.connect(callback)
+
+    def _add_single_row_context_actions(self, menu: QMenu, row_idx: int) -> None:
+        """Populate actions that are available when exactly one display row is selected."""
+        assert self._macro is not None
+        row = self._rows[row_idx]
+        primary = self._macro.events[row.primary_idx]
+
+        self._add_context_action(menu, "▶ 이 이벤트만 실행", lambda: self._play_single_event(row_idx))
+        menu.addSeparator()
+
+        self._add_context_action(menu, "딜레이 설정(&D)...", lambda: self._edit_delay(row_idx))
+
+        if row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
+            self._add_context_action(menu, "키 값 변경(&K)...", lambda: self._edit_key(row_idx))
+
+        if row.kind in POSITION_EDIT_KINDS:
+            self._add_context_action(menu, "위치 변경(&P)...", lambda: self._edit_position(row_idx))
+
+        # 색 체크 토글 — recorded_color가 있는 클릭/드래그에서만 표시
+        if (
+            row.kind in COLOR_CHECK_CLICK_KINDS
+            and isinstance(primary, MouseButtonEvent)
+            and primary.recorded_color is not None
+        ):
+            is_checked = primary.color_check_enabled
+            check_text = "🎨 색 체크 끄기(&C)" if is_checked else "🎨 색 체크 켜기(&C)"
+            self._add_context_action(menu, check_text, lambda: self._toggle_color_check(row_idx))
+
+            # 불일치 동작 선택 (색 체크 활성화된 경우만) — 원하는 모드를 한 번에 선택
+            if is_checked:
+                mode_menu = menu.addMenu("불일치 시 동작(&M)")
+                assert mode_menu is not None
+                current_mode = primary.color_check_on_mismatch
+                mode_labels: tuple[tuple[Literal["skip", "stop", "wait"], str], ...] = (
+                    ("skip", "▶ 스킵(&S)"),
+                    ("stop", "⏹ 중지(&T)"),
+                    ("wait", "⏳ 대기(&W)"),
+                )
+                for mode, label in mode_labels:
+                    act_mode = mode_menu.addAction(label)
+                    assert act_mode is not None
+                    act_mode.setCheckable(True)
+                    act_mode.setChecked(mode == current_mode)
+                    act_mode.triggered.connect(
+                        lambda _checked=False, mode=mode: self._set_color_check_mode(row_idx, mode)
+                    )
+
+        if row.kind == KIND_MOUSE_WHEEL:
+            self._add_context_action(menu, "스크롤 편집(&W)...", lambda: self._edit_wheel(row_idx))
+
+        if row.kind == KIND_TEXT_INPUT and isinstance(primary, TextInputEvent):
+            self._add_context_action(menu, "💬 텍스트 편집(&E)...", lambda: self._edit_text_input(row_idx))
+
+        self._add_context_action(menu, "💬 텍스트 입력 추가(&T)...", lambda: self._insert_text_input(row_idx))
+        self._add_context_action(menu, "🖱 클릭 추가(&L)...", lambda: self._insert_click(row_idx))
+        self._add_context_action(menu, "📝 비고 편집(&N)...", lambda: self._edit_remark(row_idx))
+        menu.addSeparator()
+
     def _context_menu(self, pos: object) -> None:
         rows = self._selected_row_indices()
         if not rows or self._macro is None:
@@ -546,77 +614,7 @@ class EventEditorWidget(QWidget):
         menu = QMenu(self)
 
         if len(rows) == 1:
-            row = self._rows[rows[0]]
-            primary = self._macro.events[row.primary_idx]
-
-            # ▶ 이 이벤트만 실행
-            act_play_single = menu.addAction("▶ 이 이벤트만 실행")
-            act_play_single.triggered.connect(lambda: self._play_single_event(rows[0]))
-            menu.addSeparator()
-
-            act_edit_delay = menu.addAction("딜레이 설정(&D)...")
-            act_edit_delay.triggered.connect(lambda: self._edit_delay(rows[0]))
-
-            if row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
-                act_edit_key = menu.addAction("키 값 변경(&K)...")
-                assert act_edit_key is not None
-                act_edit_key.triggered.connect(lambda: self._edit_key(rows[0]))
-
-            if row.kind in POSITION_EDIT_KINDS:
-                act_edit_pos = menu.addAction("위치 변경(&P)...")
-                assert act_edit_pos is not None
-                act_edit_pos.triggered.connect(lambda: self._edit_position(rows[0]))
-
-            # 색 체크 토글 — recorded_color가 있는 클릭/드래그에서만 표시
-            if row.kind in COLOR_CHECK_CLICK_KINDS and isinstance(primary, MouseButtonEvent) and primary.recorded_color is not None:
-                is_checked = primary.color_check_enabled
-                check_text = "🎨 색 체크 끄기(&C)" if is_checked else "🎨 색 체크 켜기(&C)"
-                act_color = menu.addAction(check_text)
-                assert act_color is not None
-                act_color.triggered.connect(lambda: self._toggle_color_check(rows[0]))
-
-                # 불일치 동작 선택 (색 체크 활성화된 경우만) — 원하는 모드를 한 번에 선택
-                if is_checked:
-                    mode_menu = menu.addMenu("불일치 시 동작(&M)")
-                    assert mode_menu is not None
-                    current_mode = primary.color_check_on_mismatch
-                    mode_labels: tuple[tuple[Literal["skip", "stop", "wait"], str], ...] = (
-                        ("skip", "▶ 스킵(&S)"),
-                        ("stop", "⏹ 중지(&T)"),
-                        ("wait", "⏳ 대기(&W)"),
-                    )
-                    for mode, label in mode_labels:
-                        act_mode = mode_menu.addAction(label)
-                        assert act_mode is not None
-                        act_mode.setCheckable(True)
-                        act_mode.setChecked(mode == current_mode)
-                        act_mode.triggered.connect(
-                            lambda _checked=False, mode=mode: self._set_color_check_mode(rows[0], mode)
-                        )
-
-            if row.kind == KIND_MOUSE_WHEEL:
-                act_edit_wheel = menu.addAction("스크롤 편집(&W)...")
-                assert act_edit_wheel is not None
-                act_edit_wheel.triggered.connect(lambda: self._edit_wheel(rows[0]))
-
-            if row.kind == KIND_TEXT_INPUT and isinstance(primary, TextInputEvent):
-                act_edit_text = menu.addAction("💬 텍스트 편집(&E)...")
-                assert act_edit_text is not None
-                act_edit_text.triggered.connect(lambda: self._edit_text_input(rows[0]))
-
-            act_text_insert = menu.addAction("💬 텍스트 입력 추가(&T)...")
-            assert act_text_insert is not None
-            act_text_insert.triggered.connect(lambda: self._insert_text_input(rows[0]))
-
-            act_click_insert = menu.addAction("🖱 클릭 추가(&L)...")
-            assert act_click_insert is not None
-            act_click_insert.triggered.connect(lambda: self._insert_click(rows[0]))
-
-            act_remark = menu.addAction("📝 비고 편집(&N)...")
-            assert act_remark is not None
-            act_remark.triggered.connect(lambda: self._edit_remark(rows[0]))
-
-            menu.addSeparator()
+            self._add_single_row_context_actions(menu, rows[0])
 
         act_delete = menu.addAction(f"행 삭제(&X) ({len(rows)}개)")
         act_delete.triggered.connect(lambda: self._delete_rows(rows))

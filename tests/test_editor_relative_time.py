@@ -114,4 +114,4 @@ def test_context_menu_offers_direct_color_check_mismatch_choices() -> None:
     assert "스킵(&S)" in source
     assert "중지(&T)" in source
     assert "대기(&W)" in source
-    assert "_set_color_check_mode(rows[0], mode)" in source
+    assert "_set_color_check_mode(row_idx, mode)" in source
