@@ -368,6 +368,30 @@ class EventEditorWidget(QWidget):
         """F6 캡처 대기 중이면 True를 반환한다."""
         return self._f6_capture_cb is not None
 
+    def _start_f6_capture(
+        self,
+        callback: Callable[[float, float, str], None],
+        *,
+        dialog: QDialog | None = None,
+        button: QPushButton | None = None,
+        label: QLabel | None = None,
+    ) -> None:
+        """Register an F6 capture callback and update optional dialog controls."""
+        if button is not None:
+            button.setEnabled(False)
+        if label is not None:
+            label.setText("⏳ F6을 눌러 위치를 지정하세요...")
+        self._f6_capture_cb = callback
+        self.f6_capture_started.emit()
+        if dialog is not None:
+            dialog.showMinimized()
+
+    def _restore_f6_capture_dialog(self, dialog: QDialog, button: QPushButton) -> None:
+        """Restore a minimized capture dialog after F6 coordinates are consumed."""
+        dialog.showNormal()
+        dialog.raise_()
+        button.setEnabled(True)
+
     def consume_f6_capture(self, x_ratio: float, y_ratio: float, color_hex: str) -> bool:
         """F6이 눌렸을 때 캡처 콜백을 실행한다.
 
@@ -756,16 +780,15 @@ class EventEditorWidget(QWidget):
             x_spin.setValue(x_r * 100)
             y_spin.setValue(y_r * 100)
             capture_label.setText(f"✅ 캡처됨: ({x_r * 100:.1f}%, {y_r * 100:.1f}%)")
-            dialog.showNormal()
-            dialog.raise_()
-            btn_capture.setEnabled(True)
+            self._restore_f6_capture_dialog(dialog, btn_capture)
 
         def _start_capture() -> None:
-            btn_capture.setEnabled(False)
-            capture_label.setText("⏳ F6을 눌러 위치를 지정하세요...")
-            self._f6_capture_cb = _on_f6_captured
-            self.f6_capture_started.emit()  # → main_window에서 힌트 오버레이 표시
-            dialog.showMinimized()
+            self._start_f6_capture(
+                _on_f6_captured,
+                dialog=dialog,
+                button=btn_capture,
+                label=capture_label,
+            )
 
         def _on_dialog_finished(_result: int) -> None:
             # 다이얼로그가 닫힐 때 캡처 대기 상태 해제
@@ -965,8 +988,7 @@ class EventEditorWidget(QWidget):
             )
             self._apply_events(events)
 
-        self._f6_capture_cb = _on_color_captured
-        self.f6_capture_started.emit()  # → main_window에서 힌트 오버레이 표시
+        self._start_f6_capture(_on_color_captured)
 
     def _delete_selected(self) -> None:
         rows = self._selected_row_indices()
@@ -1177,16 +1199,15 @@ class EventEditorWidget(QWidget):
             x_spin.setValue(x_r * 100)
             y_spin.setValue(y_r * 100)
             capture_label.setText(f"✅ 캡처됨: ({x_r * 100:.1f}%, {y_r * 100:.1f}%)")
-            dialog.showNormal()
-            dialog.raise_()
-            btn_capture.setEnabled(True)
+            self._restore_f6_capture_dialog(dialog, btn_capture)
 
         def _start_capture() -> None:
-            btn_capture.setEnabled(False)
-            capture_label.setText("⏳ F6을 눌러 위치를 지정하세요...")
-            self._f6_capture_cb = _on_f6_captured
-            self.f6_capture_started.emit()
-            dialog.showMinimized()
+            self._start_f6_capture(
+                _on_f6_captured,
+                dialog=dialog,
+                button=btn_capture,
+                label=capture_label,
+            )
 
         def _on_dialog_finished(_result: int) -> None:
             self.cancel_f6_capture()
