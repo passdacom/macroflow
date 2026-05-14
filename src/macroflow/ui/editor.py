@@ -19,7 +19,6 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -59,6 +58,11 @@ from macroflow.types import (
     TextInputEvent,
 )
 from macroflow.ui import editor_table as _editor_table
+from macroflow.ui.editor_dialogs import (
+    create_capture_controls,
+    create_delay_spin,
+    create_percentage_spin,
+)
 from macroflow.ui.editor_history import copy_events, macro_with_events
 from macroflow.ui.editor_insertions import (
     _insert_click_events,
@@ -746,30 +750,19 @@ class EventEditorWidget(QWidget):
         dialog.setFixedWidth(320)
 
         form = QFormLayout()
-        x_spin = QDoubleSpinBox()
-        x_spin.setRange(-500.0, 500.0)
-        x_spin.setDecimals(2)
-        x_spin.setSuffix(" %")
-        x_spin.setToolTip("기본 모니터 너비 기준 비율. 보조 모니터는 100% 초과 가능.")
-        x_spin.setValue(primary.x_ratio * 100)
+        x_spin = create_percentage_spin(
+            primary.x_ratio * 100,
+            tooltip="기본 모니터 너비 기준 비율. 보조 모니터는 100% 초과 가능.",
+        )
         form.addRow("X 위치:", x_spin)
 
-        y_spin = QDoubleSpinBox()
-        y_spin.setRange(-500.0, 500.0)
-        y_spin.setDecimals(2)
-        y_spin.setSuffix(" %")
-        y_spin.setToolTip("기본 모니터 높이 기준 비율. 보조 모니터는 100% 초과 가능.")
-        y_spin.setValue(primary.y_ratio * 100)
+        y_spin = create_percentage_spin(
+            primary.y_ratio * 100,
+            tooltip="기본 모니터 높이 기준 비율. 보조 모니터는 100% 초과 가능.",
+        )
         form.addRow("Y 위치:", y_spin)
 
-        capture_label = QLabel("")
-        capture_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        capture_label.setStyleSheet("color: #c07000; font-weight: bold;")
-
-        btn_capture = QPushButton("📍 화면에서 직접 지정 (F6으로 지정)")
-        btn_capture.setToolTip(
-            "버튼 클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요."
-        )
+        capture_label, btn_capture = create_capture_controls()
 
         captured_color: list[str] = []
 
@@ -1114,10 +1107,7 @@ class EventEditorWidget(QWidget):
         text_edit.setPlaceholderText("한글·영문·숫자·특수문자·이모지 모두 지원")
         form.addRow("텍스트:", text_edit)
 
-        delay_spin = QSpinBox()
-        delay_spin.setRange(0, 30000)
-        delay_spin.setValue(1000)
-        delay_spin.setSuffix(" ms")
+        delay_spin = create_delay_spin(1000)
         form.addRow("딜레이:", delay_spin)
 
         buttons = QDialogButtonBox(
@@ -1168,28 +1158,15 @@ class EventEditorWidget(QWidget):
 
         # ── 위치 ────────────────────────────────────────────────────────────
         form = QFormLayout()
-        x_spin = QDoubleSpinBox()
-        x_spin.setRange(-500.0, 500.0)
-        x_spin.setDecimals(2)
-        x_spin.setSuffix(" %")
-        x_spin.setValue(50.0)
+        x_spin = create_percentage_spin(50.0)
         form.addRow("X 위치:", x_spin)
 
-        y_spin = QDoubleSpinBox()
-        y_spin.setRange(-500.0, 500.0)
-        y_spin.setDecimals(2)
-        y_spin.setSuffix(" %")
-        y_spin.setValue(50.0)
+        y_spin = create_percentage_spin(50.0)
         form.addRow("Y 위치:", y_spin)
         layout_v.addLayout(form)
 
         # ── F6 직접 지정 ────────────────────────────────────────────────────
-        capture_label = QLabel("")
-        capture_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        capture_label.setStyleSheet("color: #c07000; font-weight: bold;")
-
-        btn_capture = QPushButton("📍 화면에서 직접 지정 (F6으로 지정)")
-        btn_capture.setToolTip("버튼 클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요.")
+        capture_label, btn_capture = create_capture_controls()
 
         captured_color: list[str] = []
 
@@ -1231,10 +1208,7 @@ class EventEditorWidget(QWidget):
 
         # ── 딜레이 ──────────────────────────────────────────────────────────
         delay_form = QFormLayout()
-        delay_spin = QSpinBox()
-        delay_spin.setRange(0, 30000)
-        delay_spin.setValue(1000)
-        delay_spin.setSuffix(" ms")
+        delay_spin = create_delay_spin(1000)
         delay_form.addRow("딜레이:", delay_spin)
         layout_v.addLayout(delay_form)
 
