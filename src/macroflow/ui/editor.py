@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import secrets
 from collections import deque
 from collections.abc import Callable
 from typing import Literal
@@ -52,7 +51,6 @@ from macroflow.macro_file import (
 )
 from macroflow.types import (
     AnyEvent,
-    ColorTriggerEvent,
     KeyEvent,
     MacroData,
     MouseButtonEvent,
@@ -62,6 +60,12 @@ from macroflow.types import (
 )
 from macroflow.ui import editor_table as _editor_table
 from macroflow.ui.editor_history import copy_events, macro_with_events
+from macroflow.ui.editor_insertions import (
+    _insert_click_events,
+    _insert_color_trigger_event,
+    _insert_text_input_event,
+    _selected_insert_after_event_idx,
+)
 from macroflow.ui.editor_keys import key_name_to_vk
 from macroflow.ui.editor_rows import (
     COLOR_CHECK_CLICK_KINDS,
@@ -621,6 +625,14 @@ class EventEditorWidget(QWidget):
     def _selected_row_indices(self) -> list[int]:
         return sorted({idx.row() for idx in self._table.selectedIndexes()})
 
+    def _selected_insert_after_event_idx(self) -> int:
+        """Return the source event index after which new events should be inserted."""
+        return _selected_insert_after_event_idx(
+            [row.event_indices for row in self._rows],
+            self._selected_row_indices(),
+            len(self._macro.events) if self._macro is not None else 0,
+        )
+
     def _edit_delay(self, row: int) -> None:
         if self._macro is None or row >= len(self._rows):
             return
@@ -936,61 +948,21 @@ class EventEditorWidget(QWidget):
         if self._macro is None:
             return
 
-        rows = self._selected_row_indices()
-        # 삽입 기준: 선택 행의 마지막 이벤트 인덱스 다음 위치
-        if rows:
-            last_row = self._rows[rows[-1]]
-            insert_after_event_idx = max(last_row.event_indices)
-        else:
-            # 선택 없으면 맨 끝에 추가
-            insert_after_event_idx = len(self._macro.events) - 1
-
-        # 색 트리거에 부여할 시간 예산 (1초)
-        # 직전 이벤트 타임스탬프 + 1초를 색 트리거 타임스탬프로 사용한다.
-        # 이후 이벤트들은 동일하게 1초 시프트하여 상대적 타이밍을 보존한다.
-        _TRIGGER_BUDGET_NS = 1_000_000_000  # 1초
+        insert_after_event_idx = self._selected_insert_after_event_idx()
 
         def _on_color_captured(x_r: float, y_r: float, color_hex: str) -> None:
-            """F6 콜백 — ColorTriggerEvent 삽입.
-
-            타임스탬프: 직전 이벤트 ts + 1초 (perf_counter_ns 절대값 사용 금지).
-            이후 이벤트: 모두 1초 시프트하여 상대 타이밍 보존.
-            """
+            """F6 콜백 — ColorTriggerEvent 삽입."""
             if self._macro is None:
                 return
 
-            # 직전 이벤트의 타임스탬프 기준으로 +1초
-            evs = self._macro.events
-            if 0 <= insert_after_event_idx < len(evs):
-                prev_ts_ns = evs[insert_after_event_idx].timestamp_ns
-            elif evs:
-                prev_ts_ns = evs[-1].timestamp_ns
-            else:
-                prev_ts_ns = 0
-
-            color_ts_ns = prev_ts_ns + _TRIGGER_BUDGET_NS
-
-            new_event = ColorTriggerEvent(
-                id=secrets.token_hex(4),
-                type="color_trigger",
-                timestamp_ns=color_ts_ns,
-                delay_override_ms=None,
+            self._push_undo()
+            events = _insert_color_trigger_event(
+                self._macro.events,
+                insert_after_event_idx,
                 x_ratio=x_r,
                 y_ratio=y_r,
                 target_color=color_hex,
-                tolerance=10,
-                timeout_ms=0,
             )
-            self._push_undo()
-            events = list(self._macro.events)
-            events.insert(insert_after_event_idx + 1, new_event)
-
-            # 삽입 지점 이후의 이벤트들을 1초 시프트 → 상대적 타이밍 보존
-            # (시프트 없으면 이후 이벤트의 ts < 색 트리거 ts → 삽입 후 즉시 재생)
-            for i in range(insert_after_event_idx + 2, len(events)):
-                ev = events[i]
-                events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + _TRIGGER_BUDGET_NS)
-
             self._apply_events(events)
 
         self._f6_capture_cb = _on_color_captured
@@ -1144,40 +1116,15 @@ class EventEditorWidget(QWidget):
             return
 
         delay_ms = delay_spin.value()
-        _BUDGET_NS = max(delay_ms * 1_000_000, 1_000_000)  # 최소 1ms
-        delay_override_ms = delay_ms if delay_ms > 0 else None
+        insert_after_event_idx = self._selected_insert_after_event_idx()
 
-        rows = self._selected_row_indices()
-        if rows:
-            last_row = self._rows[rows[-1]]
-            insert_after_event_idx = max(last_row.event_indices)
-        else:
-            insert_after_event_idx = len(self._macro.events) - 1
-
-        evs = self._macro.events
-        if 0 <= insert_after_event_idx < len(evs):
-            prev_ts_ns = evs[insert_after_event_idx].timestamp_ns
-        elif evs:
-            prev_ts_ns = evs[-1].timestamp_ns
-        else:
-            prev_ts_ns = 0
-
-        new_event = TextInputEvent(
-            id=secrets.token_hex(4),
-            type="text_input",
-            timestamp_ns=prev_ts_ns + _BUDGET_NS,
-            delay_override_ms=delay_override_ms,
-            text=text,
-        )
         self._push_undo()
-        events = list(self._macro.events)
-        events.insert(insert_after_event_idx + 1, new_event)
-
-        # 삽입 지점 이후 이벤트 딜레이만큼 시프트 → 타이밍 보존
-        for i in range(insert_after_event_idx + 2, len(events)):
-            ev = events[i]
-            events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + _BUDGET_NS)
-
+        events = _insert_text_input_event(
+            self._macro.events,
+            insert_after_event_idx,
+            text=text,
+            delay_ms=delay_ms,
+        )
         self._apply_events(events)
 
     def _insert_click(self, row_idx: int) -> None:
@@ -1292,64 +1239,19 @@ class EventEditorWidget(QWidget):
             button_str = "left"
 
         is_double = radio_double.isChecked()
-        budget_ns = max(delay_ms * 1_000_000, 1_000_000)
-
-        rows = self._selected_row_indices()
-        if rows:
-            last_row = self._rows[rows[-1]]
-            insert_after_event_idx = max(last_row.event_indices)
-        else:
-            insert_after_event_idx = len(self._macro.events) - 1
-
-        evs = self._macro.events
-        if 0 <= insert_after_event_idx < len(evs):
-            base_ts = evs[insert_after_event_idx].timestamp_ns
-        elif evs:
-            base_ts = evs[-1].timestamp_ns
-        else:
-            base_ts = 0
-
-        _50ms = 50_000_000
-        _100ms = 100_000_000
-
-        def _make_down(ts: int, dly: int | None) -> MouseButtonEvent:
-            return MouseButtonEvent(
-                id=secrets.token_hex(4), type="mouse_down", timestamp_ns=ts,
-                x_ratio=x_ratio, y_ratio=y_ratio, button=button_str,
-                delay_override_ms=dly,
-                recorded_color=rec_color,
-            )
-
-        def _make_up(ts: int) -> MouseButtonEvent:
-            return MouseButtonEvent(
-                id=secrets.token_hex(4), type="mouse_up", timestamp_ns=ts,
-                x_ratio=x_ratio, y_ratio=y_ratio, button=button_str,
-            )
-
-        if is_double:
-            new_events: list[AnyEvent] = [
-                _make_down(base_ts + budget_ns, delay_ms if delay_ms > 0 else None),
-                _make_up(base_ts + budget_ns + _50ms),
-                _make_down(base_ts + budget_ns + _100ms, None),
-                _make_up(base_ts + budget_ns + _100ms + _50ms),
-            ]
-            total_budget = budget_ns + _100ms + _50ms
-        else:
-            new_events = [
-                _make_down(base_ts + budget_ns, delay_ms if delay_ms > 0 else None),
-                _make_up(base_ts + budget_ns + _100ms),
-            ]
-            total_budget = budget_ns + _100ms
+        insert_after_event_idx = self._selected_insert_after_event_idx()
 
         self._push_undo()
-        events = list(self._macro.events)
-        for offset, ne in enumerate(new_events):
-            events.insert(insert_after_event_idx + 1 + offset, ne)
-
-        for i in range(insert_after_event_idx + 1 + len(new_events), len(events)):
-            ev = events[i]
-            events[i] = dataclasses.replace(ev, timestamp_ns=ev.timestamp_ns + total_budget)
-
+        events = _insert_click_events(
+            self._macro.events,
+            insert_after_event_idx,
+            x_ratio=x_ratio,
+            y_ratio=y_ratio,
+            button=button_str,
+            is_double=is_double,
+            delay_ms=delay_ms,
+            recorded_color=rec_color,
+        )
         self._apply_events(events)
 
     def _edit_text_input(self, row_idx: int) -> None:
