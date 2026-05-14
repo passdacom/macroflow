@@ -98,264 +98,244 @@ def _delay_str(event: AnyEvent) -> str:
     return str(event.delay_override_ms) if event.delay_override_ms is not None else ""
 
 
-def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
-    """events 리스트를 표시용 _DisplayRow 리스트로 변환한다.
+def _time_ms(event: AnyEvent) -> float:
+    return event.timestamp_ns / 1_000_000
 
-    연속된 mouse_down+up → 클릭/드래그 한 행으로 그룹화.
-    연속된 key_down+up → 키 입력 한 행으로 그룹화.
-    show_moves=False 이면 mouse_move는 행 목록에서 제외.
-    """
-    rows: list[_DisplayRow] = []
-    consumed: set[int] = set()
 
-    for i, event in enumerate(events):
-        if i in consumed:
+def _button_label(button: str) -> str:
+    return "왼쪽" if button == "left" else "오른쪽"
+
+
+def _position_detail(x_ratio: float, y_ratio: float) -> str:
+    return f"({x_ratio * 100:.1f}%, {y_ratio * 100:.1f}%)"
+
+
+def _color_check_kind(button: str, mismatch: str) -> str:
+    if button == "left":
+        if mismatch == "stop":
+            return KIND_COLOR_CHECK_CLICK_STOP
+        if mismatch == "wait":
+            return KIND_COLOR_CHECK_CLICK_WAIT
+        return KIND_COLOR_CHECK_CLICK
+    if mismatch == "stop":
+        return KIND_COLOR_CHECK_RIGHT_CLICK_STOP
+    if mismatch == "wait":
+        return KIND_COLOR_CHECK_RIGHT_CLICK_WAIT
+    return KIND_COLOR_CHECK_RIGHT_CLICK
+
+
+def _color_check_emoji(mismatch: str) -> str:
+    if mismatch == "stop":
+        return "🛑"
+    if mismatch == "wait":
+        return "⏳"
+    return "🎨"
+
+
+def _build_mouse_down_row(
+    events: list[AnyEvent],
+    index: int,
+    consumed: set[int],
+) -> _DisplayRow:
+    event = events[index]
+    assert isinstance(event, MouseButtonEvent)
+
+    move_indices: list[int] = []
+    up_idx: int | None = None
+
+    for j in range(index + 1, len(events)):
+        if j in consumed:
             continue
+        e2 = events[j]
+        if isinstance(e2, MouseMoveEvent):
+            move_indices.append(j)
+        elif (
+            isinstance(e2, MouseButtonEvent)
+            and e2.type == "mouse_up"
+            and e2.button == event.button
+        ):
+            up_idx = j
+            break
 
-        # ── 마우스 버튼 down ──────────────────────────────────────────────────
-        if isinstance(event, MouseButtonEvent) and event.type == "mouse_down":
-            move_indices: list[int] = []
-            up_idx: int | None = None
+    btn_ko = _button_label(event.button)
+    base_detail = _position_detail(event.x_ratio, event.y_ratio)
+    is_color_check = event.color_check_enabled and event.recorded_color is not None
 
-            for j in range(i + 1, len(events)):
-                if j in consumed:
-                    continue
-                e2 = events[j]
-                if isinstance(e2, MouseMoveEvent):
-                    move_indices.append(j)
-                elif (
-                    isinstance(e2, MouseButtonEvent)
-                    and e2.type == "mouse_up"
-                    and e2.button == event.button
-                ):
-                    up_idx = j
-                    break
+    if up_idx is None:
+        consumed.add(index)
+        return _DisplayRow(
+            KIND_ORPHAN, f"눌림({btn_ko})", base_detail,
+            _time_ms(event), _delay_str(event), [index], index,
+        )
 
-            btn_ko = "왼쪽" if event.button == "left" else "오른쪽"
-            x_s = f"{event.x_ratio * 100:.1f}%"
-            y_s = f"{event.y_ratio * 100:.1f}%"
-            is_color_check = event.color_check_enabled and event.recorded_color is not None
+    all_indices = [index] + move_indices + [up_idx]
+    consumed.update(all_indices)
 
-            if up_idx is not None:
-                all_indices = [i] + move_indices + [up_idx]
-                consumed.update(all_indices)
-                if len(move_indices) > 3:
-                    kind = KIND_DRAG if event.button == "left" else KIND_RIGHT_DRAG
-                    label = f"드래그({btn_ko})"
-                elif is_color_check:
-                    mismatch = event.color_check_on_mismatch
-                    is_stop = mismatch == "stop"
-                    is_wait = mismatch == "wait"
-                    emoji = "🛑" if is_stop else ("⏳" if is_wait else "🎨")
-                    if event.button == "left":
-                        if is_stop:
-                            kind = KIND_COLOR_CHECK_CLICK_STOP
-                        elif is_wait:
-                            kind = KIND_COLOR_CHECK_CLICK_WAIT
-                        else:
-                            kind = KIND_COLOR_CHECK_CLICK
-                    else:
-                        if is_stop:
-                            kind = KIND_COLOR_CHECK_RIGHT_CLICK_STOP
-                        elif is_wait:
-                            kind = KIND_COLOR_CHECK_RIGHT_CLICK_WAIT
-                        else:
-                            kind = KIND_COLOR_CHECK_RIGHT_CLICK
-                    label = f"클릭({btn_ko}) {emoji}"
-                else:
-                    is_stop = False
-                    emoji = "🎨"
-                    kind = KIND_CLICK if event.button == "left" else KIND_RIGHT_CLICK
-                    label = f"클릭({btn_ko})"
-                # 색 정보 표시: 체크 활성=색 강조, 비활성=회색 괄호
-                if event.recorded_color:
-                    if is_color_check:
-                        color_tag = f" {emoji}{event.recorded_color}"
-                    else:
-                        color_tag = f" [{event.recorded_color}]"
-                    detail = f"({x_s}, {y_s}){color_tag}"
-                else:
-                    detail = f"({x_s}, {y_s})"
-                rows.append(_DisplayRow(
-                    kind, label, detail,
-                    event.timestamp_ns / 1_000_000,
-                    _delay_str(event), all_indices, i,
-                    color_check_enabled=is_color_check,
-                    color_check_on_mismatch=event.color_check_on_mismatch,
-                    color_hex=event.recorded_color,
-                ))
-            else:
-                consumed.add(i)
-                rows.append(_DisplayRow(
-                    KIND_ORPHAN, f"눌림({btn_ko})", f"({x_s}, {y_s})",
-                    event.timestamp_ns / 1_000_000,
-                    _delay_str(event), [i], i,
-                ))
+    if len(move_indices) > 3:
+        kind = KIND_DRAG if event.button == "left" else KIND_RIGHT_DRAG
+        label = f"드래그({btn_ko})"
+        emoji = _color_check_emoji(event.color_check_on_mismatch) if is_color_check else "🎨"
+    elif is_color_check:
+        emoji = _color_check_emoji(event.color_check_on_mismatch)
+        kind = _color_check_kind(event.button, event.color_check_on_mismatch)
+        label = f"클릭({btn_ko}) {emoji}"
+    else:
+        emoji = "🎨"
+        kind = KIND_CLICK if event.button == "left" else KIND_RIGHT_CLICK
+        label = f"클릭({btn_ko})"
 
-        # ── 마우스 버튼 up (미소비) ───────────────────────────────────────────
-        elif isinstance(event, MouseButtonEvent) and event.type == "mouse_up":
-            consumed.add(i)
-            btn_ko = "왼쪽" if event.button == "left" else "오른쪽"
-            x_s = f"{event.x_ratio * 100:.1f}%"
-            y_s = f"{event.y_ratio * 100:.1f}%"
-            rows.append(_DisplayRow(
-                KIND_ORPHAN, f"뗌({btn_ko})", f"({x_s}, {y_s})",
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
+    # 색 정보 표시: 체크 활성=색 강조, 비활성=회색 괄호
+    if event.recorded_color:
+        if is_color_check:
+            color_tag = f" {emoji}{event.recorded_color}"
+        else:
+            color_tag = f" [{event.recorded_color}]"
+        detail = f"{base_detail}{color_tag}"
+    else:
+        detail = base_detail
 
-        # ── 마우스 이동 ───────────────────────────────────────────────────────
-        elif isinstance(event, MouseMoveEvent):
-            consumed.add(i)
-            if show_moves:
-                x_s = f"{event.x_ratio * 100:.1f}%"
-                y_s = f"{event.y_ratio * 100:.1f}%"
-                rows.append(_DisplayRow(
-                    KIND_MOUSE_MOVE, "마우스 이동", f"({x_s}, {y_s})",
-                    event.timestamp_ns / 1_000_000,
-                    _delay_str(event), [i], i,
-                ))
+    return _DisplayRow(
+        kind, label, detail,
+        _time_ms(event), _delay_str(event), all_indices, index,
+        color_check_enabled=is_color_check,
+        color_check_on_mismatch=event.color_check_on_mismatch,
+        color_hex=event.recorded_color,
+    )
 
-        # ── 키 누름 ───────────────────────────────────────────────────────────
-        elif isinstance(event, KeyEvent) and event.type == "key_down":
-            up_idx = None
-            for j in range(i + 1, len(events)):
-                if j in consumed:
-                    continue
-                e2 = events[j]
-                if (
-                    isinstance(e2, KeyEvent)
-                    and e2.type == "key_up"
-                    and e2.vk_code == event.vk_code
-                ):
-                    up_idx = j
-                    break
 
-            if up_idx is not None:
-                consumed.add(i)
-                consumed.add(up_idx)
-                rows.append(_DisplayRow(
-                    KIND_KEY_PRESS, "키 입력", event.key,
-                    event.timestamp_ns / 1_000_000,
-                    _delay_str(event), [i, up_idx], i,
-                ))
-            else:
-                consumed.add(i)
-                rows.append(_DisplayRow(
-                    KIND_KEY_PRESS, "키 누름", event.key,
-                    event.timestamp_ns / 1_000_000,
-                    _delay_str(event), [i], i,
-                ))
+def _build_mouse_up_row(event: MouseButtonEvent, index: int) -> _DisplayRow:
+    btn_ko = _button_label(event.button)
+    return _DisplayRow(
+        KIND_ORPHAN, f"뗌({btn_ko})", _position_detail(event.x_ratio, event.y_ratio),
+        _time_ms(event), _delay_str(event), [index], index,
+    )
 
-        # ── 키 뗌 (미소비) ────────────────────────────────────────────────────
-        elif isinstance(event, KeyEvent) and event.type == "key_up":
-            consumed.add(i)
-            rows.append(_DisplayRow(
-                KIND_KEY_PRESS, "키 뗌", event.key,
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
 
-        # ── 텍스트 입력 ──────────────────────────────────────────────────────────────────────
-        elif isinstance(event, TextInputEvent):
-            consumed.add(i)
-            preview = event.text if len(event.text) <= 30 else event.text[:27] + "..."
-            rows.append(_DisplayRow(
-                KIND_TEXT_INPUT, "텍스트 입력", f'"{preview}"',
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
+def _build_mouse_move_row(event: MouseMoveEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_MOUSE_MOVE, "마우스 이동", _position_detail(event.x_ratio, event.y_ratio),
+        _time_ms(event), _delay_str(event), [index], index,
+    )
 
-        # ── 대기 ─────────────────────────────────────────────────────────────
-        elif isinstance(event, WaitEvent):
-            consumed.add(i)
-            rows.append(_DisplayRow(
-                KIND_WAIT, "대기", f"{event.duration_ms}ms",
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
 
-        # ── 마우스 휠 ────────────────────────────────────────────────────────
-        elif isinstance(event, MouseWheelEvent):
-            # 연속된 같은 축(axis) 휠 이벤트를 하나의 행으로 그룹핑한다.
-            # 다른 이벤트 타입이 사이에 끼면 그룹을 끊는다.
-            group_indices: list[int] = [i]
-            total_delta: int = event.delta
-            for j in range(i + 1, len(events)):
-                if j in consumed:
-                    break
-                e2 = events[j]
-                if isinstance(e2, MouseWheelEvent) and e2.axis == event.axis:
-                    group_indices.append(j)
-                    total_delta += e2.delta
-                else:
-                    break
-            consumed.update(group_indices)
+def _build_key_down_row(events: list[AnyEvent], index: int, consumed: set[int]) -> _DisplayRow:
+    event = events[index]
+    assert isinstance(event, KeyEvent)
 
-            # 방향 아이콘 결정
-            if event.axis == "vertical":
-                icon = "↑" if total_delta > 0 else "↓"
-                label = f"↕ 휠 {'위' if total_delta > 0 else '아래'}"
-            else:
-                icon = "→" if total_delta > 0 else "←"
-                label = f"↔ 휠 {'우' if total_delta > 0 else '좌'}"
+    up_idx = None
+    for j in range(index + 1, len(events)):
+        if j in consumed:
+            continue
+        e2 = events[j]
+        if isinstance(e2, KeyEvent) and e2.type == "key_up" and e2.vk_code == event.vk_code:
+            up_idx = j
+            break
 
-            notches = abs(total_delta) // 120 or 1  # 0 방지
-            count_str = f" ×{len(group_indices)}" if len(group_indices) > 1 else ""
-            x_s = f"{event.x_ratio * 100:.1f}%"
-            y_s = f"{event.y_ratio * 100:.1f}%"
-            detail = (
-                f"{icon} {notches}노치  Δ{total_delta:+d}{count_str}"
-                f"  @ ({x_s}, {y_s})"
-            )
-            rows.append(_DisplayRow(
-                KIND_MOUSE_WHEEL, label, detail,
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), group_indices, i,
-            ))
+    consumed.add(index)
+    if up_idx is not None:
+        consumed.add(up_idx)
+        return _DisplayRow(
+            KIND_KEY_PRESS, "키 입력", event.key,
+            _time_ms(event), _delay_str(event), [index, up_idx], index,
+        )
+    return _DisplayRow(
+        KIND_KEY_PRESS, "키 누름", event.key,
+        _time_ms(event), _delay_str(event), [index], index,
+    )
 
-        # ── 색 트리거 ─────────────────────────────────────────────────────────
-        elif isinstance(event, ColorTriggerEvent):
-            consumed.add(i)
-            x_s = f"{event.x_ratio * 100:.1f}%"
-            y_s = f"{event.y_ratio * 100:.1f}%"
-            rows.append(_DisplayRow(
-                KIND_COLOR_TRIGGER, "색 트리거",
-                f"({x_s}, {y_s}) {event.target_color}",
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-                color_hex=event.target_color,
-            ))
 
-        # ── 창 트리거 ─────────────────────────────────────────────────────────
-        elif isinstance(event, WindowTriggerEvent):
-            consumed.add(i)
-            rows.append(_DisplayRow(
-                KIND_WINDOW_TRIGGER, "창 트리거",
-                event.window_title_contains,
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
+def _build_key_up_row(event: KeyEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_KEY_PRESS, "키 뗌", event.key,
+        _time_ms(event), _delay_str(event), [index], index,
+    )
 
-        # ── 조건 분기 ─────────────────────────────────────────────────────────
-        elif isinstance(event, ConditionEvent):
-            consumed.add(i)
-            rows.append(_DisplayRow(
-                KIND_CONDITION, "조건 분기",
-                event.expression[:30],
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
 
-        # ── 반복 ─────────────────────────────────────────────────────────────
-        elif isinstance(event, LoopEvent):
-            consumed.add(i)
-            rows.append(_DisplayRow(
-                KIND_LOOP, "반복", f"×{event.count}",
-                event.timestamp_ns / 1_000_000,
-                _delay_str(event), [i], i,
-            ))
+def _build_text_input_row(event: TextInputEvent, index: int) -> _DisplayRow:
+    preview = event.text if len(event.text) <= 30 else event.text[:27] + "..."
+    return _DisplayRow(
+        KIND_TEXT_INPUT, "텍스트 입력", f'"{preview}"',
+        _time_ms(event), _delay_str(event), [index], index,
+    )
 
+
+def _build_wait_row(event: WaitEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_WAIT, "대기", f"{event.duration_ms}ms",
+        _time_ms(event), _delay_str(event), [index], index,
+    )
+
+
+def _build_mouse_wheel_row(events: list[AnyEvent], index: int, consumed: set[int]) -> _DisplayRow:
+    event = events[index]
+    assert isinstance(event, MouseWheelEvent)
+
+    # 연속된 같은 축(axis) 휠 이벤트를 하나의 행으로 그룹핑한다.
+    # 다른 이벤트 타입이 사이에 끼면 그룹을 끊는다.
+    group_indices: list[int] = [index]
+    total_delta: int = event.delta
+    for j in range(index + 1, len(events)):
+        if j in consumed:
+            break
+        e2 = events[j]
+        if isinstance(e2, MouseWheelEvent) and e2.axis == event.axis:
+            group_indices.append(j)
+            total_delta += e2.delta
+        else:
+            break
+    consumed.update(group_indices)
+
+    # 방향 아이콘 결정
+    if event.axis == "vertical":
+        icon = "↑" if total_delta > 0 else "↓"
+        label = f"↕ 휠 {'위' if total_delta > 0 else '아래'}"
+    else:
+        icon = "→" if total_delta > 0 else "←"
+        label = f"↔ 휠 {'우' if total_delta > 0 else '좌'}"
+
+    notches = abs(total_delta) // 120 or 1  # 0 방지
+    count_str = f" ×{len(group_indices)}" if len(group_indices) > 1 else ""
+    detail = (
+        f"{icon} {notches}노치  Δ{total_delta:+d}{count_str}"
+        f"  @ {_position_detail(event.x_ratio, event.y_ratio)}"
+    )
+    return _DisplayRow(
+        KIND_MOUSE_WHEEL, label, detail,
+        _time_ms(event), _delay_str(event), group_indices, index,
+    )
+
+
+def _build_color_trigger_row(event: ColorTriggerEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_COLOR_TRIGGER, "색 트리거",
+        f"{_position_detail(event.x_ratio, event.y_ratio)} {event.target_color}",
+        _time_ms(event), _delay_str(event), [index], index,
+        color_hex=event.target_color,
+    )
+
+
+def _build_window_trigger_row(event: WindowTriggerEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_WINDOW_TRIGGER, "창 트리거", event.window_title_contains,
+        _time_ms(event), _delay_str(event), [index], index,
+    )
+
+
+def _build_condition_row(event: ConditionEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_CONDITION, "조건 분기", event.expression[:30],
+        _time_ms(event), _delay_str(event), [index], index,
+    )
+
+
+def _build_loop_row(event: LoopEvent, index: int) -> _DisplayRow:
+    return _DisplayRow(
+        KIND_LOOP, "반복", f"×{event.count}",
+        _time_ms(event), _delay_str(event), [index], index,
+    )
+
+
+def _apply_row_metadata(rows: list[_DisplayRow], events: list[AnyEvent]) -> None:
     # primary 이벤트 기준으로 비고를 표시한다. 그룹 내부 secondary 이벤트의 비고는 저장/로드로 보존하되 UI 행에는 직접 표시하지 않는다.
     for row in rows:
         row.remark = events[row.primary_idx].remark
@@ -371,4 +351,55 @@ def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
             prev_ev = events[rows[i - 1].primary_idx]
             row.time_ms_rel = (ev.timestamp_ns - prev_ev.timestamp_ns) / 1_000_000
 
+
+def _build_rows(events: list[AnyEvent], show_moves: bool) -> list[_DisplayRow]:
+    """events 리스트를 표시용 _DisplayRow 리스트로 변환한다.
+
+    연속된 mouse_down+up → 클릭/드래그 한 행으로 그룹화.
+    연속된 key_down+up → 키 입력 한 행으로 그룹화.
+    show_moves=False 이면 mouse_move는 행 목록에서 제외.
+    """
+    rows: list[_DisplayRow] = []
+    consumed: set[int] = set()
+
+    for i, event in enumerate(events):
+        if i in consumed:
+            continue
+
+        if isinstance(event, MouseButtonEvent) and event.type == "mouse_down":
+            rows.append(_build_mouse_down_row(events, i, consumed))
+        elif isinstance(event, MouseButtonEvent) and event.type == "mouse_up":
+            consumed.add(i)
+            rows.append(_build_mouse_up_row(event, i))
+        elif isinstance(event, MouseMoveEvent):
+            consumed.add(i)
+            if show_moves:
+                rows.append(_build_mouse_move_row(event, i))
+        elif isinstance(event, KeyEvent) and event.type == "key_down":
+            rows.append(_build_key_down_row(events, i, consumed))
+        elif isinstance(event, KeyEvent) and event.type == "key_up":
+            consumed.add(i)
+            rows.append(_build_key_up_row(event, i))
+        elif isinstance(event, TextInputEvent):
+            consumed.add(i)
+            rows.append(_build_text_input_row(event, i))
+        elif isinstance(event, WaitEvent):
+            consumed.add(i)
+            rows.append(_build_wait_row(event, i))
+        elif isinstance(event, MouseWheelEvent):
+            rows.append(_build_mouse_wheel_row(events, i, consumed))
+        elif isinstance(event, ColorTriggerEvent):
+            consumed.add(i)
+            rows.append(_build_color_trigger_row(event, i))
+        elif isinstance(event, WindowTriggerEvent):
+            consumed.add(i)
+            rows.append(_build_window_trigger_row(event, i))
+        elif isinstance(event, ConditionEvent):
+            consumed.add(i)
+            rows.append(_build_condition_row(event, i))
+        elif isinstance(event, LoopEvent):
+            consumed.add(i)
+            rows.append(_build_loop_row(event, i))
+
+    _apply_row_metadata(rows, events)
     return rows

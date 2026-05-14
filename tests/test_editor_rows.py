@@ -19,9 +19,15 @@ for _mod in [
 
 from macroflow.types import (  # noqa: E402
     ColorTriggerEvent,
+    ConditionEvent,
+    KeyEvent,
+    LoopEvent,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
+    TextInputEvent,
     WaitEvent,
+    WindowTriggerEvent,
 )
 from macroflow.ui.editor_rows import (  # noqa: E402
     COLOR_CHECK_CLICK_KINDS,
@@ -219,6 +225,44 @@ def test_position_edit_policy_covers_drag_orphan_and_visible_moves_only() -> Non
     assert all(row.kind in DISPLAY_ROW_KINDS for row in [drag_row, orphan_row, move_row, wait_row])
 
 
+@pytest.mark.parametrize(
+    ("mismatch", "expected_detail"),
+    [
+        ("skip", "(25.0%, 75.0%) 🎨#123ABC"),
+        ("stop", "(25.0%, 75.0%) 🛑#123ABC"),
+        ("wait", "(25.0%, 75.0%) ⏳#123ABC"),
+    ],
+)
+def test_color_check_drag_rows_render_without_losing_mismatch_metadata(
+    mismatch: str,
+    expected_detail: str,
+) -> None:
+    """색 체크가 켜진 드래그 row도 refresh 중 emoji 초기화 오류 없이 표시되어야 한다."""
+    events = [
+        _mouse_down(
+            "drag-down",
+            100_000_000,
+            recorded_color="#123ABC",
+            color_check_enabled=True,
+            color_check_on_mismatch=mismatch,
+        ),
+        MouseMoveEvent(id="m1", type="mouse_move", timestamp_ns=110_000_000, x_ratio=0.1, y_ratio=0.1),
+        MouseMoveEvent(id="m2", type="mouse_move", timestamp_ns=120_000_000, x_ratio=0.2, y_ratio=0.2),
+        MouseMoveEvent(id="m3", type="mouse_move", timestamp_ns=130_000_000, x_ratio=0.3, y_ratio=0.3),
+        MouseMoveEvent(id="m4", type="mouse_move", timestamp_ns=140_000_000, x_ratio=0.4, y_ratio=0.4),
+        _mouse_up("drag-up", 150_000_000),
+    ]
+
+    row = _build_rows(events, show_moves=False)[0]
+
+    assert row.kind == "drag"
+    assert row.label == "드래그(왼쪽)"
+    assert row.detail == expected_detail
+    assert row.color_check_enabled is True
+    assert row.color_check_on_mismatch == mismatch
+    assert row.color_hex == "#123ABC"
+
+
 def test_hidden_mouse_moves_do_not_change_relative_time_anchor() -> None:
     """숨겨진 mouse_move는 row 목록에서 빠지지만 다음 row의 상대시간 기준을 흐리면 안 된다."""
     events = [
@@ -233,3 +277,70 @@ def test_hidden_mouse_moves_do_not_change_relative_time_anchor() -> None:
 
     assert [row.kind for row in rows] == ["click", "click"]
     assert rows[1].time_ms_rel == pytest.approx(300.0, abs=1.0)
+
+
+def test_key_down_up_pair_is_grouped_and_unpaired_key_up_remains_visible() -> None:
+    """키 down/up pairing과 미소비 key_up row 표시는 handler 분리 후에도 보존한다."""
+    events = [
+        KeyEvent(id="kd", type="key_down", timestamp_ns=100_000_000, key="A", vk_code=65),
+        KeyEvent(id="ku", type="key_up", timestamp_ns=120_000_000, key="A", vk_code=65),
+        KeyEvent(id="orphan-up", type="key_up", timestamp_ns=200_000_000, key="B", vk_code=66),
+    ]
+
+    rows = _build_rows(events, show_moves=False)
+
+    assert [(row.kind, row.label, row.detail, row.event_indices, row.primary_idx) for row in rows] == [
+        ("key_press", "키 입력", "A", [0, 1], 0),
+        ("key_press", "키 뗌", "B", [2], 2),
+    ]
+
+
+def test_wheel_rows_group_contiguous_same_axis_events_only() -> None:
+    """휠 row는 같은 축의 연속 이벤트만 합산하고 다른 축에서 그룹을 끊는다."""
+    events = [
+        MouseWheelEvent(
+            id="w1", type="mouse_wheel", timestamp_ns=100_000_000,
+            delta=120, axis="vertical", x_ratio=0.25, y_ratio=0.75,
+        ),
+        MouseWheelEvent(
+            id="w2", type="mouse_wheel", timestamp_ns=110_000_000,
+            delta=240, axis="vertical", x_ratio=0.25, y_ratio=0.75,
+        ),
+        MouseWheelEvent(
+            id="w3", type="mouse_wheel", timestamp_ns=120_000_000,
+            delta=-120, axis="horizontal", x_ratio=0.5, y_ratio=0.5,
+        ),
+    ]
+
+    rows = _build_rows(events, show_moves=False)
+
+    assert [(row.kind, row.label, row.detail, row.event_indices) for row in rows] == [
+        ("mouse_wheel", "↕ 휠 위", "↑ 3노치  Δ+360 ×2  @ (25.0%, 75.0%)", [0, 1]),
+        ("mouse_wheel", "↔ 휠 좌", "← 1노치  Δ-120  @ (50.0%, 50.0%)", [2]),
+    ]
+
+
+def test_simple_event_rows_keep_labels_details_and_truncation_contract() -> None:
+    """텍스트/대기/창/조건/반복 row의 label/detail 계약을 고정한다."""
+    long_text = "MacroFlow text input preview should be truncated after thirty characters"
+    long_expr = "window.exists('MacroFlow') and color == '#FFFFFF'"
+    events = [
+        TextInputEvent(id="text", type="text_input", timestamp_ns=100_000_000, text=long_text),
+        WaitEvent(id="wait", type="wait", timestamp_ns=200_000_000, duration_ms=750),
+        WindowTriggerEvent(
+            id="window", type="window_trigger", timestamp_ns=300_000_000,
+            window_title_contains="MacroFlow",
+        ),
+        ConditionEvent(id="cond", type="condition", timestamp_ns=400_000_000, expression=long_expr),
+        LoopEvent(id="loop", type="loop", timestamp_ns=500_000_000, count=3),
+    ]
+
+    rows = _build_rows(events, show_moves=False)
+
+    assert [(row.kind, row.label, row.detail) for row in rows] == [
+        ("text_input", "텍스트 입력", f'"{long_text[:27]}..."'),
+        ("wait", "대기", "750ms"),
+        ("window_trigger", "창 트리거", "MacroFlow"),
+        ("condition", "조건 분기", long_expr[:30]),
+        ("loop", "반복", "×3"),
+    ]
