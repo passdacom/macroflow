@@ -88,6 +88,9 @@ class MainWindow(QMainWindow):
         self._custom_speed: float = 1.0
         # 이전 녹화 복원용 — 새 녹화 시작 직전에 저장
         self._prev_macro: MacroData | None = None
+        # 이어서 녹화 상태 — stop 후 기존 매크로에 append할지 결정
+        self._append_recording_mode: bool = False
+        self._append_base_macro: MacroData | None = None
         # 반복 재생 세션 상태 — 긴급정지가 다음 cycle 시작까지 확실히 막도록 UI가 소유
         self._repeat_session: RepeatPlaybackSession | None = None
 
@@ -165,6 +168,11 @@ class MainWindow(QMainWindow):
         act_new.triggered.connect(self._toggle_recording)
         file_menu.addAction(act_new)
 
+        self._act_append_record_menu = QAction("이어서 녹화...", self)
+        self._act_append_record_menu.setToolTip("현재 매크로 뒤에 새로 녹화한 이벤트를 이어붙입니다")
+        self._act_append_record_menu.triggered.connect(self._start_append_recording)
+        file_menu.addAction(self._act_append_record_menu)
+
         file_menu.addSeparator()
 
         act_open = QAction("열기...  Ctrl+O", self)
@@ -220,6 +228,11 @@ class MainWindow(QMainWindow):
         self._act_record.setCheckable(True)
         self._act_record.triggered.connect(self._toggle_recording)
         tb1.addAction(self._act_record)
+
+        self._act_append_record = QAction("● 이어서 녹화", self)
+        self._act_append_record.setToolTip("현재 매크로 끝에 새 녹화를 이어붙입니다")
+        self._act_append_record.triggered.connect(self._start_append_recording)
+        tb1.addAction(self._act_append_record)
 
         self._act_play = QAction("▶ 재생 (F7)", self)
         self._act_play.setToolTip("F7  —  재생 시작/중지")
@@ -488,6 +501,25 @@ class MainWindow(QMainWindow):
         elif self._state == "recording":
             self._do_stop_recording()
 
+    def _start_append_recording(self) -> None:
+        """현재 매크로 뒤에 새 녹화를 이어붙이는 녹화 모드를 시작한다."""
+        if self._state != "idle" or self._macro is None:
+            return
+        reply = QMessageBox.question(
+            self,
+            "이어서 녹화",
+            "현재 매크로 끝에 새 녹화를 이어붙입니다.\n\n"
+            "F6 또는 중지 버튼으로 녹화를 끝내면 새 이벤트가 뒤에 추가됩니다.\n"
+            "계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._append_recording_mode = True
+        self._append_base_macro = copy.deepcopy(self._macro)
+        self._start_recording()
+
     def _start_recording(self) -> None:
         # 기존 매크로가 있으면 복원을 위해 백업한다 (실수로 F6 눌렀을 때 복원 가능)
         if self._macro is not None:
@@ -501,9 +533,13 @@ class MainWindow(QMainWindow):
         self._overlay.start_recording()
         self._poll_timer.start()
         self._update_toolbar()
-        self._sb_state.setText("● 녹화 중")
+        if self._append_recording_mode:
+            self._sb_state.setText("● 이어서 녹화 중")
+            logger.info("이어서 녹화 시작")
+        else:
+            self._sb_state.setText("● 녹화 중")
+            logger.info("녹화 시작")
         self._sb_count.setText("이벤트: 0")
-        logger.info("녹화 시작")
 
     def _do_stop_recording(self) -> None:
         self._state = "stopping"
@@ -526,6 +562,28 @@ class MainWindow(QMainWindow):
 
     def _on_recording_done(self, macro: object) -> None:
         assert isinstance(macro, MacroData)
+        if self._append_recording_mode and self._append_base_macro is not None:
+            from macroflow.ui.append_recording import append_recording
+
+            appended_macro = append_recording(self._append_base_macro, macro)
+            self._macro = appended_macro
+            self._append_recording_mode = False
+            self._append_base_macro = None
+            self._state = "idle"
+            self._overlay.stop()
+            self._editor.load_macro(appended_macro)
+            self._update_toolbar()
+            self._update_range_spinboxes()
+            count = len(appended_macro.events)
+            added_count = len(macro.events)
+            self._sb_state.setText("이어서 녹화 완료")
+            self._sb_count.setText(f"이벤트: {count} (+{added_count})")
+            self._refresh_recent_menu()
+            logger.info(f"이어서 녹화 완료: {added_count}개 추가, 총 {count}개 이벤트")
+            return
+
+        self._append_recording_mode = False
+        self._append_base_macro = None
         self._macro = macro
         self._state = "idle"
         self._overlay.stop()
@@ -984,7 +1042,13 @@ class MainWindow(QMainWindow):
             (is_idle or is_rec) and not is_seq_tab and not is_fav_tab
         )
         self._act_record.setChecked(is_rec)
-        self._act_record.setText("■ 중지 (F6)" if is_rec else "● 녹화 (F6)")
+        if is_rec and self._append_recording_mode:
+            self._act_record.setText("■ 이어서 녹화 중지 (F6)")
+        else:
+            self._act_record.setText("■ 중지 (F6)" if is_rec else "● 녹화 (F6)")
+        can_append_record = is_idle and self._macro is not None and not is_seq_tab and not is_fav_tab
+        self._act_append_record.setEnabled(can_append_record)
+        self._act_append_record_menu.setEnabled(can_append_record)
 
         # 재생: 탭에 따라 텍스트와 활성화 조건이 달라짐
         if is_seq_tab:
