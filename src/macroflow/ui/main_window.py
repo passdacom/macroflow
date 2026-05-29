@@ -34,7 +34,12 @@ from macroflow.types import MacroData
 from .editor import EventEditorWidget
 from .favorites import FavoritesWidget
 from .overlay import OverlayWindow
-from .playback_repeat import RepeatPlaybackSession
+from .playback_repeat import (
+    PlaybackStartOptions,
+    RepeatPlaybackSession,
+    full_playback_options,
+    range_playback_options,
+)
 from .sequencer import MacroSequencerWidget
 
 logger = logging.getLogger(__name__)
@@ -255,6 +260,7 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setValue(0)
         self._range_start_spin.setSpecialValueText("처음")
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
+        self._range_start_spin.editingFinished.connect(self._normalize_range_spinboxes)
         self._range_start_spin.setFixedWidth(95)
         tb2.addWidget(self._range_start_spin)
 
@@ -265,6 +271,7 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setValue(0)
         self._range_end_spin.setSpecialValueText("끝")
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
+        self._range_end_spin.editingFinished.connect(self._normalize_range_spinboxes)
         self._range_end_spin.setFixedWidth(95)
         tb2.addWidget(self._range_end_spin)
 
@@ -546,18 +553,38 @@ class MainWindow(QMainWindow):
         elif self._state == "playing":
             self._stop_playback()
 
-    def _start_playback(self, forced_range: tuple[int, int] | None = None) -> None:
+    def _start_playback(
+        self,
+        options: PlaybackStartOptions | None = None,
+        forced_range: tuple[int, int] | None = None,
+    ) -> None:
         if not self._macro:
             return
 
         _speed_presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
         idx = self._speed_combo.currentIndex()
         speed = self._custom_speed if idx == 6 else _speed_presets[idx]
-        repeat_count = self._repeat_spin.value()
+        if options is None:
+            if forced_range is not None:
+                options = range_playback_options(forced_range)
+            else:
+                options = full_playback_options(self._repeat_spin.value())
+        repeat_count = options.repeat_count
         interval_ms = self._interval_spin.value()
 
-        # 구간 재생 범위 계산 (단일 이벤트 실행 시 forced_range 우선)
-        event_range = forced_range if forced_range is not None else self._calc_event_range()
+        if options.confirm_repeat and repeat_count > 1:
+            reply = QMessageBox.question(
+                self,
+                "반복 재생",
+                f"{repeat_count:02d}회 반복 재생 하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        # 일반 재생은 항상 전체 재생(None). 구간 재생 버튼/단일 이벤트 실행만 event_range를 전달한다.
+        event_range = options.event_range
 
         self._state = "playing"
         self._repeat_session = RepeatPlaybackSession(total=repeat_count)
@@ -645,6 +672,12 @@ class MainWindow(QMainWindow):
         threading.Thread(
             target=_repeat_worker, daemon=True, name="RepeatPlayWorker"
         ).start()
+
+    def _normalize_range_spinboxes(self) -> None:
+        """빈 구간 입력을 0 sentinel로 되돌려 '처음'/'끝' 표시를 복원한다."""
+        for spin in (self._range_start_spin, self._range_end_spin):
+            if not spin.text().strip():
+                spin.setValue(0)
 
     def _calc_event_range(self) -> tuple[int, int] | None:
         """구간 SpinBox 값에서 event_range (start, end exclusive)를 계산한다."""
@@ -742,7 +775,7 @@ class MainWindow(QMainWindow):
         self._sb_state.setText("대기 중")
 
     def _start_range_playback(self) -> None:
-        """구간 재생 전용 버튼: 구간이 설정된 경우에만 재생한다."""
+        """구간 재생 전용 버튼: 구간이 설정된 경우에만 1회 재생한다."""
         if self._state != "idle" or not self._macro:
             return
         if self._range_start_spin.value() == 0 and self._range_end_spin.value() == 0:
@@ -753,7 +786,10 @@ class MainWindow(QMainWindow):
                 "(0=전체 재생은 ▶ 재생 버튼을 사용하세요)",
             )
             return
-        self._start_playback()
+        event_range = self._calc_event_range()
+        if event_range is None:
+            return
+        self._start_playback(options=range_playback_options(event_range))
 
     def _on_speed_combo_changed(self, idx: int) -> None:
         """속도 콤보 변경 처리. '직접 입력...' 선택 시 수동 입력 다이얼로그를 띄운다."""

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from macroflow.ui.playback_repeat import RepeatPlaybackSession
+from macroflow.ui.playback_repeat import (
+    PlaybackStartOptions,
+    RepeatPlaybackSession,
+    full_playback_options,
+    range_playback_options,
+)
 
 
 def test_stop_request_prevents_later_cycles() -> None:
@@ -35,3 +40,23 @@ def test_cycle_label_uses_one_based_count() -> None:
     session.mark_cycle_started(2)
 
     assert session.cycle_label == "3/10회"
+
+
+def test_full_playback_options_ignore_range_spinbox_values() -> None:
+    options = full_playback_options(repeat_count=5)
+
+    assert options == PlaybackStartOptions(
+        event_range=None,
+        repeat_count=5,
+        confirm_repeat=True,
+    )
+
+
+def test_range_playback_options_force_single_repeat_without_confirmation() -> None:
+    options = range_playback_options((2, 8))
+
+    assert options == PlaybackStartOptions(
+        event_range=(2, 8),
+        repeat_count=1,
+        confirm_repeat=False,
+    )
