@@ -7,6 +7,7 @@ F6/F7 글로벌 핫키(RegisterHotKey), 미니 오버레이, 이벤트 에디터
 from __future__ import annotations
 
 import copy
+import dataclasses
 import logging
 import os
 import sys
@@ -19,7 +20,11 @@ from PyQt6.QtCore import QByteArray, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEvent
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QInputDialog,
     QLabel,
     QMainWindow,
@@ -27,6 +32,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSpinBox,
     QTabWidget,
+    QVBoxLayout,
 )
 
 from macroflow.types import MacroData
@@ -193,6 +199,15 @@ class MainWindow(QMainWindow):
         act_about = QAction("정보", self)
         act_about.triggered.connect(self._show_about)
         help_menu.addAction(act_about)
+
+        # 설정 메뉴
+        settings_menu = mb.addMenu("설정(&S)")
+        act_color_settings = QAction("색 체크 설정...", self)
+        act_color_settings.setToolTip(
+            "클릭 색 체크와 색 트리거 timeout/폴링 간격을 현재 매크로에 저장합니다"
+        )
+        act_color_settings.triggered.connect(self._show_color_check_settings)
+        settings_menu.addAction(act_color_settings)
 
     def _setup_toolbar(self) -> None:
         # ── 1행: 녹화 / 재생 / 중지 ──────────────────────────────────────────
@@ -761,10 +776,106 @@ class MainWindow(QMainWindow):
         color_hex = f"#{r:02X}{g:02X}{b:02X}"
         x_ratio, y_ratio = pixel_to_ratio(x, y)
 
-        recorder.inject_color_trigger(x_ratio, y_ratio, color_hex)
+        timeout_ms = 0
+        check_interval_ms = 50
+        if self._macro is not None:
+            timeout_ms = self._macro.settings.color_trigger_default_timeout_ms
+            check_interval_ms = self._macro.settings.color_trigger_check_interval_ms
+
+        recorder.inject_color_trigger(
+            x_ratio,
+            y_ratio,
+            color_hex,
+            timeout_ms=timeout_ms,
+            check_interval_ms=check_interval_ms,
+        )
 
         self._sb_state.setText(f"● 녹화 중  |  색상 체크 삽입: {color_hex}  ({x}, {y})")
         logger.info(f"색상 체크 삽입: {color_hex} @ pixel ({x}, {y})")
+
+    def _show_color_check_settings(self) -> None:
+        """현재 매크로에 저장되는 색 체크 timeout/폴링 설정을 편집한다."""
+        if self._macro is None:
+            QMessageBox.information(
+                self,
+                "색 체크 설정",
+                "먼저 매크로를 녹화하거나 파일을 열어주세요.\n"
+                "이 설정은 현재 매크로 파일에 저장됩니다.",
+            )
+            return
+
+        settings = self._macro.settings
+        dialog = QDialog(self)
+        dialog.setWindowTitle("색 체크 설정")
+        dialog.setFixedWidth(420)
+
+        layout = QVBoxLayout(dialog)
+
+        click_group = QGroupBox("클릭 내부 색 체크")
+        click_form = QFormLayout(click_group)
+        click_timeout = QSpinBox()
+        click_timeout.setRange(0, 600000)
+        click_timeout.setValue(settings.color_check_click_timeout_ms)
+        click_timeout.setSuffix(" ms")
+        click_timeout.setSpecialValueText("무제한")
+        click_timeout.setToolTip("skip/stop/wait 판단 전에 색이 맞는지 기다릴 최대 시간")
+        click_form.addRow("Timeout:", click_timeout)
+
+        click_interval = QSpinBox()
+        click_interval.setRange(1, 10000)
+        click_interval.setValue(settings.color_check_click_interval_ms)
+        click_interval.setSuffix(" ms")
+        click_interval.setToolTip("클릭 색 체크 픽셀 폴링 주기")
+        click_form.addRow("Polling interval:", click_interval)
+        layout.addWidget(click_group)
+
+        trigger_group = QGroupBox("독립 색 트리거")
+        trigger_form = QFormLayout(trigger_group)
+        trigger_timeout = QSpinBox()
+        trigger_timeout.setRange(0, 600000)
+        trigger_timeout.setValue(settings.color_trigger_default_timeout_ms)
+        trigger_timeout.setSuffix(" ms")
+        trigger_timeout.setSpecialValueText("무제한")
+        trigger_timeout.setToolTip("새로 삽입하는 ColorTriggerEvent의 기본 timeout")
+        trigger_form.addRow("Default timeout:", trigger_timeout)
+
+        trigger_interval = QSpinBox()
+        trigger_interval.setRange(1, 10000)
+        trigger_interval.setValue(settings.color_trigger_check_interval_ms)
+        trigger_interval.setSuffix(" ms")
+        trigger_interval.setToolTip("새로 삽입하는 ColorTriggerEvent의 폴링 주기")
+        trigger_form.addRow("Polling interval:", trigger_interval)
+        layout.addWidget(trigger_group)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        new_settings = dataclasses.replace(
+            settings,
+            color_check_click_timeout_ms=click_timeout.value(),
+            color_check_click_interval_ms=click_interval.value(),
+            color_trigger_default_timeout_ms=trigger_timeout.value(),
+            color_trigger_check_interval_ms=trigger_interval.value(),
+        )
+        if new_settings == settings:
+            return
+
+        self._macro = dataclasses.replace(
+            self._macro,
+            settings=new_settings,
+            is_edited=True,
+        )
+        self._editor.load_macro(self._macro)
+        self._update_range_spinboxes()
+        self._update_toolbar()
+        self._sb_state.setText("색 체크 설정 변경됨")
 
     def _on_sequence_done(self, _msg: str = "") -> None:
         """시퀀스 완료/오류 시 emergency hook 해제 후 툴바·상태바를 갱신한다."""

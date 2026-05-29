@@ -158,3 +158,23 @@ def test_insert_color_trigger_event_uses_one_second_budget_and_infinite_timeout(
     assert inserted.tolerance == 10
     assert inserted.timeout_ms == 0
     assert updated[2].timestamp_ns == 3_000_000_000
+
+
+def test_insert_color_trigger_event_accepts_configured_timeout_and_interval() -> None:
+    events: list[AnyEvent] = [_wait("base", 1_500_000_000)]
+
+    updated = _insert_color_trigger_event(
+        events,
+        insert_after_event_idx=0,
+        x_ratio=0.1,
+        y_ratio=0.2,
+        target_color="#ABCDEF",
+        timeout_ms=7500,
+        check_interval_ms=25,
+        id_factory=iter(["color02"]).__next__,
+    )
+
+    inserted = updated[1]
+    assert isinstance(inserted, ColorTriggerEvent)
+    assert inserted.timeout_ms == 7500
+    assert inserted.check_interval_ms == 25

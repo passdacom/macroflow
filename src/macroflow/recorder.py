@@ -336,7 +336,14 @@ def stop_recording() -> MacroData:
     )
 
 
-def inject_color_trigger(x_ratio: float, y_ratio: float, color_hex: str) -> None:
+def inject_color_trigger(
+    x_ratio: float,
+    y_ratio: float,
+    color_hex: str,
+    *,
+    timeout_ms: int = 0,
+    check_interval_ms: int = 50,
+) -> None:
     """녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.
 
     녹화 중이 아니면 무시된다.
@@ -345,6 +352,8 @@ def inject_color_trigger(x_ratio: float, y_ratio: float, color_hex: str) -> None
         x_ratio: 감지할 픽셀의 X 좌표 비율 (0.0~1.0).
         y_ratio: 감지할 픽셀의 Y 좌표 비율 (0.0~1.0).
         color_hex: 기다릴 목표 색상 (#RRGGBB 형식).
+        timeout_ms: 최대 대기 시간. 0 이하면 무제한 대기.
+        check_interval_ms: 픽셀 색 폴링 주기.
     """
     if not _recording:
         return
@@ -357,8 +366,8 @@ def inject_color_trigger(x_ratio: float, y_ratio: float, color_hex: str) -> None
         y_ratio=y_ratio,
         target_color=color_hex,
         tolerance=10,
-        timeout_ms=0,
-        check_interval_ms=50,
+        timeout_ms=timeout_ms,
+        check_interval_ms=check_interval_ms,
         on_timeout="skip",
     )
     with _event_buffer_lock:

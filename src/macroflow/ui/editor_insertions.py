@@ -162,9 +162,11 @@ def _insert_color_trigger_event(
     x_ratio: float,
     y_ratio: float,
     target_color: str,
+    timeout_ms: int = 0,
+    check_interval_ms: int = 50,
     id_factory: IdFactory = _default_id,
 ) -> list[AnyEvent]:
-    """Return events with one infinite-wait ColorTriggerEvent inserted."""
+    """Return events with one configured ColorTriggerEvent inserted."""
     base_ts_ns = _base_timestamp_ns(events, insert_after_event_idx)
     new_event = ColorTriggerEvent(
         id=id_factory(),
@@ -175,7 +177,8 @@ def _insert_color_trigger_event(
         y_ratio=y_ratio,
         target_color=target_color,
         tolerance=10,
-        timeout_ms=0,
+        timeout_ms=timeout_ms,
+        check_interval_ms=check_interval_ms,
     )
     return _insert_and_shift_events(
         events,

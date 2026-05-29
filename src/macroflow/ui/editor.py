@@ -976,6 +976,8 @@ class EventEditorWidget(QWidget):
                 x_ratio=x_r,
                 y_ratio=y_r,
                 target_color=color_hex,
+                timeout_ms=self._macro.settings.color_trigger_default_timeout_ms,
+                check_interval_ms=self._macro.settings.color_trigger_check_interval_ms,
             )
             self._apply_events(events)
 

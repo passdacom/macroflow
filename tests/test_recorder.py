@@ -9,7 +9,13 @@ import pytest
 
 import macroflow.recorder as rec
 from macroflow.recorder import _convert_raw, _vk_to_key
-from macroflow.types import KeyEvent, MouseButtonEvent, MouseMoveEvent, MouseWheelEvent
+from macroflow.types import (
+    ColorTriggerEvent,
+    KeyEvent,
+    MouseButtonEvent,
+    MouseMoveEvent,
+    MouseWheelEvent,
+)
 
 # ── _convert_raw 단위 테스트 ──────────────────────────────────────────────────
 
@@ -253,3 +259,31 @@ class TestRecorderIntegration:
         assert macro.is_edited is False
         assert len(macro.raw_events) == len(macro.events)
         assert macro.events is not macro.raw_events  # 독립된 복사본
+
+    def test_inject_color_trigger_accepts_configured_timeout_and_interval(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """녹화 중 F7 삽입 색 트리거는 현재 매크로 설정값을 보존할 수 있어야 한다."""
+        import macroflow.win32 as w32
+
+        monkeypatch.setattr(w32, "start_hook", lambda q: None)
+        monkeypatch.setattr(w32, "stop_hook", lambda: None)
+        monkeypatch.setattr(w32, "get_logical_screen_size", lambda: (1920, 1080))
+        monkeypatch.setattr(rec, "get_logical_screen_size", lambda: (1920, 1080))
+
+        rec.start_recording()
+        rec.inject_color_trigger(
+            0.25,
+            0.5,
+            "#112233",
+            timeout_ms=8000,
+            check_interval_ms=25,
+        )
+
+        macro = rec.stop_recording()
+
+        event = macro.events[0]
+        assert isinstance(event, ColorTriggerEvent)
+        assert event.timeout_ms == 8000
+        assert event.check_interval_ms == 25
