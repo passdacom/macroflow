@@ -72,6 +72,8 @@ _stop_flag: threading.Event = threading.Event()
 _pause_flag: threading.Event = threading.Event()
 _current_event_idx: int = 0
 _total_events: int = 0
+_COLOR_WAIT_NUDGE_AFTER_NS = 1_000_000_000
+_COLOR_WAIT_NUDGE_INTERVAL_NS = 1_000_000_000
 
 
 # ── 이벤트 실행 ───────────────────────────────────────────────────────────────
@@ -238,21 +240,32 @@ def _wait_for_click_color_check(
         목표 색이 timeout 전에 감지되면 True, timeout 또는 stop이면 False.
     """
     timeout_ms = max(0, settings.color_check_click_timeout_ms)
-    deadline_ns = (
-        time.perf_counter_ns() + timeout_ms * 1_000_000
-        if timeout_ms > 0 else time.perf_counter_ns()
-    )
+    start_ns = time.perf_counter_ns()
+    deadline_ns = start_ns + timeout_ms * 1_000_000 if timeout_ms > 0 else None
+    next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
     interval_s = max(1, settings.color_check_click_interval_ms) / 1000.0
 
     while True:
         if _stop_flag.is_set():
             return False
+        now_ns = time.perf_counter_ns()
+        if deadline_ns is not None and now_ns >= deadline_ns:
+            return False
         actual = get_pixel_color(x, y)
         if _color_matches(actual, target, settings.color_check_click_tolerance):
             return True
-        if time.perf_counter_ns() >= deadline_ns:
-            return False
+        next_nudge_ns = _nudge_cursor_if_due(x, y, now_ns, next_nudge_ns)
         time.sleep(interval_s)
+
+
+def _nudge_cursor_if_due(x: int, y: int, now_ns: int, next_nudge_ns: int) -> int:
+    """색 대기 중 hover 갱신을 위해 1px 이동 후 원위치하고 다음 시각을 반환한다."""
+    if now_ns < next_nudge_ns:
+        return next_nudge_ns
+    adjacent_x = x - 1 if x > 0 else x + 1
+    send_mouse_move(adjacent_x, y)
+    send_mouse_move(x, y)
+    return now_ns + _COLOR_WAIT_NUDGE_INTERVAL_NS
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
@@ -284,18 +297,24 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
     send_mouse_move(x, y)
     time.sleep(0.05)
     target = _hex_to_rgb(event.target_color)
+    start_ns = time.perf_counter_ns()
     deadline_ns = (
         None if event.timeout_ms <= 0
-        else time.perf_counter_ns() + event.timeout_ms * 1_000_000
+        else start_ns + event.timeout_ms * 1_000_000
     )
+    next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
     interval_s = event.check_interval_ms / 1000.0
 
-    while deadline_ns is None or time.perf_counter_ns() < deadline_ns:
+    while True:
         if _stop_flag.is_set():
             return
+        now_ns = time.perf_counter_ns()
+        if deadline_ns is not None and now_ns >= deadline_ns:
+            break
         actual = get_pixel_color(x, y)
         if _color_matches(actual, target, event.tolerance):
             return
+        next_nudge_ns = _nudge_cursor_if_due(x, y, now_ns, next_nudge_ns)
         time.sleep(interval_s)
 
     # 타임아웃

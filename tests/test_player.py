@@ -404,6 +404,59 @@ class TestColorCheckWait:
 
         player.send_mouse_button.assert_not_called()  # type: ignore[attr-defined]
 
+    def test_click_color_check_nudges_cursor_after_one_second(
+        self,
+        mock_win32: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """색 체크 대기 1초 이후에는 hover 갱신을 위해 커서를 미세 이동 후 복귀한다."""
+        settings = MacroSettings(
+            color_check_click_tolerance=0,
+            color_check_click_timeout_ms=1500,
+            color_check_click_interval_ms=1,
+        )
+        times = iter([0, 0, 1_100_000_000, 1_600_000_000])
+        move = MagicMock()
+
+        monkeypatch.setattr(player.time, "perf_counter_ns", lambda: next(times))
+        monkeypatch.setattr(player.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(player, "get_pixel_color", lambda x, y: (0, 0, 0))
+        monkeypatch.setattr(player, "send_mouse_move", move)
+
+        matched = player._wait_for_click_color_check(960, 540, (255, 0, 0), settings)
+
+        assert matched is False
+        move.assert_any_call(959, 540)
+        move.assert_any_call(960, 540)
+
+    def test_click_color_check_timeout_zero_waits_until_match(
+        self,
+        mock_win32: object,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """클릭 색 체크 timeout_ms=0은 색이 나올 때까지 무제한 대기한다."""
+        settings = MacroSettings(
+            color_check_click_tolerance=0,
+            color_check_click_timeout_ms=0,
+            color_check_click_interval_ms=1,
+        )
+        calls = 0
+
+        def fake_get_pixel_color(x: int, y: int) -> tuple[int, int, int]:
+            nonlocal calls
+            calls += 1
+            if calls < 3:
+                return (0, 0, 0)
+            return (255, 0, 0)
+
+        monkeypatch.setattr(player.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(player, "get_pixel_color", fake_get_pixel_color)
+
+        matched = player._wait_for_click_color_check(960, 540, (255, 0, 0), settings)
+
+        assert matched is True
+        assert calls == 3
+
 
 class TestColorTriggerInfiniteWait:
     def test_timeout_zero_waits_until_match_without_raising_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -430,3 +483,24 @@ class TestColorTriggerInfiniteWait:
         player._wait_for_color(event)
 
         assert calls == 3
+
+    def test_color_trigger_nudges_cursor_after_one_second(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """독립 색 트리거 대기 중에도 1초 이후 hover 갱신용 미세 이동을 수행한다."""
+        event = ColorTriggerEvent(
+            id="ee55ff66", type="color_trigger", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, target_color="#00FF00",
+            tolerance=0, timeout_ms=1500, check_interval_ms=1, on_timeout="skip",
+        )
+        times = iter([0, 0, 1_100_000_000, 1_600_000_000])
+        move = MagicMock()
+
+        monkeypatch.setattr(player, "ratio_to_pixel", lambda xr, yr: (960, 540))
+        monkeypatch.setattr(player, "send_mouse_move", move)
+        monkeypatch.setattr(player, "get_pixel_color", lambda x, y: (0, 0, 0))
+        monkeypatch.setattr(player.time, "perf_counter_ns", lambda: next(times))
+        monkeypatch.setattr(player.time, "sleep", lambda seconds: None)
+
+        player._wait_for_color(event)
+
+        move.assert_any_call(959, 540)
+        move.assert_any_call(960, 540)
