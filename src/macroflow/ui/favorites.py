@@ -34,6 +34,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.ui.favorites_batch import (
+    move_filenames_to_group,
+    remove_filenames_from_groups,
+    unique_filenames,
+)
+
 logger = logging.getLogger(__name__)
 
 _INDEX_FILE = "_index.json"
@@ -535,13 +541,7 @@ class FavoritesWidget(QWidget):
 
     def _selected_item_filenames(self) -> list[str]:
         """현재 선택된 즐겨찾기 item들의 파일명을 중복 없이 반환한다."""
-        filenames: list[str] = []
-        seen: set[str] = set()
-        for path in self._selected_item_paths():
-            if path.name and path.name not in seen:
-                filenames.append(path.name)
-                seen.add(path.name)
-        return filenames
+        return unique_filenames(self._selected_item_paths())
 
     def _selected_item_count(self) -> int:
         return len(self._selected_item_paths())
@@ -773,16 +773,7 @@ class FavoritesWidget(QWidget):
         filenames = self._selected_item_filenames()
         if not filenames:
             return
-        filename_set = set(filenames)
-        for g in self._index.get("groups", []):
-            items: list[str] = g.get("items", [])
-            g["items"] = [filename for filename in items if filename not in filename_set]
-        target = self._find_group(target_gid)
-        if target is not None:
-            existing: list[str] = target.get("items", [])
-            target["items"] = existing + [
-                filename for filename in filenames if filename not in existing
-            ]
+        move_filenames_to_group(self._index, filenames, target_gid)
         self._save_index()
         self._refresh_tree()
 
@@ -871,9 +862,7 @@ class FavoritesWidget(QWidget):
             return
 
         filenames = {path.name for path in paths}
-        for g in self._index.get("groups", []):
-            items: list[str] = g.get("items", [])
-            g["items"] = [filename for filename in items if filename not in filenames]
+        remove_filenames_from_groups(self._index, filenames)
 
         for file_path in paths:
             if file_path.exists():
