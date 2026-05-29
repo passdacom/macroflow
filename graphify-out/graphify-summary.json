@@ -1,0 +1,132 @@
+{
+  "name": "macroflow",
+  "path": "/root/.openclaw/workspace/macroflow",
+  "generated_at": "2026-05-29T15:10:41.321908+00:00",
+  "mode": "code-ast-only",
+  "nodes": 1074,
+  "edges": 4077,
+  "communities": 24,
+  "detected_files": 783,
+  "detected_words": 254195,
+  "code_files": 50,
+  "document_files": 733,
+  "paper_files": 0,
+  "image_files": 0,
+  "video_files": 0,
+  "skipped_sensitive": 0,
+  "labels": {
+    "0": "MacroData MouseButtonEvent KeyEvent MouseMoveEvent",
+    "1": "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions",
+    "2": "EventEditorWidget add single row",
+    "3": "MacroSequencerWidget FlowEngine EndNode MacroFlow",
+    "4": "FavoritesWidget refresh tree save",
+    "5": "execute event PlayState player.py",
+    "6": "convert raw TestConvertRaw hooks.py",
+    "7": "build rows DisplayRow editor",
+    "8": "test editor table.py table",
+    "9": "load test macro file.py",
+    "10": "mock.py find window get",
+    "11": "test editor insertions.py insert",
+    "12": "test editor remark.py FakeTableForWidth",
+    "13": "test editor capture.py start",
+    "14": "append recording recording done",
+    "15": "key name test editor",
+    "16": "test favorites search.py get",
+    "17": "summary text test editor",
+    "18": "conftest.py mock hook mock",
+    "19": "test version.py test package",
+    "20": "test package imports.py test",
+    "21": "Return whether complete repeat",
+    "22": "Return user facing repeat",
+    "23": "init .py"
+  },
+  "god_nodes": [
+    {
+      "id": "types_macrodata",
+      "label": "MacroData",
+      "degree": 214
+    },
+    {
+      "id": "types_mousebuttonevent",
+      "label": "MouseButtonEvent",
+      "degree": 196
+    },
+    {
+      "id": "types_keyevent",
+      "label": "KeyEvent",
+      "degree": 161
+    },
+    {
+      "id": "types_mousemoveevent",
+      "label": "MouseMoveEvent",
+      "degree": 153
+    },
+    {
+      "id": "types_colortriggerevent",
+      "label": "ColorTriggerEvent",
+      "degree": 149
+    },
+    {
+      "id": "types_textinputevent",
+      "label": "TextInputEvent",
+      "degree": 146
+    },
+    {
+      "id": "types_mousewheelevent",
+      "label": "MouseWheelEvent",
+      "degree": 136
+    },
+    {
+      "id": "types_macrosettings",
+      "label": "MacroSettings",
+      "degree": 131
+    },
+    {
+      "id": "types_waitevent",
+      "label": "WaitEvent",
+      "degree": 105
+    },
+    {
+      "id": "types_conditionevent",
+      "label": "ConditionEvent",
+      "degree": 104
+    }
+  ],
+  "suggested_questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `MacroData` connect `MacroData MouseButtonEvent KeyEvent MouseMoveEvent` to `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions`, `EventEditorWidget add single row`, `MacroSequencerWidget FlowEngine EndNode MacroFlow`, `FavoritesWidget refresh tree save`, `execute event PlayState player.py`, `convert raw TestConvertRaw hooks.py`, `build rows DisplayRow editor`, `load test macro file.py`, `test editor remark.py FakeTableForWidth`, `append recording recording done`?",
+      "why": "High betweenness centrality (0.290) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `EventEditorWidget` connect `EventEditorWidget add single row` to `MacroData MouseButtonEvent KeyEvent MouseMoveEvent`, `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions`, `FavoritesWidget refresh tree save`, `test editor table.py table`, `test editor remark.py FakeTableForWidth`, `test editor capture.py start`?",
+      "why": "High betweenness centrality (0.167) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `MainWindow` connect `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions` to `MacroData MouseButtonEvent KeyEvent MouseMoveEvent`, `EventEditorWidget add single row`, `MacroSequencerWidget FlowEngine EndNode MacroFlow`, `FavoritesWidget refresh tree save`, `execute event PlayState player.py`, `convert raw TestConvertRaw hooks.py`, `append recording recording done`?",
+      "why": "High betweenness centrality (0.145) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 212 inferred relationships involving `MacroData` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`MacroData` has 212 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 193 inferred relationships involving `MouseButtonEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`MouseButtonEvent` has 193 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 158 inferred relationships involving `KeyEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`KeyEvent` has 158 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 150 inferred relationships involving `MouseMoveEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`MouseMoveEvent` has 150 INFERRED edges - model-reasoned connections that need verification."
+    }
+  ]
+}

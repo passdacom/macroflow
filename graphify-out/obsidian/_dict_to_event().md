@@ -1,0 +1,29 @@
+---
+source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
+type: "code"
+community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+location: "L64"
+tags:
+  - graphify/code
+  - graphify/INFERRED
+  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+---
+
+# _dict_to_event()
+
+## Connections
+- [[.mouseMoveEvent()]] - `calls` [INFERRED]
+- [[ColorTriggerEvent]] - `calls` [INFERRED]
+- [[ConditionEvent]] - `calls` [INFERRED]
+- [[KeyEvent]] - `calls` [INFERRED]
+- [[LoopEvent]] - `calls` [INFERRED]
+- [[MouseButtonEvent]] - `calls` [INFERRED]
+- [[MouseWheelEvent]] - `calls` [INFERRED]
+- [[TextInputEvent]] - `calls` [INFERRED]
+- [[WaitEvent]] - `calls` [INFERRED]
+- [[WindowTriggerEvent]] - `calls` [INFERRED]
+- [[load()]] - `calls` [EXTRACTED]
+- [[macro_file.py]] - `contains` [EXTRACTED]
+- [[딕셔너리를 AnyEvent 서브클래스 인스턴스로 변환한다.      Args         d JSON에서 파싱된 이벤트 딕셔너리.]] - `rationale_for` [EXTRACTED]
+
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent

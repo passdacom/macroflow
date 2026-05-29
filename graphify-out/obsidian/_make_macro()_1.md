@@ -1,0 +1,34 @@
+---
+source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+type: "code"
+community: "load test macro file.py"
+location: "L39"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/load_test_macro_file.py
+---
+
+# _make_macro()
+
+## Connections
+- [[.mouseMoveEvent()]] - `calls` [INFERRED]
+- [[KeyEvent]] - `calls` [INFERRED]
+- [[MacroData]] - `calls` [INFERRED]
+- [[MacroMeta]] - `calls` [INFERRED]
+- [[MacroSettings]] - `calls` [INFERRED]
+- [[MouseButtonEvent]] - `calls` [INFERRED]
+- [[test_delete_mouse_moves()]] - `calls` [EXTRACTED]
+- [[test_event_remark_roundtrip_and_json_field()]] - `calls` [EXTRACTED]
+- [[test_macro_file.py]] - `contains` [EXTRACTED]
+- [[test_reset_to_raw()]] - `calls` [EXTRACTED]
+- [[test_save_and_load_roundtrip()]] - `calls` [EXTRACTED]
+- [[test_save_creates_bak()]] - `calls` [EXTRACTED]
+- [[test_set_delay_all()]] - `calls` [EXTRACTED]
+- [[test_set_delay_single()]] - `calls` [EXTRACTED]
+- [[test_set_delay_single_invalid_id()]] - `calls` [EXTRACTED]
+- [[test_set_delay_single_to_none()]] - `calls` [EXTRACTED]
+- [[test_settings_color_timeout_fields_roundtrip()]] - `calls` [EXTRACTED]
+- [[테스트용 최소 MacroData를 생성한다.]] - `rationale_for` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/load_test_macro_file.py

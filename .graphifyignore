@@ -1,0 +1,41 @@
+# Runtime and dependency noise
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+coverage/
+
+# Generated graph outputs
+graphify-out/cache/
+graphify-out/converted/
+
+# Data, archives, and binary assets
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.csv
+*.tsv
+*.xlsx
+*.parquet
+*.pkl
+*.zip
+*.tar
+*.gz
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.mp4
+*.mov
+
+# Secrets and local env
+.env
+.env.*
+secrets/
+credentials/

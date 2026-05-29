@@ -20,6 +20,11 @@ dist/
 *.spec.bak
 build/macroflow-win/
 
+# Graphify runtime cache
+# Keep generated navigation artifacts, but do not commit rebuildable cache blobs.
+graphify-out/cache/
+graphify-out/converted/
+
 # IDE
 .vscode/
 .idea/

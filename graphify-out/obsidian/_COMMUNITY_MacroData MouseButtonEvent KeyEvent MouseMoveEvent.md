@@ -1,0 +1,245 @@
+---
+type: community
+cohesion: 0.07
+members: 204
+---
+
+# MacroData MouseButtonEvent KeyEvent MouseMoveEvent
+
+**Cohesion:** 0.07 - loosely connected
+**Members:** 204 nodes
+
+## Members
+- [[RRGGBB 문자열을 (R, G, B) 튜플로 변환한다._1]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[.__init__()_21]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
+- [[.__init__()_20]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
+- [[.__init__()_8]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_remark.py
+- [[.test_click_color_check_nudges_cursor_after_one_second()]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[.test_click_color_check_timeout_zero_waits_until_match()]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[.test_color_trigger_nudges_cursor_after_one_second()]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[.test_timeout_zero_waits_until_match_without_raising_timeout()]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[Add a context-menu action and connect it to a callback.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[ColorTriggerEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[ConditionEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[ESC key_down 3번 연속(0.5초 이내) 감지 시 True를 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[Editor undohistory pure helper tests.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_history.py
+- [[Event editor context-menu composition tests with Qt mocked out.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
+- [[Event editor display row construction.  This module intentionally stays free of]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py
+- [[Event editor insertiontimestamp helper regression tests.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_insertions.py
+- [[Event editor remark persistence behavior with Qt mocked out.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_remark.py
+- [[F6 캡처 대기 중이면 True를 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[F6이 눌렸을 때 캡처 콜백을 실행한다.          캡처 대기 중이 아니면 False를 반환한다. 콜백 실행 후 대기 상태를 해제한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[Insert events after an index and shift following timestamps to preserve timing.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py
+- [[JSON 파일에서 MacroData를 로드한다.      마이그레이션이 필요한 경우 자동으로 수행한다.      Args         pat]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[KeyEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[LL Hook을 등록하고 이벤트 캡처를 시작한다.      Args         on_emergency_stop ESC×3 감지 시 호출할]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[LoopEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MacroData]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MacroData를 JSON 파일로 저장한다.      기존 파일이 있으면 .bak으로 백업 후 덮어쓴다.      Args         m]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[MacroData를 별도 스레드에서 재생 시작한다.      Args         macro 재생할 MacroData. events 배열]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[MacroData를 테이블에 로드한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[MacroEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MacroEvent 인스턴스를 JSON 직렬화 가능한 딕셔너리로 변환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[MacroFlow JSON 직렬화·역직렬화 및 편집 유틸리티.  저장 시 .bak 파일 자동 생성. 로드 시 스키마 버전 마이그레이션 수행. r]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[MacroFlow 이벤트 에디터 위젯.  그룹 표시 mouse_down+up → 클릭, key_down+up → 키 입력. UndoRedo,]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[MacroFlow 이벤트 캡처 엔진.  Win32 LL Hook (WH_MOUSE_LL + WH_KEYBOARD_LL)으로 캡처한 원시 이벤트를]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[MacroFlow 재생 엔진.  절대 타임스탬프 기준 재생과 드리프트 보정을 구현한다. clickdrag 판별은 settings 임계값으로 재]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[MacroFlow 핵심 데이터 타입 정의.  모든 이벤트 타입, MacroData 컨테이너, 메타·설정 클래스를 여기에 정의한다. 이 모듈은 W]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MacroMeta]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MacroSettings]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MouseButtonEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MouseMoveEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MouseWheelEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[MouseWheelEvent가 저장 후 동일 값으로 복원되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[PlaybackError]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[Populate actions that are available when exactly one display row is selected.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[Pure event insertion helpers for the MacroFlow event editor.  This module intent]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py
+- [[Register an F6 capture callback and update optional dialog controls.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[Restore a minimized capture dialog after F6 coordinates are consumed.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[Return events with click or double-click MouseButtonEvents inserted.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py
+- [[Return events with one TextInputEvent inserted and later timestamps shifted.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py
+- [[Return events with one configured ColorTriggerEvent inserted.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py
+- [[Return the source event index after which an editor insertion should occur.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py
+- [[Return the source event index after which new events should be inserted.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[TestColorCheckWait]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[TestColorTriggerInfiniteWait]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[TestExecuteEvent]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[TestPlaybackTiming]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[TestTextInputPlayback]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[TextInputEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[TextInputEvent 실행 시 send_text가 호출되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[TextInputEvent의 텍스트를 수정한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[VK 코드를 사람이 읽을 수 있는 키 이름으로 변환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[WM_MOUSEHWHEEL(0x020E) → axis == 'horizontal'.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[WM_MOUSEWHEEL + 음수 delta → delta는 음수.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[WM_MOUSEWHEEL(0x020A) + 양수 delta → MouseWheelEvent vertical 위.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[WM_SYSKEYDOWN도 key_down으로 처리되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[WaitEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[WindowTriggerEvent]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[_FakeAction]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
+- [[_FakeWidget_2]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
+- [[_FakeWidget]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_remark.py
+- [[_Signal_2]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
+- [[_Signal]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_remark.py
+- [[_convert_raw 함수 — raw 이벤트 → MacroEvent 변환 테스트.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[_dict_to_event()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[color_check_on_mismatch='wait'가 저장 후 동일하게 로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[color_trigger 이벤트 — GetPixel 기반 픽셀 색 감지 대기.      core-beliefs.md 원칙 7 스크린샷 API]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[condition 이벤트 — DSL 표현식 기반 조건 분기.      Attributes         expression 평가할 DSL 표]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[conditionloop 내부 이벤트의 비고도 저장·로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[delay_override_ms가 설정된 이벤트는 그 딜레이만큼 기다려야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[delay_override_ms를 None으로 설정하면 원래 타이밍 기준으로 복원된다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[delete_mouse_moves는 events에서 mouse_move만 제거하고 raw_events는 유지한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[delta = 360 → 3노치 스크롤.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[deque에서 원시 이벤트를 소비하여 _event_buffer에 쌓는다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[edit_wheel_delta()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[edit_wheel_delta는 지정 이벤트의 delta만 변경하고 나머지는 유지한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[events 리스트를 표시용 _DisplayRow 리스트로 변환한다.      연속된 mouse_down+up → 클릭드래그 한 행으로 그룹화]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py
+- [[events 전체의 delay_override_ms를 동일 값으로 설정한다.      Args         macro 원본 MacroDat]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events를 raw_events 전체 복사본으로 되돌린다 (is_edited=False).      Args         macro 원본]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 mouse_move 이벤트를 모두 제거한다. raw_events는 유지.      Args         macro 원본 M]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 특정 id의 KeyEvent key·vk_code를 수정한다.      Args         macro 원본 MacroDa]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 특정 id의 MouseWheelEvent delta를 수정한다.      Args         macro 원본 MacroD]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 특정 id의 delay_override_ms만 수정한다.      Args         macro 원본 MacroData.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 특정 id의 mouse_down 이벤트의 color_check_enabled를 토글한다.      Args         ma]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 특정 id의 마우스 이벤트 좌표를 수정한다.      Args         macro 원본 MacroData.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[events에서 특정 mouse_down 이벤트의 color_check_on_mismatch를 변경한다.      Args         ma]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[key_down  key_up 이벤트.      Attributes         key 사람이 읽을 수 있는 키 이름 (예 a,]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[loop 이벤트 — 반복 실행.      Attributes         count 반복 횟수. -1이면 stop() 호출 또는 핫키까지]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[macro_file.py 직렬화·역직렬화 및 편집 함수 테스트.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[mock_win32()_1]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[mouse_down  mouse_up 이벤트.      Attributes         x_ratio 화면 너비 대비 X 좌표 비율 (0]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[mouse_move 이벤트.      Attributes         x_ratio 화면 너비 대비 X 좌표 비율 (0.0~1.0).]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[mouse_wheel 이벤트 — 마우스 휠 스크롤.      core-beliefs.md 원칙 4 좌표는 비율로 저장.     재생 시 커서를]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[play()가 완료 콜백을 호출해야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[recorder.py 이벤트 캡처 로직 테스트.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[reset_to_raw는 events를 raw_events 복사본으로 되돌리고 is_edited=False로 설정한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[set_color_check_on_mismatch()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[set_delay_all은 events 전체의 delay_override_ms를 동일값으로 설정한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[set_delay_single은 특정 id의 delay_override_ms만 수정한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[skip 모드는 설정 시간 동안 기다린 뒤에도 안 맞을 때만 클릭을 건너뛴다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[startstop 후 MacroData가 반환되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[start_recording  stop_recording 흐름 테스트.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[stop 모드는 설정 시간 이후에도 색이 안 맞으면 재생을 중단한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[stop 모드도 설정 시간 동안 색 변화를 기다리고, 맞으면 클릭을 진행한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[stop() 호출 후 재생이 중단되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[test_edit_wheel_delta()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[test_event_types_roundtrip()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[test_nested_event_remark_roundtrip()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[test_player.py]] - code - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[test_set_color_check_on_mismatch_selects_target_mode_directly()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[test_simple_event_rows_keep_labels_details_and_truncation_contract()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[text_input 이벤트 — Unicode 문자열을 KEYEVENTF_UNICODE로 직접 입력.      키보드 배치·언어 설정과 무관하게]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[timeout_ms=0 색 트리거는 타임아웃 없이 색이 나올 때까지 대기해야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[timeout_ms가 없는 기존 색 트리거는 무제한 대기(0)로 로드하고, 명시값은 보존한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[timestamp_ns는 녹화 시작(_rec_start_ns) 기준 상대값이어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[types.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[wait 모드 픽셀 색이 일치할 때까지 폴링 후 클릭이 진행되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[wait 이벤트 — UI에서 수동 삽입하는 고정 대기.      Attributes         duration_ms 대기 시간 (밀리초)]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[window_trigger 이벤트 — 창 제목 감지 대기.      Attributes         window_title_contains]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[그룹 행 비고는 primary event(mouse_downkey_down 등)의 remark를 표시한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[기존 JSON처럼 remark 필드가 없어도 빈 비고로 정상 로드해야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[기존 파일이 있을 때 저장하면 .bak 파일이 생성되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[내용 열을 대표 색상 행 정도로 줄이되, 더 긴 내용은 자동으로 맞춘다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[녹화 시작 타임스탬프와 화면 크기를 설정한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[녹화 중 F7 삽입 색 트리거는 현재 매크로 설정값을 보존할 수 있어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.      녹화 중이 아니면 무시된다.      Args]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[녹화 직후 raw_events와 events는 동일 내용이어야 한다 (is_edited=False).]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[녹화를 중지하고 캡처된 전체 이벤트를 MacroData로 반환한다.      Returns         raw_events == events]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[단일 이벤트를 실행한다.      Args         event 실행할 이벤트.         settings clickdrag 판별]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[독립 색 트리거 대기 중에도 1초 이후 hover 갱신용 미세 이동을 수행한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[딕셔너리를 AnyEvent 서브클래스 인스턴스로 변환한다.      Args         d JSON에서 파싱된 이벤트 딕셔너리.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[마우스 이벤트의 위치를 변경한다.          SpinBox 직접 입력 또는 'F6으로 직접 지정' (F6 캡처 모드) 중 선택.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[매크로 전체 데이터 컨테이너.      Attributes         meta 파일 메타데이터.         settings 재생·판]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[매크로 파일 메타데이터.      Attributes         version JSON 스키마 버전. 마이그레이션 판단에 사용.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[모든 매크로 이벤트의 공통 기반 클래스.      Attributes         id 8자리 hex 문자열. 녹화 시 생성, 이후 변경]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[모든 이벤트 타입이 저장 후 동일 타입으로 복원되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[목표 픽셀 색이 나타날 때까지 폴링한다.      마우스를 해당 위치로 먼저 이동한다. hover로 색이 변하는 UI 요소     (버튼 활성화]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[비고가 있어도 내용detail과 색상 swatch 메타데이터는 별도로 유지한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[빈 문자열 TextInputEvent는 send_text를 호출하지 않아야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[상대 시간 체크박스 토글 — 테이블을 다시 렌더링한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[색 대기 중 hover 갱신을 위해 1px 이동 후 원위치하고 다음 시각을 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[색 체크 wait 모드 지정 픽셀 색이 일치할 때까지 폴링한다.      타임아웃 시 경고 로그만 남기고 클릭을 계속 진행한다 (skip과 달]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[색 체크 대기 1초 이후에는 hover 갱신을 위해 커서를 미세 이동 후 복귀한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[색 체크 불일치 동작은 순환이 아니라 원하는 모드를 바로 저장할 수 있어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[색 체크 클릭의 skipstopwait 모드는 row kindlabeldetailcolor_hex에 고정된다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[색 체크가 꺼진 클릭의 recorded_color는 수동 swatch 메타데이터로만 보존된다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[색 체크가 켜진 드래그 row도 refresh 중 emoji 초기화 오류 없이 표시되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[색 트리거 row는 target_color 표시와 timeout_ms=0 무제한 대기 의미를 보존한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[색 트리거 이벤트의 명시 timeout_ms는 저장 후 로드해도 0으로 덮이면 안 된다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[생성된 이벤트 id는 8자리 hex 문자열이어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[선택 행 다음에 ColorTriggerEvent를 F6 캡처로 삽입한다.          F6을 누르는 순간의 마우스 위치와 픽셀 색을 Colo]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[선택 행 다음에 MouseButtonEvent (클릭더블클릭)를 삽입한다.          다이얼로그 위치(XY%), F6 직접 지정, 버]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[선택 행 다음에 TextInputEvent를 삽입한다.          커스텀 QDialog로 텍스트와 딜레이(ms)를 받아 이벤트 목록에 삽입]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[숨겨진 mouse_move는 row 목록에서 빠지지만 다음 row의 상대시간 기준을 흐리면 안 된다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[실제 색과 목표 색의 각 채널 차이가 tolerance 이내인지 확인한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[실제 재생을 수행하는 스레드 함수.      core-beliefs.md 원칙 3 절대 타임스탬프 기준 + 드리프트 보정.      Args]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[없는 id를 사용하면 KeyError가 발생해야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[여러 MacroData를 타임스탬프 오프셋을 적용하여 하나로 병합한다.      각 매크로 사이에 gap_ms 간격을 두고, source_fil]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[원시 Hook 이벤트를 MacroEvent 객체로 변환한다.      Args         raw hooks.py에서 push한 (kind]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[위치 편집 대상 kind 정책은 드래그고아 클릭표시된 이동을 포함하고 대기 행은 제외한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[이벤트 목록을 그룹 표시·편집하는 위젯.      그룹 표시 규칙       - mouse_down + (moves) + mouse_up →]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[이벤트 비고는 저장 JSON에 기록되고 다시 로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[이벤트 에디터 표시 row 순수 로직 회귀 테스트.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[이어서 녹화 append helper tests.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_append_recording.py
+- [[재생 및 판별 임계값 설정.      core-beliefs.md 원칙 1 클릭드래그 판별은 재생 시 이 값으로 수행.      Attrib]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
+- [[재생 중 클릭드래그 판별에 사용하는 상태.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[재생 중 해당 이벤트 인덱스에 대응하는 행을 하이라이트한다.          - 같은 행이면 재갱신하지 않아 불필요한 깜빡임을 방지한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[재생을 중단한다. 현재 이벤트 완료 후 루프를 종료한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[저장 후 로드하면 동일한 MacroData가 반환되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[절대 타임스탬프 기준 재생 및 드리프트 보정 테스트.      core-beliefs.md 원칙 3 검증.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[존재하지 않는 파일을 로드하면 FileNotFoundError가 발생해야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[지정 제목을 포함한 창이 나타날 때까지 폴링한다.      Raises         PlaybackError on_timeout==err]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[지정 행 전체를 재생 하이라이트 색으로 덮어쓴다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[지정 행 클릭 이벤트의 color_check_on_mismatch를 선택한 모드로 즉시 설정한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[지정 행 클릭 이벤트의 색 체크(color_check_enabled)를 토글한다.          recorded_color가 없는 이벤트에서는]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[지정 행을 원래 kind 색으로 복원한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[지정 행의 primary 이벤트에 비고를 설정한다.          비고는 내용 열을 대체하지 않고 별도 비고 열에 표시되며, MacroEven]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[지정 행의 이벤트만 실행하도록 신호를 방출한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[큐에 주입한 이벤트가 MacroData에 포함되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[클릭 색 체크 timeout_ms=0은 색이 나올 때까지 무제한 대기한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
+- [[클릭 색 체크 설정 시간 동안 목표 색이 나타나는지 폴링한다.      Returns         목표 색이 timeout 전에 감지되면]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[클릭 색 체크와 독립 색 트리거 timeout 설정은 별도로 저장·로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[클릭 색 체크와 독립 색 트리거 기본 timeout은 서로 별도 설정이다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[키 downup pairing과 미소비 key_up row 표시는 handler 분리 후에도 보존한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[테스트용 최소 MacroData를 생성한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[텍스트대기창조건반복 row의 labeldetail 계약을 고정한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[표시 행 범위를 원본 events 인덱스 범위(start, end exclusive)로 변환한다.          Args]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[필요 시 스키마 버전을 현재 버전으로 마이그레이션한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
+- [[한글 TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
+- [[현재 로드된 MacroData를 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+- [[현재 재생 중인 이벤트의 원본 인덱스를 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[현재 재생 진행률 (0.0~1.0)을 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
+- [[현재까지 캡처된 이벤트 수를 반환한다 (녹화 중 폴링용).]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[휠 row는 같은 축의 연속 이벤트만 합산하고 다른 축에서 그룹을 끊는다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_rows.py
+- [[휠 이벤트(그룹)의 스크롤 양과 방향을 변경한다.          그룹 전체를 단일 이벤트로 병합 후 delta를 적용한다.         이렇]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
+
+## Live Query (requires Dataview plugin)
+
+```dataview
+TABLE source_file, type FROM #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+SORT file.name ASC
+```
+
+## Connections to other communities
+- 92 edges to [[_COMMUNITY_execute event PlayState player.py]]
+- 83 edges to [[_COMMUNITY_load test macro file.py]]
+- 66 edges to [[_COMMUNITY_build rows DisplayRow editor]]
+- 60 edges to [[_COMMUNITY_MacroSequencerWidget FlowEngine EndNode MacroFlow]]
+- 49 edges to [[_COMMUNITY_convert raw TestConvertRaw hooks.py]]
+- 38 edges to [[_COMMUNITY_MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions]]
+- 36 edges to [[_COMMUNITY_EventEditorWidget add single row]]
+- 16 edges to [[_COMMUNITY_FavoritesWidget refresh tree save]]
+- 12 edges to [[_COMMUNITY_test editor remark.py FakeTableForWidth]]
+- 10 edges to [[_COMMUNITY_test editor insertions.py insert]]
+- 9 edges to [[_COMMUNITY_append recording recording done]]
+- 3 edges to [[_COMMUNITY_test editor table.py table]]
+- 2 edges to [[_COMMUNITY_test editor capture.py start]]
+
+## Top bridge nodes
+- [[MacroData]] - degree 214, connects to 10 communities
+- [[MacroSettings]] - degree 131, connects to 8 communities
+- [[MacroMeta]] - degree 101, connects to 8 communities
+- [[MouseButtonEvent]] - degree 196, connects to 7 communities
+- [[KeyEvent]] - degree 161, connects to 6 communities
