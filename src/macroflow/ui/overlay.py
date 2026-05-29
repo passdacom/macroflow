@@ -44,6 +44,8 @@ class OverlayWindow(QWidget):
         self._event_count: int = 0
         self._progress: float = 0.0
         self._speed: float = 1.0
+        self._repeat_current: int = 1
+        self._repeat_total: int = 1
         self._blink_on: bool = True
         self._drag_offset: QPoint = QPoint(0, 0)
         self._dragging: bool = False
@@ -77,12 +79,19 @@ class OverlayWindow(QWidget):
         self._blink_timer.start()
         self.show()
 
-    def start_playing(self, speed: float = 1.0) -> None:
+    def start_playing(
+        self,
+        speed: float = 1.0,
+        *,
+        repeat_current: int = 1,
+        repeat_total: int = 1,
+    ) -> None:
         """재생 모드로 오버레이를 표시한다."""
         self._mode = "playing"
         self._start_time = time.monotonic()
         self._progress = 0.0
         self._speed = speed
+        self.set_repeat(repeat_current, repeat_total)
         self._repaint_timer.start()
         self._blink_timer.stop()
         self.show()
@@ -94,6 +103,11 @@ class OverlayWindow(QWidget):
     def set_progress(self, progress: float) -> None:
         """재생 진행률(0.0~1.0)을 갱신한다."""
         self._progress = max(0.0, min(1.0, progress))
+
+    def set_repeat(self, current: int, total: int) -> None:
+        """반복 재생 상태를 갱신한다."""
+        self._repeat_total = max(1, total)
+        self._repeat_current = min(max(1, current), self._repeat_total)
 
     def show_hint(self, text: str) -> None:
         """F6 캡처 대기 중 힌트 메시지를 표시한다."""
@@ -179,7 +193,10 @@ class OverlayWindow(QWidget):
         painter.drawPolygon(tri)
 
         pct = int(self._progress * 100)
-        text = f"PLAY  {pct}%  {self._speed:.1f}x"
+        if self._repeat_total > 1:
+            text = f"PLAY  {self._repeat_current}/{self._repeat_total}회  {pct}%  {self._speed:.1f}x"
+        else:
+            text = f"PLAY  {pct}%  {self._speed:.1f}x"
 
         font = QFont()
         font.setPointSize(10)

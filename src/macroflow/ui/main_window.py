@@ -34,6 +34,7 @@ from macroflow.types import MacroData
 from .editor import EventEditorWidget
 from .favorites import FavoritesWidget
 from .overlay import OverlayWindow
+from .playback_repeat import RepeatPlaybackSession
 from .sequencer import MacroSequencerWidget
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,8 @@ class MainWindow(QMainWindow):
         self._custom_speed: float = 1.0
         # 이전 녹화 복원용 — 새 녹화 시작 직전에 저장
         self._prev_macro: MacroData | None = None
+        # 반복 재생 세션 상태 — 긴급정지가 다음 cycle 시작까지 확실히 막도록 UI가 소유
+        self._repeat_session: RepeatPlaybackSession | None = None
 
         # ── 하위 위젯 ─────────────────────────────────────────────────────────
         self._editor = EventEditorWidget()
@@ -557,7 +560,9 @@ class MainWindow(QMainWindow):
         event_range = forced_range if forced_range is not None else self._calc_event_range()
 
         self._state = "playing"
-        self._overlay.start_playing(speed)
+        self._repeat_session = RepeatPlaybackSession(total=repeat_count)
+        self._repeat_session.mark_started()
+        self._overlay.start_playing(speed, repeat_current=1, repeat_total=repeat_count)
         self._poll_timer.start()
         self._update_toolbar()
 
@@ -585,8 +590,10 @@ class MainWindow(QMainWindow):
         ) -> None:
             from macroflow import player
             for i in range(repeat_count):
-                if player._stop_flag.is_set():  # type: ignore[attr-defined]
+                session = self._repeat_session
+                if session is None or not session.should_start_cycle(i):
                     break
+                session.mark_cycle_started(i)
 
                 done_event = threading.Event()
                 error_holder: list[str] = []
@@ -609,7 +616,8 @@ class MainWindow(QMainWindow):
 
                 # 재생 완료 대기
                 while not done_event.is_set():
-                    if player._stop_flag.is_set():  # type: ignore[attr-defined]
+                    session = self._repeat_session
+                    if session is None or session.was_stopped:
                         return
                     time.sleep(0.05)
 
@@ -619,12 +627,19 @@ class MainWindow(QMainWindow):
 
                 # 마지막 반복이 아니면 interval 대기
                 if i < repeat_count - 1 and interval_ms > 0:
+                    session = self._repeat_session
+                    if session is not None:
+                        session.mark_between_cycles()
                     deadline = time.monotonic() + interval_ms / 1000.0
                     while time.monotonic() < deadline:
-                        if player._stop_flag.is_set():  # type: ignore[attr-defined]
+                        session = self._repeat_session
+                        if session is None or session.was_stopped:
                             return
                         time.sleep(0.05)
 
+            session = self._repeat_session
+            if session is not None:
+                session.mark_finished()
             self._sig_play_complete.emit()
 
         threading.Thread(
@@ -647,8 +662,13 @@ class MainWindow(QMainWindow):
     def _stop_playback(self) -> None:
         from macroflow import player
         from macroflow.win32 import stop_emergency_hook
+        if self._repeat_session is not None:
+            self._repeat_session.request_stop()
         player.stop()
         stop_emergency_hook()
+        if self._repeat_session is not None:
+            self._repeat_session.mark_finished()
+        self._repeat_session = None
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -659,6 +679,9 @@ class MainWindow(QMainWindow):
     def _on_play_complete(self) -> None:
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
+        if self._repeat_session is not None:
+            self._repeat_session.mark_finished()
+        self._repeat_session = None
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -669,6 +692,9 @@ class MainWindow(QMainWindow):
     def _on_play_error(self, msg: str) -> None:
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
+        if self._repeat_session is not None:
+            self._repeat_session.mark_finished()
+        self._repeat_session = None
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -782,7 +808,17 @@ class MainWindow(QMainWindow):
             from macroflow import player
             progress = player.get_progress()
             self._overlay.set_progress(progress)
-            if not player.is_playing():
+            is_player_playing = player.is_playing()
+            if self._repeat_session is not None:
+                self._overlay.set_repeat(
+                    self._repeat_session.cycle_index + 1,
+                    self._repeat_session.total,
+                )
+                if self._repeat_session.should_poll_wait_for_worker(
+                    player_is_playing=is_player_playing
+                ):
+                    return
+            if not is_player_playing:
                 self._on_play_complete()
 
     # ── UI 갱신 ───────────────────────────────────────────────────────────────
