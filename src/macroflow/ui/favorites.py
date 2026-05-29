@@ -176,11 +176,12 @@ class FavoritesWidget(QWidget):
         # 트리 위젯
         self._tree = FavoritesTreeWidget(self)
         self._tree.setHeaderHidden(True)
-        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._context_menu)
         self._tree.itemDoubleClicked.connect(self._on_double_click)
         self._tree.currentItemChanged.connect(self._on_selection_changed)
+        self._tree.itemSelectionChanged.connect(self._on_selection_changed)
         self._tree.itemExpanded.connect(self._on_expand_change)
         self._tree.itemCollapsed.connect(self._on_expand_change)
         self._tree.item_moved.connect(self._on_item_moved)
@@ -517,16 +518,33 @@ class FavoritesWidget(QWidget):
         elif data.get("type") == "group":
             item.setExpanded(not item.isExpanded())
 
-    def _on_selection_changed(
-        self,
-        current: QTreeWidgetItem | None,
-        _prev: QTreeWidgetItem | None,
-    ) -> None:
-        if current is None:
-            self._act_remove.setEnabled(False)
-            return
-        data: dict[str, Any] = current.data(0, _ROLE) or {}
-        self._act_remove.setEnabled(data.get("type") == "item")
+    def _on_selection_changed(self, *_args: object) -> None:
+        self._act_remove.setEnabled(bool(self._selected_item_paths()))
+
+    def _selected_item_paths(self) -> list[Path]:
+        """현재 선택된 즐겨찾기 item들의 경로를 트리 순서대로 반환한다."""
+        selected: list[Path] = []
+        for item in self._tree.selectedItems():
+            data: dict[str, Any] = item.data(0, _ROLE) or {}
+            if data.get("type") != "item":
+                continue
+            path = str(data.get("path", ""))
+            if path:
+                selected.append(Path(path))
+        return selected
+
+    def _selected_item_filenames(self) -> list[str]:
+        """현재 선택된 즐겨찾기 item들의 파일명을 중복 없이 반환한다."""
+        filenames: list[str] = []
+        seen: set[str] = set()
+        for path in self._selected_item_paths():
+            if path.name and path.name not in seen:
+                filenames.append(path.name)
+                seen.add(path.name)
+        return filenames
+
+    def _selected_item_count(self) -> int:
+        return len(self._selected_item_paths())
 
     def _on_expand_change(self, item: QTreeWidgetItem) -> None:
         """그룹 펼침/접힘 상태를 인덱스에 즉시 반영한다."""
@@ -596,7 +614,11 @@ class FavoritesWidget(QWidget):
         if item_type == "group":
             self._build_group_menu(menu, item)
         elif item_type == "item":
-            self._build_item_menu(menu, item)
+            selected_count = self._selected_item_count()
+            if selected_count > 1 and item.isSelected():
+                self._build_batch_item_menu(menu, selected_count)
+            else:
+                self._build_item_menu(menu, item)
         else:
             return
 
@@ -630,6 +652,41 @@ class FavoritesWidget(QWidget):
         act_collapse = menu.addAction("📁 모두 접기")
         assert act_collapse is not None
         act_collapse.triggered.connect(self._tree.collapseAll)
+
+    def _build_batch_item_menu(self, menu: QMenu, selected_count: int) -> None:
+        """다중 선택된 즐겨찾기 항목의 일괄 작업 메뉴를 구성한다."""
+        act_seq = menu.addAction(f"📋 선택 {selected_count}개 시퀀서에 추가")
+        assert act_seq is not None
+        act_seq.triggered.connect(self._add_selected_to_sequencer)
+
+        menu.addSeparator()
+
+        move_menu = menu.addMenu("📁 선택 항목 그룹으로 이동")
+        assert move_menu is not None
+        filenames = set(self._selected_item_filenames())
+        has_target = False
+        for g in self._index.get("groups", []):
+            gid: str = g.get("id", "")
+            items: list[str] = g.get("items", [])
+            if filenames and all(filename in items for filename in filenames):
+                continue
+            gname: str = g.get("name", "그룹")
+            act_move = move_menu.addAction(f"📁 {gname}")
+            assert act_move is not None
+            act_move.triggered.connect(
+                lambda _checked=False, _gid=gid: self._move_selected_to_group(_gid)
+            )
+            has_target = True
+        if not has_target:
+            no_target = move_menu.addAction("(이동 가능한 그룹 없음)")
+            assert no_target is not None
+            no_target.setEnabled(False)
+
+        menu.addSeparator()
+
+        act_remove = menu.addAction(f"🗑 선택 {selected_count}개 제거")
+        assert act_remove is not None
+        act_remove.triggered.connect(self._remove_selected)
 
     def _build_item_menu(self, menu: QMenu, item: QTreeWidgetItem) -> None:
         data: dict[str, Any] = item.data(0, _ROLE) or {}
@@ -699,12 +756,48 @@ class FavoritesWidget(QWidget):
             QMessageBox.warning(self, "파일 없음", f"파일을 찾을 수 없습니다:\n{path}")
             self._refresh_tree()
 
+    def _add_selected_to_sequencer(self) -> None:
+        """선택된 즐겨찾기 항목들을 현재 트리 선택 순서대로 시퀀서에 추가한다."""
+        missing = False
+        for path in self._selected_item_paths():
+            if path.exists():
+                self.add_to_sequencer.emit(str(path))
+            else:
+                missing = True
+        if missing:
+            QMessageBox.warning(self, "파일 없음", "일부 선택 파일을 찾을 수 없어 건너뛰었습니다.")
+            self._refresh_tree()
+
+    def _move_selected_to_group(self, target_gid: str) -> None:
+        """선택된 즐겨찾기 항목들을 지정 그룹으로 일괄 이동한다."""
+        filenames = self._selected_item_filenames()
+        if not filenames:
+            return
+        filename_set = set(filenames)
+        for g in self._index.get("groups", []):
+            items: list[str] = g.get("items", [])
+            g["items"] = [filename for filename in items if filename not in filename_set]
+        target = self._find_group(target_gid)
+        if target is not None:
+            existing: list[str] = target.get("items", [])
+            target["items"] = existing + [
+                filename for filename in filenames if filename not in existing
+            ]
+        self._save_index()
+        self._refresh_tree()
+
     def _remove_selected(self) -> None:
-        item = self._tree.currentItem()
-        if item:
-            data: dict[str, Any] = item.data(0, _ROLE) or {}
-            if data.get("type") == "item":
-                self._remove_item(item)
+        selected_paths = self._selected_item_paths()
+        if not selected_paths:
+            return
+        if len(selected_paths) == 1:
+            item = self._tree.currentItem()
+            if item:
+                data: dict[str, Any] = item.data(0, _ROLE) or {}
+                if data.get("type") == "item":
+                    self._remove_item(item)
+            return
+        self._remove_paths(selected_paths)
 
     def _rename_item(self, item: QTreeWidgetItem) -> None:
         """즐겨찾기 항목의 이름을 변경하고 실제 파일도 rename한다.
@@ -759,6 +852,40 @@ class FavoritesWidget(QWidget):
         self._save_index()
         self._refresh_tree()
         logger.info(f"즐겨찾기 이름 변경: {old_filename} → {new_filename}")
+
+    def _remove_paths(self, paths: list[Path]) -> None:
+        """여러 즐겨찾기 항목을 한 번의 확인 후 인덱스와 파일 시스템에서 제거한다."""
+        if not paths:
+            return
+        preview = "\n".join(f"- {path.name}" for path in paths[:8])
+        extra = "" if len(paths) <= 8 else f"\n... 외 {len(paths) - 8}개"
+        reply = QMessageBox.question(
+            self,
+            "즐겨찾기 일괄 제거",
+            f"선택한 즐겨찾기 {len(paths)}개를 제거하고 파일도 삭제하시겠습니까?\n\n"
+            f"{preview}{extra}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        filenames = {path.name for path in paths}
+        for g in self._index.get("groups", []):
+            items: list[str] = g.get("items", [])
+            g["items"] = [filename for filename in items if filename not in filenames]
+
+        for file_path in paths:
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                    logger.info(f"즐겨찾기 파일 삭제: {file_path}")
+                except OSError as e:
+                    QMessageBox.warning(self, "삭제 오류", str(e))
+                    return
+
+        self._save_index()
+        self._refresh_tree()
 
     def _remove_item(self, item: QTreeWidgetItem) -> None:
         data: dict[str, Any] = item.data(0, _ROLE) or {}
