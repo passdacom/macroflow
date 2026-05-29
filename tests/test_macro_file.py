@@ -90,6 +90,53 @@ def test_save_and_load_roundtrip(tmp_path: Path) -> None:
     assert loaded.is_edited == macro.is_edited
 
 
+def test_settings_color_timeout_fields_roundtrip(tmp_path: Path) -> None:
+    """클릭 색 체크와 독립 색 트리거 timeout 설정은 별도로 저장·로드되어야 한다."""
+    macro = _make_macro()
+    macro.settings.color_check_click_timeout_ms = 3500
+    macro.settings.color_check_click_interval_ms = 25
+    macro.settings.color_trigger_default_timeout_ms = 9000
+    path = tmp_path / "settings_color_timeout.json"
+
+    save(macro, str(path))
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    loaded = load(str(path))
+
+    assert saved["settings"]["color_check_click_timeout_ms"] == 3500
+    assert saved["settings"]["color_check_click_interval_ms"] == 25
+    assert saved["settings"]["color_trigger_default_timeout_ms"] == 9000
+    assert loaded.settings.color_check_click_timeout_ms == 3500
+    assert loaded.settings.color_check_click_interval_ms == 25
+    assert loaded.settings.color_trigger_default_timeout_ms == 9000
+
+
+def test_color_trigger_timeout_roundtrip_preserves_explicit_value(tmp_path: Path) -> None:
+    """색 트리거 이벤트의 명시 timeout_ms는 저장 후 로드해도 0으로 덮이면 안 된다."""
+    event = ColorTriggerEvent(
+        id="aa11bb22", type="color_trigger", timestamp_ns=1_000_000_000,
+        x_ratio=0.5, y_ratio=0.5, target_color="#123456",
+        tolerance=3, timeout_ms=2500, check_interval_ms=20, on_timeout="skip",
+    )
+    macro = MacroData(
+        meta=MacroMeta(
+            version="1.0", app_version="1.2.0",
+            created_at="2026-05-29T00:00:00",
+            screen_width=1920, screen_height=1080, dpi_scale=1.0,
+        ),
+        settings=MacroSettings(),
+        raw_events=[copy.deepcopy(event)],
+        events=[event],
+    )
+    path = tmp_path / "color_trigger_timeout.json"
+
+    save(macro, str(path))
+    loaded = load(str(path))
+
+    loaded_event = loaded.events[0]
+    assert isinstance(loaded_event, ColorTriggerEvent)
+    assert loaded_event.timeout_ms == 2500
+
+
 def test_save_creates_bak(tmp_path: Path) -> None:
     """기존 파일이 있을 때 저장하면 .bak 파일이 생성되어야 한다."""
     macro = _make_macro()
@@ -465,8 +512,8 @@ def test_color_check_wait_roundtrip(tmp_path: Path) -> None:
     assert ev.color_check_on_mismatch == "wait"
 
 
-def test_color_trigger_load_normalizes_timeout_to_infinite(tmp_path: Path) -> None:
-    """기존 파일에 timeout_ms가 없거나 10초로 저장되어 있어도 색 트리거는 무제한 대기(0)로 로드한다."""
+def test_color_trigger_load_defaults_missing_timeout_to_infinite(tmp_path: Path) -> None:
+    """timeout_ms가 없는 기존 색 트리거는 무제한 대기(0)로 로드하고, 명시값은 보존한다."""
     path = tmp_path / "legacy_color_trigger.json"
     path.write_text(
         """
@@ -509,14 +556,19 @@ def test_color_trigger_load_normalizes_timeout_to_infinite(tmp_path: Path) -> No
 
     loaded = load(str(path))
 
-    for event in loaded.events:
-        assert isinstance(event, ColorTriggerEvent)
-        assert event.timeout_ms == 0
+    first, second = loaded.events
+    assert isinstance(first, ColorTriggerEvent)
+    assert first.timeout_ms == 0
+    assert isinstance(second, ColorTriggerEvent)
+    assert second.timeout_ms == 10000
 
 
 def test_color_check_click_default_timeout_remains_ten_seconds() -> None:
-    """클릭 색 체크의 wait 모드는 MacroSettings 기본 10초 예산을 계속 사용한다."""
-    assert MacroSettings().color_trigger_default_timeout_ms == 10000
+    """클릭 색 체크와 독립 색 트리거 기본 timeout은 서로 별도 설정이다."""
+    settings = MacroSettings()
+    assert settings.color_check_click_timeout_ms == 10000
+    assert settings.color_check_click_interval_ms == 50
+    assert settings.color_trigger_default_timeout_ms == 10000
 
 
 def test_set_color_check_on_mismatch_selects_target_mode_directly() -> None:

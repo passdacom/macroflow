@@ -245,7 +245,10 @@ class MacroSettings:
         click_time_threshold_ms: 클릭 판별 시간 임계값 (밀리초).
         default_playback_speed: 재생 속도 배율.
         color_trigger_check_interval_ms: 색 감지 폴링 주기 (밀리초).
-        color_trigger_default_timeout_ms: 색 감지 최대 대기 시간 (밀리초).
+        color_trigger_default_timeout_ms: 독립 색 트리거 기본 최대 대기 시간 (밀리초).
+        color_check_click_tolerance: 클릭 색 체크 RGB 채널별 허용 오차.
+        color_check_click_timeout_ms: 클릭 색 체크 불일치 시 선택 동작 전 최대 대기 시간.
+        color_check_click_interval_ms: 클릭 색 체크 폴링 주기 (밀리초).
     """
 
     click_dist_threshold_px: int = 8
@@ -254,6 +257,8 @@ class MacroSettings:
     color_trigger_check_interval_ms: int = 50
     color_trigger_default_timeout_ms: int = 10000
     color_check_click_tolerance: int = 10
+    color_check_click_timeout_ms: int = 10000
+    color_check_click_interval_ms: int = 50
 
 
 @dataclass(kw_only=True)

@@ -128,7 +128,7 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
                 y_ratio=d["y_ratio"],
                 target_color=d["target_color"],
                 tolerance=d.get("tolerance", 10),
-                timeout_ms=0,
+                timeout_ms=d.get("timeout_ms", 0),
                 check_interval_ms=d.get("check_interval_ms", 50),
                 on_timeout=d.get("on_timeout", "error"),
             )

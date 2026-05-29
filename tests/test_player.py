@@ -9,6 +9,7 @@ import pytest
 
 from macroflow import player
 from macroflow.player import (
+    PlaybackError,
     _color_matches,
     _execute_event,
     _hex_to_rgb,
@@ -322,6 +323,86 @@ class TestColorCheckWait:
         # 픽셀이 일치한 후 클릭이 실행되어야 함
         assert mock_player_button.called or mock_button.called
         assert call_count >= 3
+
+
+    def test_stop_mode_waits_for_match_before_stopping(self, mock_win32: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        """stop 모드도 설정 시간 동안 색 변화를 기다리고, 맞으면 클릭을 진행한다."""
+        event = MouseButtonEvent(
+            id="ee55ff66", type="mouse_down", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, button="left",
+            recorded_color="#FF0000",
+            color_check_enabled=True,
+            color_check_on_mismatch="stop",
+        )
+        settings = MacroSettings(
+            color_check_click_tolerance=0,
+            color_check_click_timeout_ms=1000,
+            color_check_click_interval_ms=1,
+        )
+        state = _PlayState()
+        calls = 0
+
+        def fake_get_pixel_color(x: int, y: int) -> tuple[int, int, int]:
+            nonlocal calls
+            calls += 1
+            if calls < 3:
+                return (0, 0, 0)
+            return (255, 0, 0)
+
+        monkeypatch.setattr(player, "get_pixel_color", fake_get_pixel_color)
+        monkeypatch.setattr(player.time, "sleep", lambda seconds: None)
+        player.send_mouse_button = MagicMock()  # type: ignore[method-assign]
+
+        _execute_event(event, settings, state)
+
+        assert calls >= 3
+        player.send_mouse_button.assert_called_once_with(960, 540, "left", down=True)  # type: ignore[attr-defined]
+
+    def test_skip_mode_waits_then_skips_when_color_never_matches(self, mock_win32: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        """skip 모드는 설정 시간 동안 기다린 뒤에도 안 맞을 때만 클릭을 건너뛴다."""
+        event = MouseButtonEvent(
+            id="ff667788", type="mouse_down", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, button="left",
+            recorded_color="#FF0000",
+            color_check_enabled=True,
+            color_check_on_mismatch="skip",
+        )
+        settings = MacroSettings(
+            color_check_click_tolerance=0,
+            color_check_click_timeout_ms=1,
+            color_check_click_interval_ms=1,
+        )
+        state = _PlayState()
+        monkeypatch.setattr(player, "get_pixel_color", lambda x, y: (0, 0, 0))
+        player.send_mouse_button = MagicMock()  # type: ignore[method-assign]
+
+        _execute_event(event, settings, state)
+
+        player.send_mouse_button.assert_not_called()  # type: ignore[attr-defined]
+        assert state.color_check_skip_button == "left"
+
+    def test_stop_mode_raises_after_timeout_when_color_never_matches(self, mock_win32: object, monkeypatch: pytest.MonkeyPatch) -> None:
+        """stop 모드는 설정 시간 이후에도 색이 안 맞으면 재생을 중단한다."""
+        event = MouseButtonEvent(
+            id="00112233", type="mouse_down", timestamp_ns=1_000_000_000,
+            x_ratio=0.5, y_ratio=0.5, button="left",
+            recorded_color="#FF0000",
+            color_check_enabled=True,
+            color_check_on_mismatch="stop",
+        )
+        settings = MacroSettings(
+            color_check_click_tolerance=0,
+            color_check_click_timeout_ms=1,
+            color_check_click_interval_ms=1,
+        )
+        state = _PlayState()
+        monkeypatch.setattr(player, "get_pixel_color", lambda x, y: (0, 0, 0))
+        player.send_mouse_button = MagicMock()  # type: ignore[method-assign]
+
+        with pytest.raises(PlaybackError):
+            _execute_event(event, settings, state)
+
+        player.send_mouse_button.assert_not_called()  # type: ignore[attr-defined]
 
 
 class TestColorTriggerInfiniteWait:

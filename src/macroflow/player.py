@@ -98,27 +98,27 @@ def _execute_event(
                 time.sleep(0.05)  # hover 효과 대기
                 target = _hex_to_rgb(event.recorded_color)
 
-                if event.color_check_on_mismatch == "wait":
-                    # wait 모드: 색이 일치할 때까지 폴링 (타임아웃 시 클릭 진행)
-                    _wait_for_color_check(x, y, target, settings)
-                    # 폴링 후 실제 클릭은 아래에서 계속 진행
-                else:
+                matched = _wait_for_click_color_check(x, y, target, settings)
+                if not matched:
                     actual = get_pixel_color(x, y)
-                    if not _color_matches(actual, target, settings.color_check_click_tolerance):
-                        actual_hex = f"#{actual[0]:02X}{actual[1]:02X}{actual[2]:02X}"
-                        if event.color_check_on_mismatch == "stop":
-                            # stop 모드: 재생 전체를 즉시 중단
-                            raise PlaybackError(
-                                f"색 체크 불일치 → 재생 중단 "
-                                f"at ({x},{y}) 실제={actual_hex} 기록={event.recorded_color}"
-                            )
-                        # skip 모드: 이 클릭 스킵, 대응하는 up도 스킵하도록 표시
+                    actual_hex = f"#{actual[0]:02X}{actual[1]:02X}{actual[2]:02X}"
+                    if event.color_check_on_mismatch == "stop":
+                        # stop 모드: 설정 시간 동안 기다린 후에도 불일치하면 재생 중단
+                        raise PlaybackError(
+                            f"색 체크 불일치 → 재생 중단 "
+                            f"at ({x},{y}) 실제={actual_hex} 기록={event.recorded_color}"
+                        )
+                    if event.color_check_on_mismatch == "skip":
+                        # skip 모드: 설정 시간 동안 기다린 후에도 불일치하면 클릭 스킵
                         state.color_check_skip_button = event.button
                         logger.debug(
                             f"[color_check] skip click at ({x},{y}): "
                             f"actual={actual_hex} target={event.recorded_color}"
                         )
                         return
+                    logger.warning(
+                        f"[color_check wait] timeout at ({x},{y}), proceeding with click anyway"
+                    )
             send_mouse_move(x, y)
             send_mouse_button(x, y, event.button, down=True)
             state.pending_down = event
@@ -225,6 +225,34 @@ def _wait_for_color_check(
     logger.warning(
         f"[color_check wait] timeout at ({x},{y}), proceeding with click anyway"
     )
+
+
+def _wait_for_click_color_check(
+    x: int, y: int,
+    target: tuple[int, int, int],
+    settings: MacroSettings,
+) -> bool:
+    """클릭 색 체크: 설정 시간 동안 목표 색이 나타나는지 폴링한다.
+
+    Returns:
+        목표 색이 timeout 전에 감지되면 True, timeout 또는 stop이면 False.
+    """
+    timeout_ms = max(0, settings.color_check_click_timeout_ms)
+    deadline_ns = (
+        time.perf_counter_ns() + timeout_ms * 1_000_000
+        if timeout_ms > 0 else time.perf_counter_ns()
+    )
+    interval_s = max(1, settings.color_check_click_interval_ms) / 1000.0
+
+    while True:
+        if _stop_flag.is_set():
+            return False
+        actual = get_pixel_color(x, y)
+        if _color_matches(actual, target, settings.color_check_click_tolerance):
+            return True
+        if time.perf_counter_ns() >= deadline_ns:
+            return False
+        time.sleep(interval_s)
 
 
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
