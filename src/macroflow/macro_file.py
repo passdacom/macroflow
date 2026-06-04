@@ -61,6 +61,21 @@ def _migrate(data: dict[str, Any]) -> dict[str, Any]:
 
 # ── 역직렬화 ──────────────────────────────────────────────────────────────────
 
+def _dict_to_settings(d: dict[str, Any]) -> MacroSettings:
+    """저장된 settings 딕셔너리를 MacroSettings로 변환한다.
+
+    기존 파일에는 클릭 색 체크 timeout이 `color_check_click_timeout_ms` 하나뿐이었다.
+    새 action별 timeout 필드가 누락된 경우 legacy 값을 세 필드에 복사해 사용자가
+    저장해 둔 단일 timeout 의미를 보존한다.
+    """
+    data = dict(d)
+    legacy_timeout = data.get("color_check_click_timeout_ms", 10000)
+    data.setdefault("color_check_click_wait_timeout_ms", legacy_timeout)
+    data.setdefault("color_check_click_skip_timeout_ms", legacy_timeout)
+    data.setdefault("color_check_click_stop_timeout_ms", legacy_timeout)
+    return MacroSettings(**data)
+
+
 def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
     """딕셔너리를 AnyEvent 서브클래스 인스턴스로 변환한다.
 
@@ -198,7 +213,7 @@ def load(path: str) -> MacroData:
     try:
         raw = _migrate(raw)
         meta = MacroMeta(**raw["meta"])
-        settings = MacroSettings(**raw.get("settings", {}))
+        settings = _dict_to_settings(raw.get("settings", {}))
         raw_events: list[AnyEvent] = [_dict_to_event(e) for e in raw["raw_events"]]
         events: list[AnyEvent] = [_dict_to_event(e) for e in raw["events"]]
         is_edited: bool = raw.get("is_edited", False)

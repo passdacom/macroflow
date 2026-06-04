@@ -15,6 +15,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QByteArray, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEvent
@@ -384,12 +385,98 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _save_settings(self) -> None:
-        """창 위치·크기와 마지막 열었던 파일 경로를 QSettings에 저장한다."""
+        """창 위치·크기, 마지막 파일, 색 timeout 기본값을 QSettings에 저장한다."""
         from PyQt6.QtCore import QSettings
         s = QSettings("MacroFlow", "MacroFlow")
         s.setValue("geometry", self.saveGeometry())
         if self._current_file is not None:
             s.setValue("last_file", str(self._current_file))
+        self._persist_color_settings(s)
+
+    def _persist_color_settings(self, s: Any) -> None:
+        """현재 매크로의 색 체크/트리거 설정을 앱 기본값으로 저장한다."""
+        if self._macro is None:
+            return
+        settings = self._macro.settings
+        # Legacy key도 함께 저장해 이전 버전 설정/파일과의 호환성을 유지한다.
+        s.setValue("color_check_click_timeout_ms", settings.color_check_click_skip_timeout_ms)
+        s.setValue("color_check_click_wait_timeout_ms", settings.color_check_click_wait_timeout_ms)
+        s.setValue("color_check_click_skip_timeout_ms", settings.color_check_click_skip_timeout_ms)
+        s.setValue("color_check_click_stop_timeout_ms", settings.color_check_click_stop_timeout_ms)
+        s.setValue("color_check_click_interval_ms", settings.color_check_click_interval_ms)
+        s.setValue("color_trigger_default_timeout_ms", settings.color_trigger_default_timeout_ms)
+        s.setValue("color_trigger_check_interval_ms", settings.color_trigger_check_interval_ms)
+
+    def _qsettings_int(self, s: Any, key: str, default: int) -> int:
+        """QSettings 값 타입 차이를 안전하게 int로 정규화한다."""
+        value = s.value(key, default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _apply_persisted_color_settings(self, macro: MacroData) -> MacroData:
+        """QSettings에 저장된 색 timeout 기본값을 MacroData에 반영한다."""
+        from PyQt6.QtCore import QSettings
+        s = QSettings("MacroFlow", "MacroFlow")
+        settings = macro.settings
+        persisted_keys = (
+            "color_check_click_timeout_ms",
+            "color_check_click_wait_timeout_ms",
+            "color_check_click_skip_timeout_ms",
+            "color_check_click_stop_timeout_ms",
+            "color_check_click_interval_ms",
+            "color_trigger_default_timeout_ms",
+            "color_trigger_check_interval_ms",
+        )
+        if all(s.value(key, None) is None for key in persisted_keys):
+            return macro
+
+        legacy_timeout = self._qsettings_int(
+            s,
+            "color_check_click_timeout_ms",
+            settings.color_check_click_timeout_ms,
+        )
+        legacy_exists = s.value("color_check_click_timeout_ms", None) is not None
+        per_action_default = legacy_timeout if legacy_exists else None
+        wait_default = (
+            per_action_default
+            if per_action_default is not None
+            else settings.color_check_click_wait_timeout_ms
+        )
+        skip_default = (
+            per_action_default
+            if per_action_default is not None
+            else settings.color_check_click_skip_timeout_ms
+        )
+        stop_default = (
+            per_action_default
+            if per_action_default is not None
+            else settings.color_check_click_stop_timeout_ms
+        )
+        new_settings = dataclasses.replace(
+            settings,
+            color_check_click_timeout_ms=legacy_timeout,
+            color_check_click_wait_timeout_ms=self._qsettings_int(
+                s, "color_check_click_wait_timeout_ms", wait_default
+            ),
+            color_check_click_skip_timeout_ms=self._qsettings_int(
+                s, "color_check_click_skip_timeout_ms", skip_default
+            ),
+            color_check_click_stop_timeout_ms=self._qsettings_int(
+                s, "color_check_click_stop_timeout_ms", stop_default
+            ),
+            color_check_click_interval_ms=self._qsettings_int(
+                s, "color_check_click_interval_ms", settings.color_check_click_interval_ms
+            ),
+            color_trigger_default_timeout_ms=self._qsettings_int(
+                s, "color_trigger_default_timeout_ms", settings.color_trigger_default_timeout_ms
+            ),
+            color_trigger_check_interval_ms=self._qsettings_int(
+                s, "color_trigger_check_interval_ms", settings.color_trigger_check_interval_ms
+            ),
+        )
+        return dataclasses.replace(macro, settings=new_settings)
 
     def _restore_settings(self) -> None:
         """QSettings에서 창 위치·크기와 마지막 파일을 복원한다."""
@@ -403,6 +490,7 @@ class MainWindow(QMainWindow):
             try:
                 from macroflow.macro_file import load
                 macro = load(str(last_file))
+                macro = self._apply_persisted_color_settings(macro)
                 self._macro = macro
                 self._current_file = Path(str(last_file))
                 self._editor.load_macro(macro)
@@ -512,7 +600,7 @@ class MainWindow(QMainWindow):
             "F6 또는 중지 버튼으로 녹화를 끝내면 새 이벤트가 뒤에 추가됩니다.\n"
             "계속하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -562,10 +650,12 @@ class MainWindow(QMainWindow):
 
     def _on_recording_done(self, macro: object) -> None:
         assert isinstance(macro, MacroData)
+        macro = self._apply_persisted_color_settings(macro)
         if self._append_recording_mode and self._append_base_macro is not None:
             from macroflow.ui.append_recording import append_recording
 
             appended_macro = append_recording(self._append_base_macro, macro)
+            appended_macro = self._apply_persisted_color_settings(appended_macro)
             self._macro = appended_macro
             self._append_recording_mode = False
             self._append_base_macro = None
@@ -871,13 +961,29 @@ class MainWindow(QMainWindow):
 
         click_group = QGroupBox("클릭 내부 색 체크")
         click_form = QFormLayout(click_group)
-        click_timeout = QSpinBox()
-        click_timeout.setRange(0, 600000)
-        click_timeout.setValue(settings.color_check_click_timeout_ms)
-        click_timeout.setSuffix(" ms")
-        click_timeout.setSpecialValueText("무제한")
-        click_timeout.setToolTip("skip/stop/wait 판단 전에 색이 맞는지 기다릴 최대 시간")
-        click_form.addRow("Timeout:", click_timeout)
+        click_wait_timeout = QSpinBox()
+        click_wait_timeout.setRange(0, 600000)
+        click_wait_timeout.setValue(settings.color_check_click_wait_timeout_ms)
+        click_wait_timeout.setSuffix(" ms")
+        click_wait_timeout.setSpecialValueText("무제한")
+        click_wait_timeout.setToolTip("대기(wait) 모드에서 색이 맞을 때까지 기다릴 최대 시간")
+        click_form.addRow("대기 timeout:", click_wait_timeout)
+
+        click_skip_timeout = QSpinBox()
+        click_skip_timeout.setRange(0, 600000)
+        click_skip_timeout.setValue(settings.color_check_click_skip_timeout_ms)
+        click_skip_timeout.setSuffix(" ms")
+        click_skip_timeout.setSpecialValueText("무제한")
+        click_skip_timeout.setToolTip("무시(skip) 모드에서 클릭을 건너뛰기 전 기다릴 최대 시간")
+        click_form.addRow("무시 timeout:", click_skip_timeout)
+
+        click_stop_timeout = QSpinBox()
+        click_stop_timeout.setRange(0, 600000)
+        click_stop_timeout.setValue(settings.color_check_click_stop_timeout_ms)
+        click_stop_timeout.setSuffix(" ms")
+        click_stop_timeout.setSpecialValueText("무제한")
+        click_stop_timeout.setToolTip("중지(stop) 모드에서 재생을 중단하기 전 기다릴 최대 시간")
+        click_form.addRow("중지 timeout:", click_stop_timeout)
 
         click_interval = QSpinBox()
         click_interval.setRange(1, 10000)
@@ -917,7 +1023,10 @@ class MainWindow(QMainWindow):
 
         new_settings = dataclasses.replace(
             settings,
-            color_check_click_timeout_ms=click_timeout.value(),
+            color_check_click_timeout_ms=click_skip_timeout.value(),
+            color_check_click_wait_timeout_ms=click_wait_timeout.value(),
+            color_check_click_skip_timeout_ms=click_skip_timeout.value(),
+            color_check_click_stop_timeout_ms=click_stop_timeout.value(),
             color_check_click_interval_ms=click_interval.value(),
             color_trigger_default_timeout_ms=trigger_timeout.value(),
             color_trigger_check_interval_ms=trigger_interval.value(),
@@ -931,6 +1040,8 @@ class MainWindow(QMainWindow):
             is_edited=True,
         )
         self._editor.load_macro(self._macro)
+        from PyQt6.QtCore import QSettings
+        self._persist_color_settings(QSettings("MacroFlow", "MacroFlow"))
         self._update_range_spinboxes()
         self._update_toolbar()
         self._sb_state.setText("색 체크 설정 변경됨")
@@ -1112,7 +1223,8 @@ class MainWindow(QMainWindow):
         """경로에서 매크로를 로드하여 에디터에 표시한다."""
         try:
             from macroflow import macro_file
-            self._macro = macro_file.load(path)
+            loaded_macro = macro_file.load(path)
+            self._macro = self._apply_persisted_color_settings(loaded_macro)
             self._current_file = Path(path)
             self._editor.load_macro(self._macro)
             self._update_toolbar()

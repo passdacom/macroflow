@@ -247,7 +247,10 @@ class MacroSettings:
         color_trigger_check_interval_ms: 색 감지 폴링 주기 (밀리초).
         color_trigger_default_timeout_ms: 독립 색 트리거 기본 최대 대기 시간 (밀리초).
         color_check_click_tolerance: 클릭 색 체크 RGB 채널별 허용 오차.
-        color_check_click_timeout_ms: 클릭 색 체크 불일치 시 선택 동작 전 최대 대기 시간.
+        color_check_click_timeout_ms: 클릭 색 체크 legacy 단일 timeout 값.
+        color_check_click_wait_timeout_ms: 클릭 색 체크 '대기' 동작 timeout.
+        color_check_click_skip_timeout_ms: 클릭 색 체크 '무시' 동작 timeout.
+        color_check_click_stop_timeout_ms: 클릭 색 체크 '중지' 동작 timeout.
         color_check_click_interval_ms: 클릭 색 체크 폴링 주기 (밀리초).
     """
 
@@ -257,7 +260,12 @@ class MacroSettings:
     color_trigger_check_interval_ms: int = 50
     color_trigger_default_timeout_ms: int = 10000
     color_check_click_tolerance: int = 10
+    # Legacy 단일 timeout. 새 코드에서는 action별 timeout을 사용하되,
+    # 기존 저장 파일 호환을 위해 필드는 유지한다.
     color_check_click_timeout_ms: int = 10000
+    color_check_click_wait_timeout_ms: int = 10000
+    color_check_click_skip_timeout_ms: int = 10000
+    color_check_click_stop_timeout_ms: int = 10000
     color_check_click_interval_ms: int = 50
 
 

@@ -69,6 +69,13 @@ class OverlayWindow(QWidget):
 
     # ── 공개 제어 인터페이스 ───────────────────────────────────────────────────
 
+    def _show_on_top(self) -> None:
+        """오버레이를 현재 화면 우하단에 다시 배치하고 최상단으로 표시한다."""
+        self._position_bottom_right()
+        self.show()
+        self.raise_()
+        self.update()
+
     def start_recording(self) -> None:
         """녹화 모드로 오버레이를 표시한다."""
         self._mode = "recording"
@@ -77,7 +84,7 @@ class OverlayWindow(QWidget):
         self._blink_on = True
         self._repaint_timer.start()
         self._blink_timer.start()
-        self.show()
+        self._show_on_top()
 
     def start_playing(
         self,
@@ -94,7 +101,7 @@ class OverlayWindow(QWidget):
         self.set_repeat(repeat_current, repeat_total)
         self._repaint_timer.start()
         self._blink_timer.stop()
-        self.show()
+        self._show_on_top()
 
     def set_event_count(self, count: int) -> None:
         """녹화 중 이벤트 수를 갱신한다."""
@@ -115,9 +122,7 @@ class OverlayWindow(QWidget):
         self._hint_text = text
         self._repaint_timer.stop()
         self._blink_timer.stop()
-        self._position_bottom_right()
-        self.show()
-        self.update()
+        self._show_on_top()
 
     def stop_hint(self) -> None:
         """힌트 모드를 종료한다."""

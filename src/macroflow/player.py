@@ -100,7 +100,13 @@ def _execute_event(
                 time.sleep(0.05)  # hover 효과 대기
                 target = _hex_to_rgb(event.recorded_color)
 
-                matched = _wait_for_click_color_check(x, y, target, settings)
+                matched = _wait_for_click_color_check(
+                    x,
+                    y,
+                    target,
+                    settings,
+                    event.color_check_on_mismatch,
+                )
                 if not matched:
                     actual = get_pixel_color(x, y)
                     actual_hex = f"#{actual[0]:02X}{actual[1]:02X}{actual[2]:02X}"
@@ -195,6 +201,41 @@ def _execute_event(
         execute_loop(event, _stop_flag, lambda e: _execute_event(e, settings, state))
 
 
+def _color_check_timeout_ms_for_action(
+    settings: MacroSettings,
+    action: str,
+) -> int:
+    """클릭 색 체크 mismatch action에 대응하는 timeout(ms)을 반환한다."""
+    if action == "wait":
+        selected = settings.color_check_click_wait_timeout_ms
+    elif action == "stop":
+        selected = settings.color_check_click_stop_timeout_ms
+    else:
+        selected = settings.color_check_click_skip_timeout_ms
+    # 기존 코드/테스트처럼 legacy 단일 timeout만 바꾼 MacroSettings도 보존한다.
+    if selected == 10000 and settings.color_check_click_timeout_ms != 10000:
+        return settings.color_check_click_timeout_ms
+    return selected
+
+
+def _event_timing_compensation_ns(
+    event: AnyEvent,
+    execute_start_ns: int,
+    last_event_end_ns: int,
+) -> int:
+    """이벤트 자체 대기 시간 때문에 이후 timestamp가 따라잡혀 버리지 않도록 보정값을 반환한다."""
+    if isinstance(event, (ColorTriggerEvent, WindowTriggerEvent)):
+        return max(0, last_event_end_ns - execute_start_ns)
+    if (
+        isinstance(event, MouseButtonEvent)
+        and event.type == "mouse_down"
+        and event.color_check_enabled
+        and event.recorded_color is not None
+    ):
+        return max(0, last_event_end_ns - execute_start_ns)
+    return 0
+
+
 def _wait_for_color_check(
     x: int, y: int,
     target: tuple[int, int, int],
@@ -230,16 +271,18 @@ def _wait_for_color_check(
 
 
 def _wait_for_click_color_check(
-    x: int, y: int,
+    x: int,
+    y: int,
     target: tuple[int, int, int],
     settings: MacroSettings,
+    action: str = "skip",
 ) -> bool:
-    """클릭 색 체크: 설정 시간 동안 목표 색이 나타나는지 폴링한다.
+    """클릭 색 체크: action별 설정 시간 동안 목표 색이 나타나는지 폴링한다.
 
     Returns:
         목표 색이 timeout 전에 감지되면 True, timeout 또는 stop이면 False.
     """
-    timeout_ms = max(0, settings.color_check_click_timeout_ms)
+    timeout_ms = max(0, _color_check_timeout_ms_for_action(settings, action))
     start_ns = time.perf_counter_ns()
     deadline_ns = start_ns + timeout_ms * 1_000_000 if timeout_ms > 0 else None
     next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
@@ -447,19 +490,20 @@ def _play_loop(
         if not isinstance(event, MouseMoveEvent):
             last_significant_event_end_ns = last_event_end_ns
 
-        # ── 색/창 트리거 타이머 보정 ─────────────────────────────────────────
-        # 색·창 트리거는 실제 로딩 시간만큼 대기하기 때문에 녹화 당시보다 오래
-        # 걸릴 수 있다. 보정하지 않으면 이후 이벤트들의 target_ns가 이미 과거가
-        # 되어 모두 즉시(연속으로) 실행되어 버린다.
-        # → 실제 실행 시간만큼 play_start_ns 를 전진시켜 이후 모든 target_ns 를
-        #   같은 폭으로 미뤄 녹화 당시의 상대 간격을 유지한다.
-        if isinstance(event, (ColorTriggerEvent, WindowTriggerEvent)):
-            trigger_duration_ns = last_event_end_ns - execute_start_ns
-            if trigger_duration_ns > 0:
-                play_start_ns += trigger_duration_ns
-                logger.debug(
-                    f"Trigger timer compensated: +{trigger_duration_ns / 1_000_000:.1f}ms"
-                )
+        # ── 이벤트 자체 대기 타이머 보정 ─────────────────────────────────────
+        # 색·창 트리거뿐 아니라 클릭 내부 색 체크도 실제 로딩/대기 시간만큼
+        # 오래 걸릴 수 있다. 보정하지 않으면 이후 이벤트들의 target_ns가 이미
+        # 과거가 되어 모두 즉시(연속으로) 실행되어 버린다.
+        timing_compensation_ns = _event_timing_compensation_ns(
+            event,
+            execute_start_ns,
+            last_event_end_ns,
+        )
+        if timing_compensation_ns > 0:
+            play_start_ns += timing_compensation_ns
+            logger.debug(
+                f"Event timer compensated: +{timing_compensation_ns / 1_000_000:.1f}ms"
+            )
 
     if not _stop_flag.is_set() and on_complete:
         on_complete()

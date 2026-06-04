@@ -94,6 +94,9 @@ def test_settings_color_timeout_fields_roundtrip(tmp_path: Path) -> None:
     """클릭 색 체크와 독립 색 트리거 timeout 설정은 별도로 저장·로드되어야 한다."""
     macro = _make_macro()
     macro.settings.color_check_click_timeout_ms = 3500
+    macro.settings.color_check_click_wait_timeout_ms = 4500
+    macro.settings.color_check_click_skip_timeout_ms = 5500
+    macro.settings.color_check_click_stop_timeout_ms = 6500
     macro.settings.color_check_click_interval_ms = 25
     macro.settings.color_trigger_default_timeout_ms = 9000
     path = tmp_path / "settings_color_timeout.json"
@@ -103,11 +106,61 @@ def test_settings_color_timeout_fields_roundtrip(tmp_path: Path) -> None:
     loaded = load(str(path))
 
     assert saved["settings"]["color_check_click_timeout_ms"] == 3500
+    assert saved["settings"]["color_check_click_wait_timeout_ms"] == 4500
+    assert saved["settings"]["color_check_click_skip_timeout_ms"] == 5500
+    assert saved["settings"]["color_check_click_stop_timeout_ms"] == 6500
     assert saved["settings"]["color_check_click_interval_ms"] == 25
     assert saved["settings"]["color_trigger_default_timeout_ms"] == 9000
     assert loaded.settings.color_check_click_timeout_ms == 3500
+    assert loaded.settings.color_check_click_wait_timeout_ms == 4500
+    assert loaded.settings.color_check_click_skip_timeout_ms == 5500
+    assert loaded.settings.color_check_click_stop_timeout_ms == 6500
     assert loaded.settings.color_check_click_interval_ms == 25
     assert loaded.settings.color_trigger_default_timeout_ms == 9000
+
+
+def test_legacy_single_click_color_timeout_loads_into_each_action(tmp_path: Path) -> None:
+    """기존 JSON의 단일 클릭 색 체크 timeout은 세 action timeout 기본값으로 승계된다."""
+    macro = _make_macro()
+    path = tmp_path / "legacy_single_click_timeout.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["settings"] = {
+        "color_check_click_timeout_ms": 4321,
+        "color_check_click_interval_ms": 77,
+        "color_trigger_default_timeout_ms": 8765,
+    }
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load(str(path))
+
+    assert loaded.settings.color_check_click_timeout_ms == 4321
+    assert loaded.settings.color_check_click_wait_timeout_ms == 4321
+    assert loaded.settings.color_check_click_skip_timeout_ms == 4321
+    assert loaded.settings.color_check_click_stop_timeout_ms == 4321
+    assert loaded.settings.color_check_click_interval_ms == 77
+    assert loaded.settings.color_trigger_default_timeout_ms == 8765
+
+
+def test_explicit_action_click_color_timeouts_override_legacy_value(tmp_path: Path) -> None:
+    """새 action별 timeout이 저장되어 있으면 legacy 단일 timeout으로 덮지 않는다."""
+    macro = _make_macro()
+    path = tmp_path / "explicit_action_click_timeout.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["settings"] = {
+        "color_check_click_timeout_ms": 10000,
+        "color_check_click_wait_timeout_ms": 111,
+        "color_check_click_skip_timeout_ms": 222,
+        "color_check_click_stop_timeout_ms": 333,
+    }
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load(str(path))
+
+    assert loaded.settings.color_check_click_wait_timeout_ms == 111
+    assert loaded.settings.color_check_click_skip_timeout_ms == 222
+    assert loaded.settings.color_check_click_stop_timeout_ms == 333
 
 
 def test_color_trigger_timeout_roundtrip_preserves_explicit_value(tmp_path: Path) -> None:
