@@ -212,8 +212,14 @@ def _color_check_timeout_ms_for_action(
         selected = settings.color_check_click_stop_timeout_ms
     else:
         selected = settings.color_check_click_skip_timeout_ms
-    # 기존 코드/테스트처럼 legacy 단일 timeout만 바꾼 MacroSettings도 보존한다.
-    if selected == 10000 and settings.color_check_click_timeout_ms != 10000:
+    # 모든 action timeout이 기본값으로 그대로인 경우에만 legacy 단일 timeout을 fallback 한다.
+    if (
+        selected == 10000
+        and settings.color_check_click_wait_timeout_ms == 10000
+        and settings.color_check_click_skip_timeout_ms == 10000
+        and settings.color_check_click_stop_timeout_ms == 10000
+        and settings.color_check_click_timeout_ms != 10000
+    ):
         return settings.color_check_click_timeout_ms
     return selected
 

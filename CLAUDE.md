@@ -89,8 +89,8 @@ macro-harness/
 
 - Type hints 필수: 모든 함수 시그니처
 - Docstring 필수: Google style, 모든 public 클래스·함수
-- ruff 통과 필수: `uv run ruff check .`
-- mypy strict: `uv run mypy src/` 오류 0건
+- ruff 통과 필수: `uv run --active ruff check .`
+- mypy strict: `uv run --active mypy src/` 오류 0건
 
 네이밍: 클래스 PascalCase / 함수·변수 snake_case / 상수 UPPER_SNAKE_CASE
 
@@ -98,12 +98,30 @@ macro-harness/
 
 ## 5. 핵심 커맨드
 
+> 공통 템플릿: 모든 명령은 기본적으로 `uv run --active`로 통일한다.
+
 ```bash
-uv sync                                        # 환경 설치
-uv run python -m macroflow                     # 앱 실행
-uv run pytest tests/ -v                        # 테스트
-uv run ruff check . && uv run mypy src/        # 품질 검사
-uv run pyinstaller build/macroflow-win.spec    # Windows exe 빌드
+cd /root/.openclaw/workspace/macroflow
+
+# 환경 동기화
+uv sync                                        # 최초/의존성 갱신
+
+# 실행
+uv run --active python -m macroflow              # 앱 실행
+
+# 테스트
+uv run --active pytest -q                         # 전체 테스트
+uv run --active pytest tests/test_player.py -q     # 특정 테스트
+
+# 정적 검사
+uv run --active ruff check .                      # ruff
+uv run --active mypy src/                        # mypy strict
+
+# 통합 체크(권장)
+uv run --active pytest -q && uv run --active ruff check . && uv run --active mypy src/
+
+# 빌드 (Windows에서 사용)
+uv run --active pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 ```
 
 ---

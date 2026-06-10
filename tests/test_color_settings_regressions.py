@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 from macroflow.types import MacroSettings, MouseButtonEvent
 
 
@@ -30,6 +32,34 @@ def test_player_selects_timeout_by_color_check_action() -> None:
     assert _color_check_timeout_ms_for_action(settings, "wait") == 111
     assert _color_check_timeout_ms_for_action(settings, "skip") == 222
     assert _color_check_timeout_ms_for_action(settings, "stop") == 333
+
+
+@pytest.mark.parametrize(
+    "wait_ms, skip_ms, stop_ms",
+    [
+        (10_000, 1, 10_000),
+        (1, 10_000, 10_000),
+        (10_000, 10_000, 1),
+    ],
+)
+def test_player_does_not_use_legacy_for_only_one_non_default_action(
+    wait_ms: int,
+    skip_ms: int,
+    stop_ms: int,
+) -> None:
+    """legacy timeout은 per-action timeout이 모두 기본값일 때만 사용한다."""
+    from macroflow.player import _color_check_timeout_ms_for_action
+
+    settings = MacroSettings(
+        color_check_click_timeout_ms=1,
+        color_check_click_wait_timeout_ms=wait_ms,
+        color_check_click_skip_timeout_ms=skip_ms,
+        color_check_click_stop_timeout_ms=stop_ms,
+    )
+
+    assert _color_check_timeout_ms_for_action(settings, "wait") == wait_ms
+    assert _color_check_timeout_ms_for_action(settings, "skip") == skip_ms
+    assert _color_check_timeout_ms_for_action(settings, "stop") == stop_ms
 
 
 def test_player_uses_legacy_click_color_timeout_when_action_timeouts_are_default() -> None:
