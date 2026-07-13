@@ -19,6 +19,7 @@ import ast
 import dataclasses
 import json
 import logging
+import math
 import random as _random_module
 import threading
 import time
@@ -133,7 +134,8 @@ def iter_linear_macro_paths(flow: MacroFlow, flow_path: str | Path) -> list[Path
 
         if isinstance(node, MacroNode):
             raw_path = Path(node.macro_path)
-            paths.append(raw_path if raw_path.is_absolute() else base / raw_path)
+            normalized = raw_path.resolve(strict=False) if raw_path.is_absolute() else (base / raw_path).resolve(strict=False)
+            paths.append(normalized)
             current_id = node.next_on_success
         elif isinstance(node, WaitFixedNode):
             current_id = node.next
@@ -417,8 +419,8 @@ class FlowEngine:
             return self._run_counter_node(node)
 
         elif isinstance(node, WaitFixedNode):
-            if not self._stop_flag.is_set():
-                time.sleep(node.duration_ms / 1000.0)
+            if self._stop_flag.wait(node.duration_ms / 1000.0):
+                return None
             if self._on_node_done:
                 self._on_node_done(node.id, True, f"{node.duration_ms}ms 대기 완료")
             return node.next
@@ -442,27 +444,19 @@ class FlowEngine:
                 if not macro_path.is_relative_to(self._base_dir.resolve()):
                     msg = f"보안: 허용되지 않은 경로 접근 차단 ({node.macro_path!r})"
                     logger.error(msg)
-                    if self._on_node_done:
-                        self._on_node_done(node.id, False, msg)
                     raise FlowError(msg)
             except ValueError as e:
                 msg = f"보안: 경로 검증 실패 ({node.macro_path!r})"
                 logger.error(msg)
-                if self._on_node_done:
-                    self._on_node_done(node.id, False, msg)
                 raise FlowError(msg) from e
 
         # 절대·상대 경로 공통: .json 파일만 허용 (실행 파일·스크립트 로드 차단)
         if macro_path.suffix.lower() != ".json":
             msg = f"보안: .json 파일만 허용 ({node.macro_path!r})"
             logger.error(msg)
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
             raise FlowError(msg)
         if not macro_path.exists():
             msg = f"매크로 파일 없음: {macro_path}"
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
             raise FlowError(msg)
 
         from macroflow import macro_file, player
@@ -471,8 +465,6 @@ class FlowEngine:
             macro = macro_file.load(str(macro_path))
         except Exception as e:
             msg = f"매크로 로드 실패: {e}"
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
             raise FlowError(msg) from e
 
         done_event = threading.Event()
@@ -491,7 +483,7 @@ class FlowEngine:
 
         # 재생 완료 또는 중단 신호까지 대기
         while not done_event.is_set() and not self._stop_flag.is_set():
-            time.sleep(0.05)
+            self._stop_flag.wait(0.05)
 
         if self._stop_flag.is_set():
             player.stop()
@@ -519,7 +511,8 @@ class FlowEngine:
             if _color_matches(actual, target, node.tolerance):
                 matched = True
                 break
-            time.sleep(interval_s)
+            if self._stop_flag.wait(interval_s):
+                return None
 
         msg = f"색 감지 {'성공' if matched else '타임아웃'}"
         if self._on_node_done:
@@ -561,6 +554,41 @@ _ALLOWED_EXPR_NODES: frozenset[type[ast.AST]] = frozenset({
 })
 _ALLOWED_FUNC_NAMES: frozenset[str] = frozenset({"pixel_color", "wait", "random"})
 _MAX_EXPRESSION_LEN: int = 512
+_MAX_EXPRESSION_WAIT_MS: float = 60_000.0
+
+
+def _is_numeric_expression(node: ast.AST) -> bool:
+    """곱셈 피연산자가 정적으로 숫자 표현식인지 반환한다."""
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, (int, float))
+    if isinstance(node, ast.UnaryOp):
+        return _is_numeric_expression(node.operand)
+    if isinstance(node, ast.BinOp):
+        return _is_numeric_expression(node.left) and _is_numeric_expression(node.right)
+    if isinstance(node, ast.IfExp):
+        return _is_numeric_expression(node.body) and _is_numeric_expression(node.orelse)
+    if isinstance(node, ast.Call):
+        return isinstance(node.func, ast.Name) and node.func.id == "random"
+    if isinstance(node, ast.Subscript):
+        return (
+            isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id == "pixel_color"
+            and not isinstance(node.slice, ast.Slice)
+        )
+    return False
+
+
+def _validated_wait_ms(value: object, *, maximum: float) -> float:
+    """샌드박스 wait 값을 검증하고 밀리초 float로 반환한다."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("wait 시간은 유한한 숫자여야 합니다")
+    wait_ms = float(value)
+    if not math.isfinite(wait_ms) or wait_ms < 0 or wait_ms > maximum:
+        raise ValueError(
+            f"wait 시간 초과 또는 잘못된 값 ({wait_ms}ms, 최대 {maximum}ms)"
+        )
+    return wait_ms
 
 
 def _validate_expression(expr: str) -> None:
@@ -593,6 +621,20 @@ def _validate_expression(expr: str) -> None:
                 raise ValueError(
                     f"허용되지 않은 함수: {ast.unparse(node.func)!r}"
                 )
+            if node.func.id == "wait":
+                if len(node.args) != 1 or node.keywords:
+                    raise ValueError("wait()는 위치 인자 1개만 허용합니다")
+                if isinstance(node.args[0], ast.Constant):
+                    _validated_wait_ms(
+                        node.args[0].value,
+                        maximum=_MAX_EXPRESSION_WAIT_MS,
+                    )
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+            if not (
+                _is_numeric_expression(node.left)
+                and _is_numeric_expression(node.right)
+            ):
+                raise ValueError("sequence 반복을 유발하는 곱셈은 허용되지 않습니다")
 
 
 # ── 인라인 ConditionEvent / LoopEvent 실행 ────────────────────────────────────
@@ -616,12 +658,17 @@ def execute_condition(
     """
     from macroflow.win32 import get_pixel_color, ratio_to_pixel
 
+    remaining_wait_ms = _MAX_EXPRESSION_WAIT_MS
+
     def _pixel_color(x_ratio: float, y_ratio: float) -> tuple[int, int, int]:
         x, y = ratio_to_pixel(x_ratio, y_ratio)
         return get_pixel_color(x, y)
 
     def _wait(ms: float) -> None:
-        time.sleep(ms / 1000.0)
+        nonlocal remaining_wait_ms
+        wait_ms = _validated_wait_ms(ms, maximum=remaining_wait_ms)
+        remaining_wait_ms -= wait_ms
+        stop_flag.wait(wait_ms / 1000.0)
 
     def _random() -> float:
         return _random_module.random()

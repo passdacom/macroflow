@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QDragEnterEvent, QDropEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -90,6 +90,8 @@ class MacroSequencerWidget(QWidget):
     sequence_error = pyqtSignal(str)      # message
     open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
     merge_to_editor = pyqtSignal(object)  # 병합 결과 MacroData → 에디터로 전달
+    _node_started = pyqtSignal(str, str)
+    _node_finished = pyqtSignal(str, bool, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -99,6 +101,8 @@ class MacroSequencerWidget(QWidget):
         self._setup_ui()
         self.sequence_complete.connect(self._on_complete)
         self.sequence_error.connect(self._on_error)
+        self._node_started.connect(self._apply_node_start)
+        self._node_finished.connect(self._apply_node_done)
 
     # ── UI 구성 ───────────────────────────────────────────────────────────────
 
@@ -238,7 +242,15 @@ class MacroSequencerWidget(QWidget):
     # ── 항목 관리 ─────────────────────────────────────────────────────────────
 
     def _add_item(self, path: Path) -> None:
-        item = _MacroItem(path)
+        normalized_path = path.resolve(strict=False)
+        if not normalized_path.exists():
+            self._log_message(f"파일을 찾을 수 없습니다: {path}")
+            return
+        for existing in self._items:
+            if existing.path.resolve(strict=False) == normalized_path:
+                self._log_message(f"이미 목록에 있습니다: {normalized_path.name}")
+                return
+        item = _MacroItem(normalized_path)
         self._items.append(item)
         self._refresh_list_item(len(self._items) - 1)
         self._update_buttons()
@@ -529,21 +541,27 @@ class MacroSequencerWidget(QWidget):
 
     def _on_node_start(self, node_id: str, label: str) -> None:
         """FlowEngine 스레드에서 호출 — 목록 업데이트는 메인 스레드에서."""
+        self._node_started.emit(node_id, label)
+
+    def _apply_node_start(self, node_id: str, label: str) -> None:
         idx = self._node_id_to_idx(node_id)
         if idx >= 0:
             self._items[idx].status = "running"
             self._items[idx].message = ""
-            QTimer.singleShot(0, lambda: self._refresh_list_item(idx))
-        QTimer.singleShot(0, lambda: self._log_message(f"실행: {label}"))
+            self._refresh_list_item(idx)
+        self._log_message(f"실행: {label}")
 
     def _on_node_done(self, node_id: str, success: bool, message: str) -> None:
+        self._node_finished.emit(node_id, success, message)
+
+    def _apply_node_done(self, node_id: str, success: bool, message: str) -> None:
         idx = self._node_id_to_idx(node_id)
         if idx >= 0:
             self._items[idx].status = "done" if success else "error"
             self._items[idx].message = message
-            QTimer.singleShot(0, lambda: self._refresh_list_item(idx))
+            self._refresh_list_item(idx)
         status_str = "완료" if success else "오류"
-        QTimer.singleShot(0, lambda: self._log_message(f"{status_str}: {message}"))
+        self._log_message(f"{status_str}: {message}")
 
     def _on_complete(self, status: str) -> None:
         self._log_message(f"시퀀스 {status}")
@@ -556,6 +574,8 @@ class MacroSequencerWidget(QWidget):
 
     def _node_id_to_idx(self, node_id: str) -> int:
         """macro_000 형식 node_id를 _items 인덱스로 변환한다."""
+        if not node_id.startswith("macro_"):
+            return -1
         try:
             return int(node_id.split("_")[-1])
         except (ValueError, IndexError):

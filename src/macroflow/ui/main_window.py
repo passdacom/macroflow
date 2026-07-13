@@ -515,7 +515,7 @@ class MainWindow(QMainWindow):
             self._register_shortcut_fallback()
 
     def _register_shortcut_fallback(self) -> None:
-        from PyQt6.QtWidgets import QShortcut
+        from PyQt6.QtGui import QShortcut
         QShortcut(QKeySequence("F6"), self).activated.connect(self._toggle_recording)
         QShortcut(QKeySequence("F7"), self).activated.connect(self._toggle_playback)
         logger.info("QShortcut 폴백 핫키 등록 (앱 포커스 상태에서만 작동)")
@@ -1169,8 +1169,8 @@ class MainWindow(QMainWindow):
             self._act_play.setEnabled(False)
             self._act_play.setText("▶ 재생 (F7)")
         else:
-            self._act_play.setEnabled(is_idle and self._macro is not None)
-            self._act_play.setText("⏸ 일시정지 (F7)" if is_play else "▶ 재생 (F7)")
+            self._act_play.setEnabled((is_idle and self._macro is not None) or is_play)
+            self._act_play.setText("⏹ 중지 (F7)" if is_play else "▶ 재생 (F7)")
 
         self._act_stop.setEnabled(is_rec or is_play or is_stop or (is_seq_tab and seq_running))
         self._act_range_play.setEnabled(

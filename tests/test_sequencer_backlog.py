@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import macroflow
 from macroflow.script_engine import (
@@ -109,3 +112,27 @@ def test_favorites_tab_disables_play_toolbar_action() -> None:
 
     assert "elif is_fav_tab:" in method_src
     assert "_act_play.setEnabled(False)" in method_src
+
+
+def test_sequencer_status_mapping_ignores_wait_and_end_nodes() -> None:
+    """대기/종료 노드는 매크로 목록 행 상태를 덮어쓰면 안 된다."""
+    src = _ui_source("macroflow.ui.sequencer")
+    start = src.index("def _node_id_to_idx")
+    end = src.index("# ── 병합", start)
+    method_src = src[start:end]
+
+    assert 'node_id.startswith("macro_")' in method_src
+    assert 'return -1' in method_src
+    assert method_src.index('node_id.startswith("macro_")') < method_src.index('return int(node_id.split("_")[-1])')
+
+
+def test_sequencer_rejects_duplicate_files_after_path_normalization() -> None:
+    """같은 파일은 절대/상대 dot-segment 표기가 달라도 한 번만 추가해야 한다."""
+    src = _ui_source("macroflow.ui.sequencer")
+    start = src.index("def _add_item")
+    end = src.index("def _refresh_list_item", start)
+    method_src = src[start:end]
+
+    assert "normalized_path = path.resolve(strict=False)" in method_src
+    assert "existing.path.resolve(strict=False) == normalized_path" in method_src
+    assert "_MacroItem(normalized_path)" in method_src
