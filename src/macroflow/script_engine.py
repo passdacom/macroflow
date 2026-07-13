@@ -15,11 +15,9 @@ ARCHITECTURE.md: Core Layer — PyQt6 임포트 금지.
 
 from __future__ import annotations
 
-import ast
 import dataclasses
 import json
 import logging
-import math
 import random as _random_module
 import threading
 import time
@@ -27,6 +25,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from macroflow.expression_sandbox import (
+    MAX_EXPRESSION_WAIT_MS as _DEFAULT_EXPRESSION_WAIT_MS,
+)
+from macroflow.expression_sandbox import (
+    validate_expression as _validate_expression_rules,
+)
+from macroflow.expression_sandbox import validate_wait_ms as _validated_wait_ms
 from macroflow.types import AnyEvent, ConditionEvent, LoopEvent
 
 logger = logging.getLogger(__name__)
@@ -532,109 +537,17 @@ class FlowEngine:
 
 
 # ── expression 안전성 검증 ─────────────────────────────────────────────────────
-# 객체 그래프 순회(`__class__.__mro__[-1].__subclasses__()` 등)를 통한
-# 샌드박스 탈출을 AST 화이트리스트로 차단한다.
-# ast.Attribute 미포함 → `.` 속성 접근 전면 차단.
-
-_ALLOWED_EXPR_NODES: frozenset[type[ast.AST]] = frozenset({
-    ast.Expression,
-    ast.BoolOp, ast.And, ast.Or,
-    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.FloorDiv,
-    ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
-    ast.Compare,
-    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
-    ast.Call,
-    ast.Constant,
-    ast.Name,
-    ast.Tuple, ast.List,
-    ast.Load,
-    ast.Subscript,
-    ast.Slice,
-    ast.IfExp,
-})
-_ALLOWED_FUNC_NAMES: frozenset[str] = frozenset({"pixel_color", "wait", "random"})
-_MAX_EXPRESSION_LEN: int = 512
-_MAX_EXPRESSION_WAIT_MS: float = 60_000.0
-
-
-def _is_numeric_expression(node: ast.AST) -> bool:
-    """곱셈 피연산자가 정적으로 숫자 표현식인지 반환한다."""
-    if isinstance(node, ast.Constant):
-        return isinstance(node.value, (int, float))
-    if isinstance(node, ast.UnaryOp):
-        return _is_numeric_expression(node.operand)
-    if isinstance(node, ast.BinOp):
-        return _is_numeric_expression(node.left) and _is_numeric_expression(node.right)
-    if isinstance(node, ast.IfExp):
-        return _is_numeric_expression(node.body) and _is_numeric_expression(node.orelse)
-    if isinstance(node, ast.Call):
-        return isinstance(node.func, ast.Name) and node.func.id == "random"
-    if isinstance(node, ast.Subscript):
-        return (
-            isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Name)
-            and node.value.func.id == "pixel_color"
-            and not isinstance(node.slice, ast.Slice)
-        )
-    return False
-
-
-def _validated_wait_ms(value: object, *, maximum: float) -> float:
-    """샌드박스 wait 값을 검증하고 밀리초 float로 반환한다."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("wait 시간은 유한한 숫자여야 합니다")
-    wait_ms = float(value)
-    if not math.isfinite(wait_ms) or wait_ms < 0 or wait_ms > maximum:
-        raise ValueError(
-            f"wait 시간 초과 또는 잘못된 값 ({wait_ms}ms, 최대 {maximum}ms)"
-        )
-    return wait_ms
+# 기존 private API는 호출부·회귀 테스트 호환성을 위해 유지한다. 실제 AST
+# 정책은 PyQt/실행 엔진 의존성이 없는 expression_sandbox 모듈이 소유한다.
+_MAX_EXPRESSION_WAIT_MS: float = _DEFAULT_EXPRESSION_WAIT_MS
 
 
 def _validate_expression(expr: str) -> None:
-    """표현식이 허용된 AST 노드만 포함하는지 검증한다.
-
-    Args:
-        expr: 검증할 표현식 문자열.
-
-    Raises:
-        ValueError: 허용되지 않은 노드(속성 접근 등) 또는 길이 초과 시.
-    """
-    if len(expr) > _MAX_EXPRESSION_LEN:
-        raise ValueError(
-            f"expression 길이 초과 ({len(expr)} > {_MAX_EXPRESSION_LEN})"
-        )
-    try:
-        tree = ast.parse(expr, mode="eval")
-    except SyntaxError as e:
-        raise ValueError(f"표현식 구문 오류: {e}") from e
-    for node in ast.walk(tree):
-        if type(node) not in _ALLOWED_EXPR_NODES:
-            raise ValueError(
-                f"허용되지 않은 표현식 요소: {type(node).__name__!r}"
-            )
-        if isinstance(node, ast.Call):
-            if (
-                not isinstance(node.func, ast.Name)
-                or node.func.id not in _ALLOWED_FUNC_NAMES
-            ):
-                raise ValueError(
-                    f"허용되지 않은 함수: {ast.unparse(node.func)!r}"
-                )
-            if node.func.id == "wait":
-                if len(node.args) != 1 or node.keywords:
-                    raise ValueError("wait()는 위치 인자 1개만 허용합니다")
-                if isinstance(node.args[0], ast.Constant):
-                    _validated_wait_ms(
-                        node.args[0].value,
-                        maximum=_MAX_EXPRESSION_WAIT_MS,
-                    )
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
-            if not (
-                _is_numeric_expression(node.left)
-                and _is_numeric_expression(node.right)
-            ):
-                raise ValueError("sequence 반복을 유발하는 곱셈은 허용되지 않습니다")
+    """현재 runtime wait 상한으로 expression sandbox 규칙을 검증한다."""
+    _validate_expression_rules(
+        expr,
+        maximum_wait_ms=_MAX_EXPRESSION_WAIT_MS,
+    )
 
 
 # ── 인라인 ConditionEvent / LoopEvent 실행 ────────────────────────────────────
