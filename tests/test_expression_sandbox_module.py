@@ -38,6 +38,20 @@ def test_expression_sandbox_public_validator_preserves_security_rules() -> None:
         validate_expression("wait(60_001)")
 
 
+def test_expression_sandbox_rejects_string_modulo_amplification() -> None:
+    from macroflow.expression_sandbox import validate_expression
+
+    # Validator only: never eval this potential 1 GB allocation payload.
+    with pytest.raises(ValueError, match="문자열 포맷"):
+        validate_expression('"%1000000000s" % "x"')
+
+
+def test_expression_sandbox_keeps_numeric_modulo_available() -> None:
+    from macroflow.expression_sandbox import validate_expression
+
+    validate_expression("10 % 3 == 1")
+
+
 @pytest.mark.parametrize(
     ("expression", "message"),
     [
@@ -62,6 +76,15 @@ def test_expression_sandbox_rejects_invalid_wait_values(value: object) -> None:
 
     with pytest.raises(ValueError, match="wait 시간"):
         validate_wait_ms(value, maximum=100)
+
+
+def test_script_engine_preserves_legacy_validation_names() -> None:
+    from macroflow import expression_sandbox, script_engine
+
+    assert script_engine._ALLOWED_EXPR_NODES is expression_sandbox._ALLOWED_EXPR_NODES
+    assert script_engine._ALLOWED_FUNC_NAMES is expression_sandbox._ALLOWED_FUNC_NAMES
+    assert script_engine._MAX_EXPRESSION_LEN == expression_sandbox.MAX_EXPRESSION_LEN
+    assert script_engine._is_numeric_expression is expression_sandbox._is_numeric_expression
 
 
 def test_script_engine_validation_alias_honors_runtime_wait_limit(

@@ -25,6 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import macroflow.expression_sandbox as _expression_sandbox
 from macroflow.expression_sandbox import (
     MAX_EXPRESSION_WAIT_MS as _DEFAULT_EXPRESSION_WAIT_MS,
 )
@@ -539,7 +540,11 @@ class FlowEngine:
 # ── expression 안전성 검증 ─────────────────────────────────────────────────────
 # 기존 private API는 호출부·회귀 테스트 호환성을 위해 유지한다. 실제 AST
 # 정책은 PyQt/실행 엔진 의존성이 없는 expression_sandbox 모듈이 소유한다.
+_ALLOWED_EXPR_NODES = _expression_sandbox._ALLOWED_EXPR_NODES
+_ALLOWED_FUNC_NAMES = _expression_sandbox._ALLOWED_FUNC_NAMES
+_MAX_EXPRESSION_LEN: int = _expression_sandbox.MAX_EXPRESSION_LEN
 _MAX_EXPRESSION_WAIT_MS: float = _DEFAULT_EXPRESSION_WAIT_MS
+_is_numeric_expression = _expression_sandbox._is_numeric_expression
 
 
 def _validate_expression(expr: str) -> None:

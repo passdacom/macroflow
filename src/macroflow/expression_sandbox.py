@@ -111,3 +111,6 @@ def validate_expression(
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
             if not (_is_numeric_expression(node.left) and _is_numeric_expression(node.right)):
                 raise ValueError("sequence 반복을 유발하는 곱셈은 허용되지 않습니다")
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+            if not (_is_numeric_expression(node.left) and _is_numeric_expression(node.right)):
+                raise ValueError("문자열 포맷을 유발하는 modulo는 허용되지 않습니다")
