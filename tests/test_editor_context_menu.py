@@ -192,7 +192,7 @@ def test_single_color_checked_click_menu_includes_color_policy_submenu(
     assert _action_texts(menu) == [
         "▶ 이 이벤트만 실행",
         "---",
-        "딜레이 설정(&D)...",
+        "재생 대기 설정(&D)...",
         "위치 변경(&P)...",
         "🎨 색 체크 끄기(&C)",
         "💬 텍스트 입력 추가(&T)...",
@@ -228,7 +228,7 @@ def test_text_input_menu_includes_text_edit_and_common_insert_actions(
     assert _action_texts(menu) == [
         "▶ 이 이벤트만 실행",
         "---",
-        "딜레이 설정(&D)...",
+        "재생 대기 설정(&D)...",
         "💬 텍스트 편집(&E)...",
         "💬 텍스트 입력 추가(&T)...",
         "🖱 클릭 추가(&L)...",

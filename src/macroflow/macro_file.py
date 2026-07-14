@@ -61,6 +61,16 @@ def _migrate(data: dict[str, Any]) -> dict[str, Any]:
 
 # ── 역직렬화 ──────────────────────────────────────────────────────────────────
 
+
+def _bounded_int(value: Any, *, minimum: int, maximum: int, default: int) -> int:
+    """외부 JSON 숫자를 안전한 runtime 범위로 정규화한다."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(maximum, max(minimum, parsed))
+
+
 def _dict_to_settings(d: dict[str, Any]) -> MacroSettings:
     """저장된 settings 딕셔너리를 MacroSettings로 변환한다.
 
@@ -73,6 +83,27 @@ def _dict_to_settings(d: dict[str, Any]) -> MacroSettings:
     data.setdefault("color_check_click_wait_timeout_ms", legacy_timeout)
     data.setdefault("color_check_click_skip_timeout_ms", legacy_timeout)
     data.setdefault("color_check_click_stop_timeout_ms", legacy_timeout)
+    timeout_defaults = {
+        "color_check_click_timeout_ms": 10000,
+        "color_check_click_wait_timeout_ms": 10000,
+        "color_check_click_skip_timeout_ms": 10000,
+        "color_check_click_stop_timeout_ms": 10000,
+        "color_trigger_default_timeout_ms": 0,
+    }
+    interval_defaults = {
+        "color_check_click_interval_ms": 50,
+        "color_trigger_check_interval_ms": 50,
+    }
+    for key, default in timeout_defaults.items():
+        if key in data:
+            data[key] = _bounded_int(
+                data[key], minimum=0, maximum=600000, default=default
+            )
+    for key, default in interval_defaults.items():
+        if key in data:
+            data[key] = _bounded_int(
+                data[key], minimum=1, maximum=10000, default=default
+            )
     return MacroSettings(**data)
 
 
@@ -143,8 +174,18 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
                 y_ratio=d["y_ratio"],
                 target_color=d["target_color"],
                 tolerance=d.get("tolerance", 10),
-                timeout_ms=d.get("timeout_ms", 0),
-                check_interval_ms=d.get("check_interval_ms", 50),
+                timeout_ms=_bounded_int(
+                    d.get("timeout_ms", 0),
+                    minimum=0,
+                    maximum=600000,
+                    default=0,
+                ),
+                check_interval_ms=_bounded_int(
+                    d.get("check_interval_ms", 50),
+                    minimum=1,
+                    maximum=10000,
+                    default=50,
+                ),
                 on_timeout=d.get("on_timeout", "error"),
             )
         case "window_trigger":
@@ -285,19 +326,26 @@ def delete_mouse_moves(macro: MacroData) -> MacroData:
     )
 
 
-def set_delay_all(macro: MacroData, delay_ms: int) -> MacroData:
-    """events 전체의 delay_override_ms를 동일 값으로 설정한다.
+def set_delay_all(
+    macro: MacroData,
+    delay_ms: int | None,
+    *,
+    event_ids: set[str] | None = None,
+) -> MacroData:
+    """대상 events의 재생 대기를 동일 값 또는 녹화 타이밍(None)으로 설정한다.
 
     Args:
         macro: 원본 MacroData.
-        delay_ms: 설정할 딜레이 (밀리초).
+        delay_ms: 실행 전 대기(ms). None이면 녹화 타이밍을 사용한다.
+        event_ids: 설정할 이벤트 ID 집합. None이면 모든 events에 적용한다.
 
     Returns:
-        딜레이가 일괄 설정된 새 MacroData (is_edited=True).
+        재생 대기가 일괄 설정된 새 MacroData (is_edited=True).
     """
     updated = copy.deepcopy(macro.events)
     for event in updated:
-        event.delay_override_ms = delay_ms
+        if event_ids is None or event.id in event_ids:
+            event.delay_override_ms = delay_ms
     return MacroData(
         meta=macro.meta,
         settings=macro.settings,
@@ -443,18 +491,23 @@ def merge_macros(macros: list[tuple[MacroData, str]], gap_ms: int = 500) -> Macr
     _GAP_NS = max(0, gap_ms) * 1_000_000  # 매크로 간 간격
 
     merged_events: list[AnyEvent] = []
-    offset_ns = 0
+    previous_end_ns: int | None = None
 
     for macro_data, fname in macros:
         evs = copy.deepcopy(macro_data.events)
+        if not evs:
+            continue
+
+        if previous_end_ns is None:
+            offset_ns = 0
+        else:
+            offset_ns = previous_end_ns + _GAP_NS - evs[0].timestamp_ns
+
         for ev in evs:
             ev.timestamp_ns += offset_ns
             ev.source_file = fname
         merged_events.extend(evs)
-
-        # 다음 매크로 오프셋 = 현재 마지막 이벤트 타임스탬프 + GAP
-        if evs:
-            offset_ns = max(ev.timestamp_ns for ev in evs) + _GAP_NS
+        previous_end_ns = max(ev.timestamp_ns for ev in evs)
 
     # 첫 번째 매크로의 메타·설정을 기반으로 생성
     base_meta = macros[0][0].meta

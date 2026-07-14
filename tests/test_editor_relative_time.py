@@ -64,8 +64,8 @@ class TestRelativeTime:
         # 350ms - 100ms = 250ms
         assert rows[1].time_ms_rel == pytest.approx(250.0, abs=1.0)
 
-    def test_delay_override_takes_precedence(self) -> None:
-        """delay_override_ms가 있으면 그 값이 time_ms_rel로 사용되어야 한다."""
+    def test_delay_override_does_not_replace_recorded_interval(self) -> None:
+        """기록 간격 열은 별도 재생 대기 override와 섞이지 않아야 한다."""
         events = [
             _make_mouse_down("a", 100_000_000),
             _make_mouse_up("b", 200_000_000),
@@ -73,7 +73,8 @@ class TestRelativeTime:
             _make_mouse_up("d", 1_100_000_000),
         ]
         rows = _build_rows(events, show_moves=False)
-        assert rows[1].time_ms_rel == pytest.approx(500.0, abs=1.0)
+        assert rows[1].time_ms_rel == pytest.approx(899.0, abs=1.0)
+        assert rows[1].delay_str == "500"
 
 
 class TestColorDisplayRows:

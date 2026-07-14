@@ -11,6 +11,7 @@ from macroflow import player
 from macroflow.player import (
     PlaybackError,
     _color_matches,
+    _event_timing_compensation_ns,
     _execute_event,
     _hex_to_rgb,
     _PlayState,
@@ -226,10 +227,85 @@ class TestPlaybackTiming:
             time.sleep(0.01)
         player.stop()
 
-        if len(times) >= 2:
-            gap_ms = (times[1] - times[0]) * 1000
-            # delay_override_ms=80ms, 오차 ±20ms 허용
-            assert 60 <= gap_ms <= 200
+        assert len(times) == 2
+        gap_ms = (times[1] - times[0]) * 1000
+        # delay_override_ms=80ms, 오차 ±20ms 허용
+        assert 60 <= gap_ms <= 120
+
+    def test_delay_override_is_scaled_by_playback_speed(self) -> None:
+        """재생 대기 override도 녹화 타임라인과 동일하게 속도 배율을 적용한다."""
+        events: list[AnyEvent] = [
+            MouseMoveEvent(
+                id="00000001",
+                type="mouse_move",
+                timestamp_ns=0,
+                x_ratio=0.1,
+                y_ratio=0.1,
+            ),
+            MouseMoveEvent(
+                id="00000002",
+                type="mouse_move",
+                timestamp_ns=1_000_000_000,
+                delay_override_ms=160,
+                x_ratio=0.2,
+                y_ratio=0.2,
+            ),
+        ]
+        times: list[float] = []
+
+        player.play(
+            _make_macro(events),
+            speed=2.0,
+            on_event=lambda _idx, _event: times.append(time.perf_counter()),
+        )
+        deadline = time.monotonic() + 1.0
+        while len(times) < 2 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        player.stop()
+
+        assert len(times) == 2
+        gap_ms = (times[1] - times[0]) * 1000
+        assert 55 <= gap_ms <= 120
+
+    def test_wait_event_duration_is_scaled_by_playback_speed(self) -> None:
+        """매크로 내부 고정 대기는 재생 속도에 맞춰 짧아져야 한다."""
+        completed: list[float] = []
+        started = time.perf_counter()
+        player.play(
+            _make_macro(
+                [
+                    WaitEvent(
+                        id="00000004",
+                        type="wait",
+                        timestamp_ns=0,
+                        duration_ms=160,
+                    )
+                ]
+            ),
+            speed=2.0,
+            on_complete=lambda: completed.append(time.perf_counter()),
+        )
+        deadline = time.monotonic() + 1.0
+        while not completed and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+        assert completed
+        elapsed_ms = (completed[0] - started) * 1000
+        assert 55 <= elapsed_ms <= 120
+
+    def test_wait_event_compensates_following_timeline(self) -> None:
+        """명시적 고정 대기에 소비된 시간은 후속 절대 timestamp를 밀어야 한다."""
+        event = WaitEvent(
+            id="00000004",
+            type="wait",
+            timestamp_ns=0,
+            duration_ms=200,
+        )
+
+        assert (
+            _event_timing_compensation_ns(event, 10_000_000_000, 10_200_000_000)
+            == 200_000_000
+        )
 
 
 # ── TextInputEvent 재생 ──────────────────────────────────────────────────────
@@ -415,7 +491,7 @@ class TestColorCheckWait:
             color_check_click_timeout_ms=1500,
             color_check_click_interval_ms=1,
         )
-        times = iter([0, 0, 1_100_000_000, 1_600_000_000])
+        times = iter([0, 0, 0, 1_100_000_000, 1_100_000_000, 1_600_000_000])
         move = MagicMock()
 
         monkeypatch.setattr(player.time, "perf_counter_ns", lambda: next(times))
@@ -491,7 +567,7 @@ class TestColorTriggerInfiniteWait:
             x_ratio=0.5, y_ratio=0.5, target_color="#00FF00",
             tolerance=0, timeout_ms=1500, check_interval_ms=1, on_timeout="skip",
         )
-        times = iter([0, 0, 1_100_000_000, 1_600_000_000])
+        times = iter([0, 0, 0, 1_100_000_000, 1_100_000_000, 1_600_000_000])
         move = MagicMock()
 
         monkeypatch.setattr(player, "ratio_to_pixel", lambda xr, yr: (960, 540))

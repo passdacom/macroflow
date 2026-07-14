@@ -72,7 +72,7 @@ def test_insert_text_input_event_places_text_after_group_and_shifts_following_ev
     assert events[3].timestamp_ns == 3_000_000_000
 
 
-def test_insert_text_input_event_uses_minimum_one_ms_budget_for_zero_delay() -> None:
+def test_insert_text_input_event_preserves_explicit_zero_delay() -> None:
     updated = _insert_text_input_event(
         [_wait("base", 10_000_000)],
         insert_after_event_idx=0,
@@ -84,7 +84,26 @@ def test_insert_text_input_event_uses_minimum_one_ms_budget_for_zero_delay() -> 
     inserted = updated[1]
     assert isinstance(inserted, TextInputEvent)
     assert inserted.timestamp_ns == 11_000_000
-    assert inserted.delay_override_ms is None
+    assert inserted.delay_override_ms == 0
+
+
+def test_insert_click_event_preserves_explicit_zero_delay() -> None:
+    updated = _insert_click_events(
+        [_wait("base", 10_000_000)],
+        insert_after_event_idx=0,
+        x_ratio=0.25,
+        y_ratio=0.75,
+        button="left",
+        is_double=False,
+        delay_ms=0,
+        recorded_color=None,
+        id_factory=_ids().__next__,
+    )
+
+    inserted = updated[1]
+    assert isinstance(inserted, MouseButtonEvent)
+    assert inserted.timestamp_ns == 11_000_000
+    assert inserted.delay_override_ms == 0
 
 
 def test_insert_click_events_creates_double_click_sequence_and_shifts_tail() -> None:
@@ -132,7 +151,7 @@ def test_insert_click_events_creates_double_click_sequence_and_shifts_tail() -> 
     assert updated[5].timestamp_ns == 5_250_000_000
 
 
-def test_insert_color_trigger_event_uses_one_second_budget_and_infinite_timeout() -> None:
+def test_insert_color_trigger_event_uses_minimum_budget_and_infinite_timeout() -> None:
     events: list[AnyEvent] = [
         _wait("base", 1_500_000_000),
         _wait("after", 2_000_000_000),
@@ -150,14 +169,14 @@ def test_insert_color_trigger_event_uses_one_second_budget_and_infinite_timeout(
     inserted = updated[1]
     assert isinstance(inserted, ColorTriggerEvent)
     assert inserted.id == "color01"
-    assert inserted.timestamp_ns == 2_500_000_000
+    assert inserted.timestamp_ns == 1_501_000_000
     assert inserted.delay_override_ms is None
     assert inserted.x_ratio == pytest.approx(0.1)
     assert inserted.y_ratio == pytest.approx(0.2)
     assert inserted.target_color == "#ABCDEF"
     assert inserted.tolerance == 10
     assert inserted.timeout_ms == 0
-    assert updated[2].timestamp_ns == 3_000_000_000
+    assert updated[2].timestamp_ns == 2_001_000_000
 
 
 def test_insert_color_trigger_event_accepts_configured_timeout_and_interval() -> None:

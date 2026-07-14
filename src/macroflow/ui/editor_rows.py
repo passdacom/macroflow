@@ -98,6 +98,18 @@ def _delay_str(event: AnyEvent) -> str:
     return str(event.delay_override_ms) if event.delay_override_ms is not None else ""
 
 
+def delay_input_to_override(value: int) -> int | None:
+    """UI 입력을 저장값으로 변환한다: -1=녹화 타이밍, 0 이상=재생 전 대기."""
+    return None if value < 0 else value
+
+
+def delay_override_to_input(value: int | None) -> int:
+    """저장값을 UI 입력으로 변환한다. legacy 음수 override는 즉시(0)로 표시한다."""
+    if value is None:
+        return -1
+    return max(0, value)
+
+
 def _time_ms(event: AnyEvent) -> float:
     return event.timestamp_ns / 1_000_000
 
@@ -340,12 +352,10 @@ def _apply_row_metadata(rows: list[_DisplayRow], events: list[AnyEvent]) -> None
     for row in rows:
         row.remark = events[row.primary_idx].remark
 
-    # 상대 시간 계산: 각 행의 primary 이벤트 기준
+    # 기록 간격 계산: 재생 override와 섞지 않고 각 행 primary timestamp만 사용한다.
     for i, row in enumerate(rows):
         ev = events[row.primary_idx]
-        if ev.delay_override_ms is not None:
-            row.time_ms_rel = float(ev.delay_override_ms)
-        elif i == 0:
+        if i == 0:
             row.time_ms_rel = row.time_ms  # 첫 행은 절대값 그대로
         else:
             prev_ev = events[rows[i - 1].primary_idx]

@@ -506,18 +506,37 @@ class FlowEngine:
 
         x, y = ratio_to_pixel(node.x_ratio, node.y_ratio)
         target = _hex_to_rgb(node.target_color)
-        deadline_ns = time.perf_counter_ns() + node.timeout_ms * 1_000_000
-        interval_s = node.check_interval_ms / 1000.0
+        timeout_ms = max(0, int(node.timeout_ms))
+        interval_s = max(1, int(node.check_interval_ms)) / 1000.0
+        deadline_ns = (
+            None
+            if timeout_ms == 0
+            else time.perf_counter_ns() + timeout_ms * 1_000_000
+        )
 
         matched = False
-        while time.perf_counter_ns() < deadline_ns:
+        while True:
             if self._stop_flag.is_set():
                 return None
+            now_ns = time.perf_counter_ns()
+            if deadline_ns is not None and now_ns >= deadline_ns:
+                break
             actual = get_pixel_color(x, y)
+            checked_ns = time.perf_counter_ns()
+            if self._stop_flag.is_set():
+                return None
+            if deadline_ns is not None and checked_ns >= deadline_ns:
+                break
             if _color_matches(actual, target, node.tolerance):
                 matched = True
                 break
-            if self._stop_flag.wait(interval_s):
+            wait_s = interval_s
+            if deadline_ns is not None:
+                remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
+                if remaining_s <= 0:
+                    break
+                wait_s = min(wait_s, remaining_s)
+            if self._stop_flag.wait(wait_s):
                 return None
 
         msg = f"색 감지 {'성공' if matched else '타임아웃'}"
@@ -561,6 +580,7 @@ def execute_condition(
     event: ConditionEvent,
     stop_flag: threading.Event,
     execute_fn: Callable[[AnyEvent], None],
+    execute_sequence_fn: Callable[[list[AnyEvent]], None] | None = None,
 ) -> None:
     """ConditionEvent를 샌드박스 내에서 평가하고 분기를 실행한다.
 
@@ -610,6 +630,10 @@ def execute_condition(
         result = False
 
     branch = event.if_true if result else event.if_false
+    if execute_sequence_fn is not None:
+        if not stop_flag.is_set():
+            execute_sequence_fn(branch)
+        return
     for sub_event in branch:
         if stop_flag.is_set():
             return
@@ -620,6 +644,7 @@ def execute_loop(
     event: LoopEvent,
     stop_flag: threading.Event,
     execute_fn: Callable[[AnyEvent], None],
+    execute_sequence_fn: Callable[[list[AnyEvent]], None] | None = None,
 ) -> None:
     """LoopEvent의 events 배열을 지정 횟수만큼 반복 실행한다.
 
@@ -635,10 +660,13 @@ def execute_loop(
         if not infinite and iteration >= event.count:
             break
 
-        for sub_event in event.events:
-            if stop_flag.is_set():
-                return
-            execute_fn(sub_event)
+        if execute_sequence_fn is not None:
+            execute_sequence_fn(event.events)
+        else:
+            for sub_event in event.events:
+                if stop_flag.is_set():
+                    return
+                execute_fn(sub_event)
 
         iteration += 1
 

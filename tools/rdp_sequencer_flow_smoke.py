@@ -152,7 +152,8 @@ def run_smoke(*, report_path: Path | None = None) -> dict[str, object]:
                 "wait_node_present": any(node_type == "wait_fixed" for node_type in node_types.values()),
                 "merge_emitted": merged_payload.get("event_ids") == ["old", "move", "new"],
                 "merge_source_files": merged_payload.get("source_files") == ["first.json", "first.json", "second.json"],
-                "merge_gap_applied": merged_payload.get("timestamps") == [100_000_000, 400_000_000, 700_000_000],
+                "merge_gap_applied": merged_payload.get("timestamps") == [100_000_000, 400_000_000, 650_000_000],
+                "gap_restored": widget._gap_spin.value() == 250,
             },
         }
         result["ok"] = all(result["assertions"].values())

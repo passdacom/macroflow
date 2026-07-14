@@ -276,8 +276,12 @@ def _run_sequencer_smoke(app: Any, work_dir: Path) -> dict[str, Any]:
     completion_statuses: list[str] = []
     errors: list[str] = []
 
-    widget._node_started.connect(lambda node_id, _label: started.update([node_id]))
-    widget._node_finished.connect(lambda node_id, _success, _message: finished.update([node_id]))
+    widget._node_started.connect(
+        lambda _generation, node_id, _label: started.update([node_id])
+    )
+    widget._node_finished.connect(
+        lambda _generation, node_id, _success, _message: finished.update([node_id])
+    )
     widget._list.model().dataChanged.connect(
         lambda *_args: gui_thread_updates.append(QThread.currentThread() is app.thread())
     )

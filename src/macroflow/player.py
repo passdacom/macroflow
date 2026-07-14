@@ -64,6 +64,7 @@ class _PlayState:
     has_moves_since_down: bool = False
     # 색 체크 불일치로 down을 스킵한 경우, 대응하는 up도 스킵하기 위한 버튼명
     color_check_skip_button: str | None = None
+    speed: float = 1.0
 
 
 # ── 모듈 레벨 상태 ────────────────────────────────────────────────────────────
@@ -91,12 +92,16 @@ def _execute_event(
         settings: click/drag 판별 임계값.
         state: 클릭/드래그 판별용 재생 상태.
     """
+    if _stop_flag.is_set():
+        return
     if isinstance(event, MouseButtonEvent):
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
 
         if event.type == "mouse_down":
             # 색 체크 활성화된 클릭: 마우스 이동 → hover 대기 → 픽셀 색 비교
             if event.color_check_enabled and event.recorded_color is not None:
+                if _stop_flag.is_set():
+                    return
                 send_mouse_move(x, y)
                 if _stop_flag.wait(0.05):  # hover 효과 대기
                     return
@@ -131,7 +136,11 @@ def _execute_event(
                     logger.warning(
                         f"[color_check wait] timeout at ({x},{y}), proceeding with click anyway"
                     )
+            if _stop_flag.is_set():
+                return
             send_mouse_move(x, y)
+            if _stop_flag.is_set():
+                return
             send_mouse_button(x, y, event.button, down=True)
             state.pending_down = event
             state.pending_down_real_x = x
@@ -158,6 +167,8 @@ def _execute_event(
                     or elapsed_ms >= settings.click_time_threshold_ms
                 ):
                     # 이동 없이 거리/시간 초과 → 드래그로 판별
+                    if _stop_flag.is_set():
+                        return
                     send_mouse_drag(
                         state.pending_down_real_x,
                         state.pending_down_real_y,
@@ -167,28 +178,38 @@ def _execute_event(
                     state.pending_down = None
                     return
 
+            if _stop_flag.is_set():
+                return
             send_mouse_move(x, y)
+            if _stop_flag.is_set():
+                return
             send_mouse_button(x, y, event.button, down=False)
             state.pending_down = None
 
     elif isinstance(event, MouseMoveEvent):
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
+        if _stop_flag.is_set():
+            return
         send_mouse_move(x, y)
         state.has_moves_since_down = True
 
     elif isinstance(event, MouseWheelEvent):
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
+        if _stop_flag.is_set():
+            return
         send_mouse_wheel(x, y, event.delta, horizontal=(event.axis == "horizontal"))
 
     elif isinstance(event, KeyEvent):
+        if _stop_flag.is_set():
+            return
         send_key(event.vk_code, is_down=(event.type == "key_down"))
 
     elif isinstance(event, TextInputEvent):
-        if event.text:
+        if event.text and not _stop_flag.is_set():
             send_text(event.text)
 
     elif isinstance(event, WaitEvent):
-        _stop_flag.wait(event.duration_ms / 1000.0)
+        _stop_flag.wait(event.duration_ms / state.speed / 1000.0)
 
     elif isinstance(event, ColorTriggerEvent):
         _wait_for_color(event)
@@ -198,11 +219,84 @@ def _execute_event(
 
     elif isinstance(event, ConditionEvent):
         from macroflow.script_engine import execute_condition
-        execute_condition(event, _stop_flag, lambda e: _execute_event(e, settings, state))
+        execute_condition(
+            event,
+            _stop_flag,
+            lambda e: _execute_event(e, settings, state),
+            lambda events: _execute_event_sequence(events, settings, state),
+        )
 
     elif isinstance(event, LoopEvent):
         from macroflow.script_engine import execute_loop
-        execute_loop(event, _stop_flag, lambda e: _execute_event(e, settings, state))
+        execute_loop(
+            event,
+            _stop_flag,
+            lambda e: _execute_event(e, settings, state),
+            lambda events: _execute_event_sequence(events, settings, state),
+        )
+
+
+def _execute_event_sequence(
+    events: list[AnyEvent],
+    settings: MacroSettings,
+    state: _PlayState,
+) -> None:
+    """Condition/Loop 내부 이벤트를 top-level과 같은 시간 규칙으로 실행한다."""
+    if not events:
+        return
+
+    sequence_start_ns = time.perf_counter_ns()
+    timeline_shift_ns = 0
+    last_event_end_ns = sequence_start_ns
+    last_significant_event_end_ns = sequence_start_ns
+    base_ts_ns = events[0].timestamp_ns
+
+    for event in events:
+        while _pause_flag.is_set() and not _stop_flag.is_set():
+            _stop_flag.wait(0.05)
+        if _stop_flag.is_set():
+            return
+
+        recorded_target_ns = (
+            sequence_start_ns
+            + int((event.timestamp_ns - base_ts_ns) / state.speed)
+            + timeline_shift_ns
+        )
+        if event.delay_override_ms is not None:
+            target_ns = last_event_end_ns + int(
+                event.delay_override_ms * 1_000_000 / state.speed
+            )
+            if not isinstance(event, MouseMoveEvent):
+                target_ns = max(target_ns, last_significant_event_end_ns)
+        else:
+            target_ns = recorded_target_ns
+
+        sleep_ns = target_ns - time.perf_counter_ns()
+        if sleep_ns > 1_000_000 and _stop_flag.wait(sleep_ns / 1_000_000_000):
+            return
+
+        execute_start_ns = time.perf_counter_ns()
+        _execute_event(event, settings, state)
+        if _stop_flag.is_set():
+            return
+
+        last_event_end_ns = time.perf_counter_ns()
+        if not isinstance(event, MouseMoveEvent):
+            last_significant_event_end_ns = last_event_end_ns
+
+        if event.delay_override_ms is not None:
+            raw_target_ns = sequence_start_ns + int(
+                (event.timestamp_ns - base_ts_ns) / state.speed
+            )
+            timeline_shift_ns = last_event_end_ns - raw_target_ns
+        else:
+            timing_compensation_ns = _event_timing_compensation_ns(
+                event,
+                execute_start_ns,
+                last_event_end_ns,
+            )
+            if timing_compensation_ns > 0:
+                sequence_start_ns += timing_compensation_ns
 
 
 def _color_check_timeout_ms_for_action(
@@ -234,7 +328,10 @@ def _event_timing_compensation_ns(
     last_event_end_ns: int,
 ) -> int:
     """이벤트 자체 대기 시간 때문에 이후 timestamp가 따라잡혀 버리지 않도록 보정값을 반환한다."""
-    if isinstance(event, (ColorTriggerEvent, WindowTriggerEvent)):
+    if isinstance(
+        event,
+        (WaitEvent, ColorTriggerEvent, WindowTriggerEvent, ConditionEvent, LoopEvent),
+    ):
         return max(0, last_event_end_ns - execute_start_ns)
     if (
         isinstance(event, MouseButtonEvent)
@@ -265,7 +362,7 @@ def _wait_for_color_check(
         time.perf_counter_ns()
         + settings.color_trigger_default_timeout_ms * 1_000_000
     )
-    interval_s = settings.color_trigger_check_interval_ms / 1000.0
+    interval_s = max(1, int(settings.color_trigger_check_interval_ms)) / 1000.0
 
     while time.perf_counter_ns() < deadline_ns:
         if _stop_flag.is_set():
@@ -305,10 +402,22 @@ def _wait_for_click_color_check(
         if deadline_ns is not None and now_ns >= deadline_ns:
             return False
         actual = get_pixel_color(x, y)
+        checked_ns = time.perf_counter_ns()
+        if _stop_flag.is_set():
+            return False
+        if deadline_ns is not None and checked_ns >= deadline_ns:
+            return False
         if _color_matches(actual, target, settings.color_check_click_tolerance):
             return True
-        next_nudge_ns = _nudge_cursor_if_due(x, y, now_ns, next_nudge_ns)
-        _stop_flag.wait(interval_s)
+        next_nudge_ns = _nudge_cursor_if_due(x, y, checked_ns, next_nudge_ns)
+        wait_s = interval_s
+        if deadline_ns is not None:
+            remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
+            if remaining_s <= 0:
+                return False
+            wait_s = min(wait_s, remaining_s)
+        if _stop_flag.wait(wait_s):
+            return False
 
 
 def _nudge_cursor_if_due(x: int, y: int, now_ns: int, next_nudge_ns: int) -> int:
@@ -357,7 +466,7 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
         else start_ns + event.timeout_ms * 1_000_000
     )
     next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
-    interval_s = event.check_interval_ms / 1000.0
+    interval_s = max(1, int(event.check_interval_ms)) / 1000.0
 
     while True:
         if _stop_flag.is_set():
@@ -366,10 +475,22 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
         if deadline_ns is not None and now_ns >= deadline_ns:
             break
         actual = get_pixel_color(x, y)
+        checked_ns = time.perf_counter_ns()
+        if _stop_flag.is_set():
+            return
+        if deadline_ns is not None and checked_ns >= deadline_ns:
+            break
         if _color_matches(actual, target, event.tolerance):
             return
-        next_nudge_ns = _nudge_cursor_if_due(x, y, now_ns, next_nudge_ns)
-        _stop_flag.wait(interval_s)
+        next_nudge_ns = _nudge_cursor_if_due(x, y, checked_ns, next_nudge_ns)
+        wait_s = interval_s
+        if deadline_ns is not None:
+            remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
+            if remaining_s <= 0:
+                break
+            wait_s = min(wait_s, remaining_s)
+        if _stop_flag.wait(wait_s):
+            return
 
     # 타임아웃
     msg = f"color_trigger timeout at ({x},{y}) waiting for {event.target_color}"
@@ -430,11 +551,12 @@ def _play_loop(
     """
     global _current_event_idx, _current_event_position, _total_events
     play_start_ns = time.perf_counter_ns()
+    timeline_shift_ns = 0
     last_event_end_ns = play_start_ns
     # 음수 딜레이 플로어: 마우스 이동을 제외한 마지막 이벤트 종료 시각.
     # 음수 delay_override_ms 로 target_ns 가 이 시각보다 앞서면 이 시각으로 클램프한다.
     last_significant_event_end_ns = play_start_ns
-    state = _PlayState()
+    state = _PlayState(speed=speed)
 
     # 구간 재생 범위 결정
     all_events = macro.events
@@ -463,15 +585,23 @@ def _play_loop(
             logger.debug("Playback stopped by flag")
             return
 
-        # 목표 실행 시각 계산 (core-beliefs 원칙 3)
+        # 목표 실행 시각 계산. override 뒤에는 이후 녹화 간격이 유지되도록
+        # 전체 녹화 timeline을 실제 실행 시점에 맞춰 이동한다.
+        recorded_target_ns = (
+            play_start_ns
+            + int((event.timestamp_ns - base_ts_ns) / speed)
+            + timeline_shift_ns
+        )
         if event.delay_override_ms is not None:
-            target_ns = last_event_end_ns + int(event.delay_override_ms * 1_000_000)
+            target_ns = last_event_end_ns + int(
+                event.delay_override_ms * 1_000_000 / speed
+            )
             # 음수 딜레이 플로어: 마우스 이동이 아닌 이벤트는 직전 유의미한 이벤트
             # 종료 시각보다 앞서 실행될 수 없다 (이벤트 순서 역전 방지).
             if not isinstance(event, MouseMoveEvent):
                 target_ns = max(target_ns, last_significant_event_end_ns)
         else:
-            target_ns = play_start_ns + int((event.timestamp_ns - base_ts_ns) / speed)
+            target_ns = recorded_target_ns
 
         # 대기 (1ms 이상일 때만 sleep — 오버슛 보정은 다음 이벤트가 처리)
         now_ns = time.perf_counter_ns()
@@ -507,20 +637,27 @@ def _play_loop(
         if not isinstance(event, MouseMoveEvent):
             last_significant_event_end_ns = last_event_end_ns
 
-        # ── 이벤트 자체 대기 타이머 보정 ─────────────────────────────────────
-        # 색·창 트리거뿐 아니라 클릭 내부 색 체크도 실제 로딩/대기 시간만큼
-        # 오래 걸릴 수 있다. 보정하지 않으면 이후 이벤트들의 target_ns가 이미
-        # 과거가 되어 모두 즉시(연속으로) 실행되어 버린다.
-        timing_compensation_ns = _event_timing_compensation_ns(
-            event,
-            execute_start_ns,
-            last_event_end_ns,
-        )
-        if timing_compensation_ns > 0:
-            play_start_ns += timing_compensation_ns
-            logger.debug(
-                f"Event timer compensated: +{timing_compensation_ns / 1_000_000:.1f}ms"
+        if event.delay_override_ms is not None:
+            # override는 이 이벤트의 실행 전 대기만 바꾼다. 이후 이벤트는
+            # 이 이벤트 뒤에서 원래 녹화 간격을 유지하도록 timeline을 이동한다.
+            raw_target_ns = play_start_ns + int(
+                (event.timestamp_ns - base_ts_ns) / speed
             )
+            timeline_shift_ns = last_event_end_ns - raw_target_ns
+        else:
+            # ── 이벤트 자체 대기 타이머 보정 ─────────────────────────────────
+            # 색·창 트리거뿐 아니라 클릭 내부 색 체크도 실제 로딩/대기 시간만큼
+            # 오래 걸릴 수 있다. 보정하지 않으면 이후 이벤트가 몰려 실행된다.
+            timing_compensation_ns = _event_timing_compensation_ns(
+                event,
+                execute_start_ns,
+                last_event_end_ns,
+            )
+            if timing_compensation_ns > 0:
+                play_start_ns += timing_compensation_ns
+                logger.debug(
+                    f"Event timer compensated: +{timing_compensation_ns / 1_000_000:.1f}ms"
+                )
 
     if not _stop_flag.is_set() and on_complete:
         on_complete()

@@ -8,6 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import macroflow
+import macroflow.ui.sequencer as sequencer_module
 from macroflow.script_engine import (
     EndNode,
     MacroFlow,
@@ -67,6 +68,39 @@ def test_linear_macro_paths_walks_through_wait_nodes(tmp_path: Path) -> None:
     ]
 
 
+def test_linear_flow_reports_saved_uniform_gap() -> None:
+    """선형 플로우의 균일한 대기 노드는 저장된 매크로 사이 대기로 복원된다."""
+    flow = MacroFlow(
+        version="1.0",
+        name="sequence",
+        created_at="2026-07-14T00:00:00",
+        start_node_id="macro_000",
+        nodes={
+            "macro_000": MacroNode(
+                id="macro_000",
+                label="first.json",
+                macro_path="first.json",
+                next_on_success="wait_000",
+            ),
+            "wait_000": WaitFixedNode(
+                id="wait_000",
+                label="4321ms 대기",
+                duration_ms=4321,
+                next="macro_001",
+            ),
+            "macro_001": MacroNode(
+                id="macro_001",
+                label="second.json",
+                macro_path="second.json",
+                next_on_success="end_success",
+            ),
+            "end_success": EndNode(id="end_success", label="완료"),
+        },
+    )
+
+    assert sequencer_module._linear_gap_ms(flow) == 4321
+
+
 def test_sequencer_exposes_save_and_save_as_actions() -> None:
     """시퀀서 툴바는 덮어쓰기 저장과 다른 이름 저장 액션을 분리한다."""
     src = _ui_source("macroflow.ui.sequencer")
@@ -75,6 +109,16 @@ def test_sequencer_exposes_save_and_save_as_actions() -> None:
     assert "_act_save_flow_as =" in src
     assert "triggered.connect(self._save_flow)" in src
     assert "triggered.connect(self._save_flow_as)" in src
+
+
+def test_gap_tooltip_distinguishes_runtime_and_merged_timeline_speed() -> None:
+    """시퀀스 실제 대기와 병합 timestamp 간격의 speed 의미를 구분한다."""
+    src = _ui_source("macroflow.ui.sequencer")
+
+    assert "시퀀스 실행:" in src
+    assert "재생 속도는 적용되지 않습니다" in src
+    assert "에디터 병합:" in src
+    assert "병합 후 재생 속도가 적용됩니다" in src
 
 
 def test_main_save_shortcuts_route_to_sequencer_on_sequencer_tab() -> None:

@@ -62,6 +62,7 @@ def test_sequencer_worker_callbacks_update_visible_state_on_gui_thread() -> None
             macro_path.write_text("{}", encoding="utf-8")
             widget = MacroSequencerWidget()
             widget.add_macro_file(macro_path)
+            widget._active_generation = 1
 
             def notify():
                 widget._on_node_start("macro_000", "sample.json")

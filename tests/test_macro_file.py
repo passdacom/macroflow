@@ -12,6 +12,7 @@ from macroflow.macro_file import (
     delete_mouse_moves,
     edit_wheel_delta,
     load,
+    merge_macros,
     reset_to_raw,
     save,
     set_color_check_on_mismatch,
@@ -432,6 +433,22 @@ def test_set_delay_all() -> None:
     assert all(e.delay_override_ms is None for e in result.raw_events)
 
 
+def test_set_delay_all_can_target_only_displayed_primary_events() -> None:
+    """UI 일괄 설정은 숨겨진 mouse-up/move/key-up까지 늦추지 않는다."""
+    macro = _make_macro()
+    target_ids = {macro.events[0].id, macro.events[3].id}
+
+    result = set_delay_all(macro, 100, event_ids=target_ids)
+
+    assert [event.delay_override_ms for event in result.events] == [
+        100,
+        None,
+        None,
+        100,
+        None,
+    ]
+
+
 def test_set_delay_single() -> None:
     """set_delay_single은 특정 id의 delay_override_ms만 수정한다."""
     macro = _make_macro()
@@ -648,3 +665,32 @@ def test_set_color_check_on_mismatch_selects_target_mode_directly() -> None:
         updated_event = updated.events[0]
         assert isinstance(updated_event, MouseButtonEvent)
         assert updated_event.color_check_on_mismatch == mode
+
+
+def test_merge_macros_inserts_exact_gap_before_nonzero_first_timestamp() -> None:
+    """다음 매크로의 선행 timestamp를 경계 간격에 이중 가산하지 않는다."""
+    first = _make_macro()
+    second = _make_macro()
+    first.events = [
+        MouseMoveEvent(
+            id="11111111",
+            type="mouse_move",
+            timestamp_ns=100_000_000,
+            x_ratio=0.1,
+            y_ratio=0.1,
+        )
+    ]
+    second.events = [
+        MouseMoveEvent(
+            id="22222222",
+            type="mouse_move",
+            timestamp_ns=200_000_000,
+            x_ratio=0.2,
+            y_ratio=0.2,
+        )
+    ]
+
+    merged = merge_macros([(first, "first.json"), (second, "second.json")], gap_ms=500)
+
+    assert len(merged.events) == 2
+    assert merged.events[1].timestamp_ns - merged.events[0].timestamp_ns == 500_000_000
