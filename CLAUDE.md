@@ -89,8 +89,8 @@ macro-harness/
 
 - Type hints 필수: 모든 함수 시그니처
 - Docstring 필수: Google style, 모든 public 클래스·함수
-- ruff 통과 필수: `uv run --active ruff check .`
-- mypy strict: `uv run --active mypy src/` 오류 0건
+- ruff 통과 필수: `uv run ruff check .`
+- mypy strict: `uv run mypy src/` 오류 0건
 
 네이밍: 클래스 PascalCase / 함수·변수 snake_case / 상수 UPPER_SNAKE_CASE
 
@@ -98,30 +98,31 @@ macro-harness/
 
 ## 5. 핵심 커맨드
 
-> 공통 템플릿: 모든 명령은 기본적으로 `uv run --active`로 통일한다.
+> 공통 템플릿: `uv run ...`을 기본으로 사용해 프로젝트 `.venv`를 강제한다.
+> 바깥 셸에 다른 `VIRTUAL_ENV`가 활성화돼 있어도 같은 결과가 나오도록 유지한다.
 
 ```bash
 cd /root/.openclaw/workspace/macroflow
 
 # 환경 동기화
-uv sync                                        # 최초/의존성 갱신
+uv sync --extra dev                            # 최초/의존성 갱신
 
 # 실행
-uv run --active python -m macroflow              # 앱 실행
+uv run python -m macroflow                    # 앱 실행
 
 # 테스트
-uv run --active pytest -q                         # 전체 테스트
-uv run --active pytest tests/test_player.py -q     # 특정 테스트
+uv run pytest -q                               # 전체 테스트
+uv run pytest tests/test_player.py -q         # 특정 테스트
 
 # 정적 검사
-uv run --active ruff check .                      # ruff
-uv run --active mypy src/                        # mypy strict
+uv run ruff check .                             # ruff
+uv run mypy src/                                # mypy strict
 
 # 통합 체크(권장)
-uv run --active pytest -q && uv run --active ruff check . && uv run --active mypy src/
+uv run pytest -q && uv run ruff check . && uv run mypy src/
 
 # 빌드 (Windows에서 사용)
-uv run --active pyinstaller build/macroflow-win.spec    # Windows exe 빌드
+uv run pyinstaller build/macroflow-win.spec     # Windows exe 빌드
 ```
 
 ---
@@ -157,9 +158,10 @@ uv run --active pyinstaller build/macroflow-win.spec    # Windows exe 빌드
 | DPI 스케일링 미처리 | 다른 PC에서 좌표 어긋남 | 좌표 비율 정규화 + DPI Aware 선언 |
 | 미세 이동 중 클릭 | 클릭이 드래그로 오인식 | 거리 임계값 8px + 시간 임계값 300ms |
 
-### ⚠️ mypy CI 반복 실패 패턴 (로컬 mypy 없음 → 서버 코드 작성 시 주의)
+### ⚠️ mypy CI 반복 실패 패턴
 
-로컬에서 mypy를 실행할 수 없으므로 아래 규칙을 반드시 준수해야 CI 실패를 방지한다.
+현재 저장소에서는 `uv run mypy src/`를 로컬에서도 실행할 수 있다.
+아래 규칙은 CI 실패를 줄이기 위한 실전 체크리스트다.
 
 **규칙 1 — PyQt6 반환값 None 가능성**
 `QMenu.addAction()`, `QListWidget.viewport()` 등 PyQt6 메서드는 mypy 타입이 `X | None`이다.

@@ -15,7 +15,6 @@ ARCHITECTURE.md: Core Layer — PyQt6 임포트 금지.
 
 from __future__ import annotations
 
-import ast
 import dataclasses
 import json
 import logging
@@ -26,6 +25,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import macroflow.expression_sandbox as _expression_sandbox
+from macroflow.expression_sandbox import (
+    MAX_EXPRESSION_WAIT_MS as _DEFAULT_EXPRESSION_WAIT_MS,
+)
+from macroflow.expression_sandbox import (
+    validate_expression as _validate_expression_rules,
+)
+from macroflow.expression_sandbox import validate_wait_ms as _validated_wait_ms
 from macroflow.types import AnyEvent, ConditionEvent, LoopEvent
 
 logger = logging.getLogger(__name__)
@@ -133,7 +140,8 @@ def iter_linear_macro_paths(flow: MacroFlow, flow_path: str | Path) -> list[Path
 
         if isinstance(node, MacroNode):
             raw_path = Path(node.macro_path)
-            paths.append(raw_path if raw_path.is_absolute() else base / raw_path)
+            normalized = raw_path.resolve(strict=False) if raw_path.is_absolute() else (base / raw_path).resolve(strict=False)
+            paths.append(normalized)
             current_id = node.next_on_success
         elif isinstance(node, WaitFixedNode):
             current_id = node.next
@@ -417,8 +425,8 @@ class FlowEngine:
             return self._run_counter_node(node)
 
         elif isinstance(node, WaitFixedNode):
-            if not self._stop_flag.is_set():
-                time.sleep(node.duration_ms / 1000.0)
+            if self._stop_flag.wait(node.duration_ms / 1000.0):
+                return None
             if self._on_node_done:
                 self._on_node_done(node.id, True, f"{node.duration_ms}ms 대기 완료")
             return node.next
@@ -442,27 +450,19 @@ class FlowEngine:
                 if not macro_path.is_relative_to(self._base_dir.resolve()):
                     msg = f"보안: 허용되지 않은 경로 접근 차단 ({node.macro_path!r})"
                     logger.error(msg)
-                    if self._on_node_done:
-                        self._on_node_done(node.id, False, msg)
                     raise FlowError(msg)
             except ValueError as e:
                 msg = f"보안: 경로 검증 실패 ({node.macro_path!r})"
                 logger.error(msg)
-                if self._on_node_done:
-                    self._on_node_done(node.id, False, msg)
                 raise FlowError(msg) from e
 
         # 절대·상대 경로 공통: .json 파일만 허용 (실행 파일·스크립트 로드 차단)
         if macro_path.suffix.lower() != ".json":
             msg = f"보안: .json 파일만 허용 ({node.macro_path!r})"
             logger.error(msg)
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
             raise FlowError(msg)
         if not macro_path.exists():
             msg = f"매크로 파일 없음: {macro_path}"
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
             raise FlowError(msg)
 
         from macroflow import macro_file, player
@@ -471,8 +471,6 @@ class FlowEngine:
             macro = macro_file.load(str(macro_path))
         except Exception as e:
             msg = f"매크로 로드 실패: {e}"
-            if self._on_node_done:
-                self._on_node_done(node.id, False, msg)
             raise FlowError(msg) from e
 
         done_event = threading.Event()
@@ -491,7 +489,7 @@ class FlowEngine:
 
         # 재생 완료 또는 중단 신호까지 대기
         while not done_event.is_set() and not self._stop_flag.is_set():
-            time.sleep(0.05)
+            self._stop_flag.wait(0.05)
 
         if self._stop_flag.is_set():
             player.stop()
@@ -508,18 +506,38 @@ class FlowEngine:
 
         x, y = ratio_to_pixel(node.x_ratio, node.y_ratio)
         target = _hex_to_rgb(node.target_color)
-        deadline_ns = time.perf_counter_ns() + node.timeout_ms * 1_000_000
-        interval_s = node.check_interval_ms / 1000.0
+        timeout_ms = max(0, int(node.timeout_ms))
+        interval_s = max(1, int(node.check_interval_ms)) / 1000.0
+        deadline_ns = (
+            None
+            if timeout_ms == 0
+            else time.perf_counter_ns() + timeout_ms * 1_000_000
+        )
 
         matched = False
-        while time.perf_counter_ns() < deadline_ns:
+        while True:
             if self._stop_flag.is_set():
                 return None
+            now_ns = time.perf_counter_ns()
+            if deadline_ns is not None and now_ns >= deadline_ns:
+                break
             actual = get_pixel_color(x, y)
+            checked_ns = time.perf_counter_ns()
+            if self._stop_flag.is_set():
+                return None
+            if deadline_ns is not None and checked_ns >= deadline_ns:
+                break
             if _color_matches(actual, target, node.tolerance):
                 matched = True
                 break
-            time.sleep(interval_s)
+            wait_s = interval_s
+            if deadline_ns is not None:
+                remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
+                if remaining_s <= 0:
+                    break
+                wait_s = min(wait_s, remaining_s)
+            if self._stop_flag.wait(wait_s):
+                return None
 
         msg = f"색 감지 {'성공' if matched else '타임아웃'}"
         if self._on_node_done:
@@ -539,60 +557,21 @@ class FlowEngine:
 
 
 # ── expression 안전성 검증 ─────────────────────────────────────────────────────
-# 객체 그래프 순회(`__class__.__mro__[-1].__subclasses__()` 등)를 통한
-# 샌드박스 탈출을 AST 화이트리스트로 차단한다.
-# ast.Attribute 미포함 → `.` 속성 접근 전면 차단.
-
-_ALLOWED_EXPR_NODES: frozenset[type[ast.AST]] = frozenset({
-    ast.Expression,
-    ast.BoolOp, ast.And, ast.Or,
-    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.FloorDiv,
-    ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
-    ast.Compare,
-    ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
-    ast.Call,
-    ast.Constant,
-    ast.Name,
-    ast.Tuple, ast.List,
-    ast.Load,
-    ast.Subscript,
-    ast.Slice,
-    ast.IfExp,
-})
-_ALLOWED_FUNC_NAMES: frozenset[str] = frozenset({"pixel_color", "wait", "random"})
-_MAX_EXPRESSION_LEN: int = 512
+# 기존 private API는 호출부·회귀 테스트 호환성을 위해 유지한다. 실제 AST
+# 정책은 PyQt/실행 엔진 의존성이 없는 expression_sandbox 모듈이 소유한다.
+_ALLOWED_EXPR_NODES = _expression_sandbox._ALLOWED_EXPR_NODES
+_ALLOWED_FUNC_NAMES = _expression_sandbox._ALLOWED_FUNC_NAMES
+_MAX_EXPRESSION_LEN: int = _expression_sandbox.MAX_EXPRESSION_LEN
+_MAX_EXPRESSION_WAIT_MS: float = _DEFAULT_EXPRESSION_WAIT_MS
+_is_numeric_expression = _expression_sandbox._is_numeric_expression
 
 
 def _validate_expression(expr: str) -> None:
-    """표현식이 허용된 AST 노드만 포함하는지 검증한다.
-
-    Args:
-        expr: 검증할 표현식 문자열.
-
-    Raises:
-        ValueError: 허용되지 않은 노드(속성 접근 등) 또는 길이 초과 시.
-    """
-    if len(expr) > _MAX_EXPRESSION_LEN:
-        raise ValueError(
-            f"expression 길이 초과 ({len(expr)} > {_MAX_EXPRESSION_LEN})"
-        )
-    try:
-        tree = ast.parse(expr, mode="eval")
-    except SyntaxError as e:
-        raise ValueError(f"표현식 구문 오류: {e}") from e
-    for node in ast.walk(tree):
-        if type(node) not in _ALLOWED_EXPR_NODES:
-            raise ValueError(
-                f"허용되지 않은 표현식 요소: {type(node).__name__!r}"
-            )
-        if isinstance(node, ast.Call):
-            if (
-                not isinstance(node.func, ast.Name)
-                or node.func.id not in _ALLOWED_FUNC_NAMES
-            ):
-                raise ValueError(
-                    f"허용되지 않은 함수: {ast.unparse(node.func)!r}"
-                )
+    """현재 runtime wait 상한으로 expression sandbox 규칙을 검증한다."""
+    _validate_expression_rules(
+        expr,
+        maximum_wait_ms=_MAX_EXPRESSION_WAIT_MS,
+    )
 
 
 # ── 인라인 ConditionEvent / LoopEvent 실행 ────────────────────────────────────
@@ -601,6 +580,7 @@ def execute_condition(
     event: ConditionEvent,
     stop_flag: threading.Event,
     execute_fn: Callable[[AnyEvent], None],
+    execute_sequence_fn: Callable[[list[AnyEvent]], None] | None = None,
 ) -> None:
     """ConditionEvent를 샌드박스 내에서 평가하고 분기를 실행한다.
 
@@ -616,12 +596,17 @@ def execute_condition(
     """
     from macroflow.win32 import get_pixel_color, ratio_to_pixel
 
+    remaining_wait_ms = _MAX_EXPRESSION_WAIT_MS
+
     def _pixel_color(x_ratio: float, y_ratio: float) -> tuple[int, int, int]:
         x, y = ratio_to_pixel(x_ratio, y_ratio)
         return get_pixel_color(x, y)
 
     def _wait(ms: float) -> None:
-        time.sleep(ms / 1000.0)
+        nonlocal remaining_wait_ms
+        wait_ms = _validated_wait_ms(ms, maximum=remaining_wait_ms)
+        remaining_wait_ms -= wait_ms
+        stop_flag.wait(wait_ms / 1000.0)
 
     def _random() -> float:
         return _random_module.random()
@@ -645,6 +630,10 @@ def execute_condition(
         result = False
 
     branch = event.if_true if result else event.if_false
+    if execute_sequence_fn is not None:
+        if not stop_flag.is_set():
+            execute_sequence_fn(branch)
+        return
     for sub_event in branch:
         if stop_flag.is_set():
             return
@@ -655,6 +644,7 @@ def execute_loop(
     event: LoopEvent,
     stop_flag: threading.Event,
     execute_fn: Callable[[AnyEvent], None],
+    execute_sequence_fn: Callable[[list[AnyEvent]], None] | None = None,
 ) -> None:
     """LoopEvent의 events 배열을 지정 횟수만큼 반복 실행한다.
 
@@ -670,10 +660,13 @@ def execute_loop(
         if not infinite and iteration >= event.count:
             break
 
-        for sub_event in event.events:
-            if stop_flag.is_set():
-                return
-            execute_fn(sub_event)
+        if execute_sequence_fn is not None:
+            execute_sequence_fn(event.events)
+        else:
+            for sub_event in event.events:
+                if stop_flag.is_set():
+                    return
+                execute_fn(sub_event)
 
         iteration += 1
 

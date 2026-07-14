@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
     _sig_play_error = pyqtSignal(str)
     _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
     _sig_play_event = pyqtSignal(int)   # 재생 중 이벤트 인덱스 알림
+    _sig_repeat_cycle = pyqtSignal(int, int)  # current, total
 
     def __init__(self) -> None:
         super().__init__()
@@ -124,6 +125,7 @@ class MainWindow(QMainWindow):
         self._sig_play_error.connect(self._on_play_error)
         self._sig_emergency_stop.connect(self._emergency_stop)
         self._sig_play_event.connect(self._editor.highlight_event)
+        self._sig_repeat_cycle.connect(self._overlay.set_repeat)
         self._editor.macro_changed.connect(self._on_macro_changed)
         # 에디터 단일 이벤트 실행 요청
         self._editor.play_event_range.connect(self._on_play_event_range)
@@ -134,6 +136,7 @@ class MainWindow(QMainWindow):
         # 시퀀서 실행 완료/오류 시 emergency hook 해제 + 툴바 갱신
         self._sequencer.sequence_complete.connect(self._on_sequence_done)
         self._sequencer.sequence_error.connect(self._on_sequence_done)
+        self._sequencer.sequence_progress.connect(self._overlay.set_flow_progress)
         # F6 캡처 힌트 오버레이 연동
         self._editor.f6_capture_started.connect(
             lambda: self._overlay.show_hint("F6을 눌러 위치 지정")
@@ -270,13 +273,15 @@ class MainWindow(QMainWindow):
         self._repeat_spin.setFixedWidth(90)
         tb2.addWidget(self._repeat_spin)
 
-        tb2.addWidget(QLabel("  간격:"))
+        tb2.addWidget(QLabel("  반복 사이 대기:"))
         self._interval_spin = QSpinBox()
         self._interval_spin.setMinimum(0)
         self._interval_spin.setMaximum(60000)
         self._interval_spin.setValue(500)
         self._interval_spin.setSuffix("ms")
-        self._interval_spin.setToolTip("반복 재생 간 대기 시간 (ms)")
+        self._interval_spin.setToolTip(
+            "한 회 재생이 완전히 끝난 뒤 실제 시간으로 대기합니다. 재생 속도는 적용되지 않습니다."
+        )
         self._interval_spin.setFixedWidth(95)
         tb2.addWidget(self._interval_spin)
 
@@ -420,6 +425,13 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QSettings
         s = QSettings("MacroFlow", "MacroFlow")
         settings = macro.settings
+
+        def _timeout(key: str, default: int) -> int:
+            return min(600000, max(0, self._qsettings_int(s, key, default)))
+
+        def _interval(key: str, default: int) -> int:
+            return min(10000, max(1, self._qsettings_int(s, key, default)))
+
         persisted_keys = (
             "color_check_click_timeout_ms",
             "color_check_click_wait_timeout_ms",
@@ -432,8 +444,7 @@ class MainWindow(QMainWindow):
         if all(s.value(key, None) is None for key in persisted_keys):
             return macro
 
-        legacy_timeout = self._qsettings_int(
-            s,
+        legacy_timeout = _timeout(
             "color_check_click_timeout_ms",
             settings.color_check_click_timeout_ms,
         )
@@ -457,23 +468,23 @@ class MainWindow(QMainWindow):
         new_settings = dataclasses.replace(
             settings,
             color_check_click_timeout_ms=legacy_timeout,
-            color_check_click_wait_timeout_ms=self._qsettings_int(
-                s, "color_check_click_wait_timeout_ms", wait_default
+            color_check_click_wait_timeout_ms=_timeout(
+                "color_check_click_wait_timeout_ms", wait_default
             ),
-            color_check_click_skip_timeout_ms=self._qsettings_int(
-                s, "color_check_click_skip_timeout_ms", skip_default
+            color_check_click_skip_timeout_ms=_timeout(
+                "color_check_click_skip_timeout_ms", skip_default
             ),
-            color_check_click_stop_timeout_ms=self._qsettings_int(
-                s, "color_check_click_stop_timeout_ms", stop_default
+            color_check_click_stop_timeout_ms=_timeout(
+                "color_check_click_stop_timeout_ms", stop_default
             ),
-            color_check_click_interval_ms=self._qsettings_int(
-                s, "color_check_click_interval_ms", settings.color_check_click_interval_ms
+            color_check_click_interval_ms=_interval(
+                "color_check_click_interval_ms", settings.color_check_click_interval_ms
             ),
-            color_trigger_default_timeout_ms=self._qsettings_int(
-                s, "color_trigger_default_timeout_ms", settings.color_trigger_default_timeout_ms
+            color_trigger_default_timeout_ms=_timeout(
+                "color_trigger_default_timeout_ms", settings.color_trigger_default_timeout_ms
             ),
-            color_trigger_check_interval_ms=self._qsettings_int(
-                s, "color_trigger_check_interval_ms", settings.color_trigger_check_interval_ms
+            color_trigger_check_interval_ms=_interval(
+                "color_trigger_check_interval_ms", settings.color_trigger_check_interval_ms
             ),
         )
         return dataclasses.replace(macro, settings=new_settings)
@@ -515,7 +526,7 @@ class MainWindow(QMainWindow):
             self._register_shortcut_fallback()
 
     def _register_shortcut_fallback(self) -> None:
-        from PyQt6.QtWidgets import QShortcut
+        from PyQt6.QtGui import QShortcut
         QShortcut(QKeySequence("F6"), self).activated.connect(self._toggle_recording)
         QShortcut(QKeySequence("F7"), self).activated.connect(self._toggle_playback)
         logger.info("QShortcut 폴백 핫키 등록 (앱 포커스 상태에서만 작동)")
@@ -584,6 +595,9 @@ class MainWindow(QMainWindow):
     # ── 상태 머신 ─────────────────────────────────────────────────────────────
 
     def _toggle_recording(self) -> None:
+        if self._sequencer.is_running():
+            self._sb_state.setText("시퀀스 실행 중에는 녹화할 수 없습니다")
+            return
         if self._state == "idle":
             self._start_recording()
         elif self._state == "recording":
@@ -591,7 +605,7 @@ class MainWindow(QMainWindow):
 
     def _start_append_recording(self) -> None:
         """현재 매크로 뒤에 새 녹화를 이어붙이는 녹화 모드를 시작한다."""
-        if self._state != "idle" or self._macro is None:
+        if self._state != "idle" or self._sequencer.is_running() or self._macro is None:
             return
         reply = QMessageBox.question(
             self,
@@ -689,19 +703,51 @@ class MainWindow(QMainWindow):
     def _toggle_sequencer(self) -> None:
         """시퀀서 탭에서 F7: 시퀀스 실행 중이면 중지, 아니면 실행."""
         if self._sequencer.is_running():
-            self._sequencer.stop_sequence()
+            stopped = self._sequencer.stop_sequence()
+            self._overlay.stop()
             if sys.platform == "win32":
                 from macroflow.win32 import stop_emergency_hook
                 stop_emergency_hook()
             self._update_toolbar()
+            self._sb_state.setText(
+                "시퀀스 중지" if stopped else "시퀀스 중지 요청됨 — worker 종료 대기 중"
+            )
+        elif self._state != "idle":
+            self._sb_state.setText("녹화/재생 중에는 시퀀스를 시작할 수 없습니다")
         elif self._sequencer.has_items():
             if sys.platform == "win32":
                 from macroflow.win32 import start_emergency_hook
-                start_emergency_hook(self._sig_emergency_stop.emit)
-            _speed_presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
+                try:
+                    start_emergency_hook(self._sig_emergency_stop.emit)
+                except Exception as exc:
+                    logger.exception("시퀀스 긴급 중지 Hook 시작 오류")
+                    self._sb_state.setText(f"시퀀스 시작 오류: 긴급 중지 Hook 실패 ({exc})")
+                    QMessageBox.warning(
+                        self,
+                        "시퀀스 시작 오류",
+                        f"긴급 중지 Hook을 시작하지 못해 실행을 취소했습니다.\n\n{exc}",
+                    )
+                    return
+            speed_presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
             idx = self._speed_combo.currentIndex()
-            speed = self._custom_speed if idx == 6 else _speed_presets[idx]
-            self._sequencer.run_sequence(speed=speed)
+            speed = self._custom_speed if idx == 6 else speed_presets[idx]
+            self._overlay.start_flowing(
+                speed,
+                current=1,
+                total=self._sequencer.item_count(),
+            )
+            try:
+                self._sequencer.run_sequence(speed=speed)
+            except Exception as exc:
+                self._overlay.stop()
+                if sys.platform == "win32":
+                    from macroflow.win32 import stop_emergency_hook
+                    stop_emergency_hook()
+                self._sb_state.setText(f"시퀀스 시작 오류: {exc}")
+                logger.exception("시퀀스 시작 오류")
+                return
+            self._update_toolbar()
+            self._sb_state.setText(f"▶ 시퀀스 실행 중 ({speed:.1f}x)")
 
     def _toggle_playback(self) -> None:
         # 시퀀서 탭에서는 단일 매크로 재생 대신 시퀀스 실행/중지로 위임
@@ -710,6 +756,9 @@ class MainWindow(QMainWindow):
             self._toggle_sequencer()
             return
         if self._is_favorites_tab():
+            return
+        if self._sequencer.is_running():
+            self._sb_state.setText("시퀀스 실행 중에는 일반 재생을 시작할 수 없습니다")
             return
         if self._state == "idle" and self._macro:
             self._start_playback()
@@ -749,16 +798,27 @@ class MainWindow(QMainWindow):
         # 일반 재생은 항상 전체 재생(None). 구간 재생 버튼/단일 이벤트 실행만 event_range를 전달한다.
         event_range = options.event_range
 
+        # 긴급 중지 Hook을 먼저 확보한다. 실패한 상태로 재생을 시작하면 사용자가
+        # 입력을 중단할 안전장치가 없으므로 UI state를 바꾸지 않고 종료한다.
+        try:
+            from macroflow.win32 import start_emergency_hook
+            start_emergency_hook(self._sig_emergency_stop.emit)
+        except Exception as exc:
+            logger.exception("긴급 중지 Hook 시작 오류")
+            self._sb_state.setText(f"재생 시작 오류: 긴급 중지 Hook 실패 ({exc})")
+            QMessageBox.warning(
+                self,
+                "재생 시작 오류",
+                f"긴급 중지 Hook을 시작하지 못해 재생을 취소했습니다.\n\n{exc}",
+            )
+            return
+
         self._state = "playing"
         self._repeat_session = RepeatPlaybackSession(total=repeat_count)
         self._repeat_session.mark_started()
         self._overlay.start_playing(speed, repeat_current=1, repeat_total=repeat_count)
         self._poll_timer.start()
         self._update_toolbar()
-
-        # 재생 중 ESC×3 긴급 중지 감지 Hook 시작
-        from macroflow.win32 import start_emergency_hook
-        start_emergency_hook(self._sig_emergency_stop.emit)
 
         range_str = ""
         if event_range is not None:
@@ -784,6 +844,7 @@ class MainWindow(QMainWindow):
                 if session is None or not session.should_start_cycle(i):
                     break
                 session.mark_cycle_started(i)
+                self._sig_repeat_cycle.emit(i + 1, repeat_count)
 
                 done_event = threading.Event()
                 error_holder: list[str] = []
@@ -795,14 +856,18 @@ class MainWindow(QMainWindow):
                     _eh.append(str(exc))
                     _ev.set()
 
-                player.play(
-                    macro,
-                    speed=speed,
-                    on_event=_on_event,
-                    on_complete=_on_complete,
-                    on_error=_on_error,
-                    event_range=_range,
-                )
+                try:
+                    player.play(
+                        macro,
+                        speed=speed,
+                        on_event=_on_event,
+                        on_complete=_on_complete,
+                        on_error=_on_error,
+                        event_range=_range,
+                    )
+                except Exception as exc:
+                    self._sig_play_error.emit(str(exc))
+                    return
 
                 # 재생 완료 대기
                 while not done_event.is_set():
@@ -942,30 +1007,43 @@ class MainWindow(QMainWindow):
         logger.info(f"색상 체크 삽입: {color_hex} @ pixel ({x}, {y})")
 
     def _show_color_check_settings(self) -> None:
-        """현재 매크로에 저장되는 색 체크 timeout/폴링 설정을 편집한다."""
+        """현재 매크로와 앱 공통 색 체크 timeout/폴링 기본값을 편집한다."""
         if self._macro is None:
             QMessageBox.information(
                 self,
                 "색 체크 설정",
                 "먼저 매크로를 녹화하거나 파일을 열어주세요.\n"
-                "이 설정은 현재 매크로 파일에 저장됩니다.",
+                "저장한 값은 현재 매크로와 앱 공통 기본값에 함께 반영됩니다.",
             )
             return
 
         settings = self._macro.settings
         dialog = QDialog(self)
         dialog.setWindowTitle("색 체크 설정")
-        dialog.setFixedWidth(420)
+        dialog.setFixedWidth(520)
 
         layout = QVBoxLayout(dialog)
+        scope_help = QLabel(
+            "현재 매크로에 저장되며 앱 공통 기본값으로도 기억됩니다. "
+            "다른 매크로를 불러올 때도 이 기본값이 적용됩니다."
+        )
+        scope_help.setWordWrap(True)
+        layout.addWidget(scope_help)
 
         click_group = QGroupBox("클릭 내부 색 체크")
         click_form = QFormLayout(click_group)
+        click_help = QLabel(
+            "색이 다르면 확인 주기마다 다시 검사합니다. timeout=0은 색이 일치할 때까지 "
+            "무제한 대기합니다. timeout 만료 후 대기=클릭 진행, 무시=클릭 생략, "
+            "중지=재생 중단입니다."
+        )
+        click_help.setWordWrap(True)
+        click_form.addRow(click_help)
         click_wait_timeout = QSpinBox()
         click_wait_timeout.setRange(0, 600000)
         click_wait_timeout.setValue(settings.color_check_click_wait_timeout_ms)
         click_wait_timeout.setSuffix(" ms")
-        click_wait_timeout.setSpecialValueText("무제한")
+        click_wait_timeout.setSpecialValueText("무제한(일치까지)")
         click_wait_timeout.setToolTip("대기(wait) 모드에서 색이 맞을 때까지 기다릴 최대 시간")
         click_form.addRow("대기 timeout:", click_wait_timeout)
 
@@ -973,7 +1051,7 @@ class MainWindow(QMainWindow):
         click_skip_timeout.setRange(0, 600000)
         click_skip_timeout.setValue(settings.color_check_click_skip_timeout_ms)
         click_skip_timeout.setSuffix(" ms")
-        click_skip_timeout.setSpecialValueText("무제한")
+        click_skip_timeout.setSpecialValueText("무제한(일치까지)")
         click_skip_timeout.setToolTip("무시(skip) 모드에서 클릭을 건너뛰기 전 기다릴 최대 시간")
         click_form.addRow("무시 timeout:", click_skip_timeout)
 
@@ -981,7 +1059,7 @@ class MainWindow(QMainWindow):
         click_stop_timeout.setRange(0, 600000)
         click_stop_timeout.setValue(settings.color_check_click_stop_timeout_ms)
         click_stop_timeout.setSuffix(" ms")
-        click_stop_timeout.setSpecialValueText("무제한")
+        click_stop_timeout.setSpecialValueText("무제한(일치까지)")
         click_stop_timeout.setToolTip("중지(stop) 모드에서 재생을 중단하기 전 기다릴 최대 시간")
         click_form.addRow("중지 timeout:", click_stop_timeout)
 
@@ -990,25 +1068,31 @@ class MainWindow(QMainWindow):
         click_interval.setValue(settings.color_check_click_interval_ms)
         click_interval.setSuffix(" ms")
         click_interval.setToolTip("클릭 색 체크 픽셀 폴링 주기")
-        click_form.addRow("Polling interval:", click_interval)
+        click_form.addRow("확인 주기:", click_interval)
         layout.addWidget(click_group)
 
         trigger_group = QGroupBox("독립 색 트리거")
         trigger_form = QFormLayout(trigger_group)
+        trigger_help = QLabel(
+            "새로 삽입하는 독립 색 트리거의 기본값입니다. 이미 삽입된 트리거의 "
+            "개별 timeout/확인 주기는 바뀌지 않습니다."
+        )
+        trigger_help.setWordWrap(True)
+        trigger_form.addRow(trigger_help)
         trigger_timeout = QSpinBox()
         trigger_timeout.setRange(0, 600000)
         trigger_timeout.setValue(settings.color_trigger_default_timeout_ms)
         trigger_timeout.setSuffix(" ms")
-        trigger_timeout.setSpecialValueText("무제한")
+        trigger_timeout.setSpecialValueText("무제한(일치까지)")
         trigger_timeout.setToolTip("새로 삽입하는 ColorTriggerEvent의 기본 timeout")
-        trigger_form.addRow("Default timeout:", trigger_timeout)
+        trigger_form.addRow("기본 timeout:", trigger_timeout)
 
         trigger_interval = QSpinBox()
         trigger_interval.setRange(1, 10000)
         trigger_interval.setValue(settings.color_trigger_check_interval_ms)
         trigger_interval.setSuffix(" ms")
         trigger_interval.setToolTip("새로 삽입하는 ColorTriggerEvent의 폴링 주기")
-        trigger_form.addRow("Polling interval:", trigger_interval)
+        trigger_form.addRow("확인 주기:", trigger_interval)
         layout.addWidget(trigger_group)
 
         buttons = QDialogButtonBox(
@@ -1051,12 +1135,13 @@ class MainWindow(QMainWindow):
         if sys.platform == "win32":
             from macroflow.win32 import stop_emergency_hook
             stop_emergency_hook()
+        self._overlay.stop()
         self._update_toolbar()
         self._sb_state.setText("대기 중")
 
     def _start_range_playback(self) -> None:
         """구간 재생 전용 버튼: 구간이 설정된 경우에만 1회 재생한다."""
-        if self._state != "idle" or not self._macro:
+        if self._state != "idle" or self._sequencer.is_running() or not self._macro:
             return
         if self._range_start_spin.value() == 0 and self._range_end_spin.value() == 0:
             from PyQt6.QtWidgets import QMessageBox
@@ -1094,7 +1179,7 @@ class MainWindow(QMainWindow):
 
     def _on_play_event_range(self, start_idx: int, end_idx: int) -> None:
         """에디터에서 단일 이벤트 실행 요청 수신 시 해당 범위만 재생한다."""
-        if self._state != "idle" or not self._macro:
+        if self._state != "idle" or self._sequencer.is_running() or not self._macro:
             return
         self._start_playback(forced_range=(start_idx, end_idx))
 
@@ -1102,11 +1187,14 @@ class MainWindow(QMainWindow):
         logger.info("긴급 중지")
         # 시퀀서 실행 중이면 우선 중지
         if self._sequencer.is_running():
-            self._sequencer.stop_sequence()
+            stopped = self._sequencer.stop_sequence()
+            self._overlay.stop()
             if sys.platform == "win32":
                 from macroflow.win32 import stop_emergency_hook
                 stop_emergency_hook()
             self._update_toolbar()
+            if not stopped:
+                self._sb_state.setText("긴급 중지 요청됨 — 시퀀스 worker 종료 대기 중")
         if self._state == "recording":
             self._do_stop_recording()
         elif self._state == "playing":
@@ -1150,31 +1238,44 @@ class MainWindow(QMainWindow):
 
         # 녹화: 시퀀서·즐겨찾기 탭에서는 항상 비활성화
         self._act_record.setEnabled(
-            (is_idle or is_rec) and not is_seq_tab and not is_fav_tab
+            (is_idle or is_rec)
+            and not seq_running
+            and not is_seq_tab
+            and not is_fav_tab
         )
         self._act_record.setChecked(is_rec)
         if is_rec and self._append_recording_mode:
             self._act_record.setText("■ 이어서 녹화 중지 (F6)")
         else:
             self._act_record.setText("■ 중지 (F6)" if is_rec else "● 녹화 (F6)")
-        can_append_record = is_idle and self._macro is not None and not is_seq_tab and not is_fav_tab
+        can_append_record = (
+            is_idle
+            and not seq_running
+            and self._macro is not None
+            and not is_seq_tab
+            and not is_fav_tab
+        )
         self._act_append_record.setEnabled(can_append_record)
         self._act_append_record_menu.setEnabled(can_append_record)
 
         # 재생: 탭에 따라 텍스트와 활성화 조건이 달라짐
         if is_seq_tab:
-            self._act_play.setEnabled(bool(self._sequencer.has_items()))
+            self._act_play.setEnabled(
+                seq_running or (is_idle and bool(self._sequencer.has_items()))
+            )
             self._act_play.setText("⏹ 중지 (F7)" if seq_running else "▶ 시퀀스 실행 (F7)")
         elif is_fav_tab:
             self._act_play.setEnabled(False)
             self._act_play.setText("▶ 재생 (F7)")
         else:
-            self._act_play.setEnabled(is_idle and self._macro is not None)
-            self._act_play.setText("⏸ 일시정지 (F7)" if is_play else "▶ 재생 (F7)")
+            self._act_play.setEnabled(
+                is_play or (is_idle and not seq_running and self._macro is not None)
+            )
+            self._act_play.setText("⏹ 중지 (F7)" if is_play else "▶ 재생 (F7)")
 
-        self._act_stop.setEnabled(is_rec or is_play or is_stop or (is_seq_tab and seq_running))
+        self._act_stop.setEnabled(is_rec or is_play or is_stop or seq_running)
         self._act_range_play.setEnabled(
-            is_idle and self._macro is not None and not is_seq_tab
+            is_idle and not seq_running and self._macro is not None and not is_seq_tab
         )
         self._act_save.setEnabled(is_idle and self._macro is not None)
         self._act_save_as.setEnabled(is_idle and self._macro is not None)

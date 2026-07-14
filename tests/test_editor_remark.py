@@ -145,7 +145,15 @@ def test_editor_columns_split_content_and_remark(
 ) -> None:
     editor = _import_editor(monkeypatch, request)
 
-    assert editor._COLUMNS == ["#", "타입", "내용", "비고", "시간(ms)", "딜레이(ms)", "출처"]
+    assert editor._COLUMNS == [
+        "#",
+        "타입",
+        "내용",
+        "비고",
+        "기록 시점(ms)",
+        "재생 대기(ms)",
+        "출처",
+    ]
     assert editor.COL_CONTENT == 2
     assert editor.COL_REMARK == 3
     assert editor.COL_DELAY == 5

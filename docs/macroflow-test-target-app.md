@@ -77,7 +77,7 @@ This mode is useful when manually testing recorder behavior: start the target ap
 Linux-side contract tests:
 
 ```bash
-.venv/bin/python -m pytest tests/test_test_target_app_contract.py tests/test_rdp_gui_smoke_harness.py -q
+uv run pytest tests/test_test_target_app_contract.py tests/test_rdp_gui_smoke_harness.py -q
 ```
 
 Full behavior still requires a live Windows/RDP desktop session because MacroFlow's real player uses Win32 input APIs.

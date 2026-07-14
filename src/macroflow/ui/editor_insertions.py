@@ -19,7 +19,7 @@ _MIN_INSERT_BUDGET_NS = 1_000_000
 _CLICK_UP_OFFSET_NS = 100_000_000
 _DOUBLE_CLICK_SECOND_DOWN_OFFSET_NS = 100_000_000
 _DOUBLE_CLICK_UP_OFFSET_NS = 50_000_000
-_COLOR_TRIGGER_BUDGET_NS = 1_000_000_000
+_COLOR_TRIGGER_BUDGET_NS = _MIN_INSERT_BUDGET_NS
 
 
 def _default_id() -> str:
@@ -78,7 +78,7 @@ def _insert_text_input_event(
 ) -> list[AnyEvent]:
     """Return events with one TextInputEvent inserted and later timestamps shifted."""
     budget_ns = max(delay_ms * 1_000_000, _MIN_INSERT_BUDGET_NS)
-    delay_override_ms = delay_ms if delay_ms > 0 else None
+    delay_override_ms = delay_ms if delay_ms >= 0 else None
     base_ts_ns = _base_timestamp_ns(events, insert_after_event_idx)
     new_event = TextInputEvent(
         id=id_factory(),
@@ -108,7 +108,7 @@ def _insert_click_events(
 ) -> list[AnyEvent]:
     """Return events with click or double-click MouseButtonEvents inserted."""
     budget_ns = max(delay_ms * 1_000_000, _MIN_INSERT_BUDGET_NS)
-    delay_override_ms = delay_ms if delay_ms > 0 else None
+    delay_override_ms = delay_ms if delay_ms >= 0 else None
     base_ts_ns = _base_timestamp_ns(events, insert_after_event_idx)
 
     def _make_down(ts_ns: int, dly: int | None) -> MouseButtonEvent:

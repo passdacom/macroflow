@@ -19,9 +19,33 @@ Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..'))
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $log = Join-Path $LogDir "gui_smoke_$stamp.log"
+$stdoutLog = Join-Path $LogDir "gui_smoke_stdout_$stamp.log"
+$stderrLog = Join-Path $LogDir "gui_smoke_stderr_$stamp.log"
 
-& $Python .\tools\rdp_gui_smoke.py --log-dir $LogDir --text $Text 2>&1 | Tee-Object -FilePath $log
-$exit = $LASTEXITCODE
+$proc = Start-Process -FilePath $Python -ArgumentList @('.\\tools\\rdp_gui_smoke.py', '--log-dir', $LogDir, '--text', $Text) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+$exit = $proc.ExitCode
+
+$merged = @()
+if (Test-Path $stdoutLog) {
+    $merged += Get-Content $stdoutLog
+}
+if (Test-Path $stderrLog) {
+    $stderrLines = Get-Content $stderrLog
+    if ($stderrLines.Count -gt 0) {
+        if ($merged.Count -gt 0) {
+            $merged += ''
+        }
+        $merged += '--- STDERR ---'
+        $merged += $stderrLines
+    }
+}
+if ($merged.Count -eq 0) {
+    Set-Content -Path $log -Value '' -Encoding utf8
+} else {
+    Set-Content -Path $log -Value $merged -Encoding utf8
+}
+Remove-Item $stdoutLog, $stderrLog -ErrorAction SilentlyContinue
+
 $tail = Get-Content $log -Tail 160 -ErrorAction SilentlyContinue
 $txt = "GUI_SMOKE_EXIT=$exit`nSCRIPT=$PWD\tools\rdp_gui_smoke.py`nLOG=$log`n" + ($tail -join "`n")
 Set-Clipboard -Value $txt

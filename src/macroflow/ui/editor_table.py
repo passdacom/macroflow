@@ -20,7 +20,7 @@ COL_REMARK = 3
 COL_TIME = 4
 COL_DELAY = 5
 COL_SOURCE = 6
-COLUMNS = ["#", "타입", "내용", "비고", "시간(ms)", "딜레이(ms)", "출처"]
+COLUMNS = ["#", "타입", "내용", "비고", "기록 시점(ms)", "재생 대기(ms)", "출처"]
 CONTENT_COLUMN_REFERENCE_TEXT = "(00.0%, 00.0%) [#000000] 색깔"
 CONTENT_COLUMN_MIN_WIDTH = len(CONTENT_COLUMN_REFERENCE_TEXT) * 9
 

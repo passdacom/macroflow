@@ -40,6 +40,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\run_rdp_gui_smoke.ps
 The wrapper writes a compact summary to the Windows clipboard and stores full
 logs under the log directory.
 
+Implementation note:
+
+- `run_rdp_gui_smoke.ps1` launches Python via `Start-Process` and captures
+  stdout/stderr into files before merging them into `gui_smoke_<timestamp>.log`.
+  This avoids PowerShell surfacing benign native stderr lines as
+  `NativeCommandError` records in the console while still preserving the warning
+  text in the saved log.
+- On hardened Windows endpoints, prefer the documented `-File` invocation above
+  over `-EncodedCommand` paste flows. Endpoint security products may block the
+  encoded form even when the plain script run is allowed.
+
 Expected successful summary:
 
 ```text
@@ -69,7 +80,7 @@ needed.
 The pure scenario builder and target-app contract are covered by:
 
 ```bash
-.venv/bin/python -m pytest tests/test_test_target_app_contract.py tests/test_rdp_gui_smoke_harness.py -q
+uv run pytest tests/test_test_target_app_contract.py tests/test_rdp_gui_smoke_harness.py -q
 ```
 
 The full Windows behavior still requires the RDP run above.

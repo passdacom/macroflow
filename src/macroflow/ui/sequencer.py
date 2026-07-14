@@ -40,6 +40,7 @@ from macroflow.script_engine import (
     FlowEngine,
     MacroFlow,
     MacroNode,
+    WaitFixedNode,
     iter_linear_macro_paths,
     load_flow,
     save_flow,
@@ -61,6 +62,34 @@ _STATUS_ICONS: dict[str, str] = {
     "done":    "✅",
     "error":   "❌",
 }
+
+
+def _linear_gap_ms(flow: MacroFlow) -> int | None:
+    """단순 선형 플로우의 균일한 매크로 사이 대기값을 반환한다.
+
+    대기가 없으면 0, 분기/지원하지 않는 노드/서로 다른 대기값이면 None이다.
+    """
+    node_id: str | None = flow.start_node_id
+    visited: set[str] = set()
+    durations: list[int] = []
+
+    while node_id and node_id not in visited:
+        visited.add(node_id)
+        node = flow.nodes.get(node_id)
+        if isinstance(node, MacroNode):
+            node_id = node.next_on_success
+        elif isinstance(node, WaitFixedNode):
+            durations.append(max(0, int(node.duration_ms)))
+            node_id = node.next
+        elif isinstance(node, EndNode):
+            break
+        else:
+            return None
+
+    if not durations:
+        return 0
+    first = durations[0]
+    return first if all(value == first for value in durations) else None
 
 
 class _MacroItem:
@@ -88,17 +117,29 @@ class MacroSequencerWidget(QWidget):
     # 워커 → 메인 스레드 신호
     sequence_complete = pyqtSignal(str)   # status
     sequence_error = pyqtSignal(str)      # message
+    sequence_progress = pyqtSignal(int, int)  # current, total macro step
     open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
     merge_to_editor = pyqtSignal(object)  # 병합 결과 MacroData → 에디터로 전달
+    _node_started = pyqtSignal(int, str, str)
+    _node_finished = pyqtSignal(int, str, bool, str)
+    _sequence_finished = pyqtSignal(int, str)
+    _sequence_failed = pyqtSignal(int, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._items: list[_MacroItem] = []
         self._engine: FlowEngine | None = None
+        self._run_generation = 0
+        self._active_generation: int | None = None
         self._current_flow_path: Path | None = None
         self._setup_ui()
-        self.sequence_complete.connect(self._on_complete)
-        self.sequence_error.connect(self._on_error)
+        self._node_started.connect(self._apply_node_start)
+        self._node_finished.connect(self._apply_node_done)
+        self._sequence_finished.connect(self._apply_sequence_complete)
+        self._sequence_failed.connect(self._apply_sequence_error)
+        self._stop_watch_timer = QTimer(self)
+        self._stop_watch_timer.setInterval(100)
+        self._stop_watch_timer.timeout.connect(self._poll_stopping_engine)
 
     # ── UI 구성 ───────────────────────────────────────────────────────────────
 
@@ -157,14 +198,17 @@ class MacroSequencerWidget(QWidget):
         toolbar.addAction(self._act_merge)
 
         toolbar.addSeparator()
-        toolbar.addWidget(QLabel(" 간격:"))
+        toolbar.addWidget(QLabel(" 매크로 사이 대기:"))
         self._gap_spin = QSpinBox()
         self._gap_spin.setMinimum(0)
         self._gap_spin.setMaximum(30000)
         self._gap_spin.setValue(500)
         self._gap_spin.setSuffix("ms")
         self._gap_spin.setToolTip(
-            "시퀀스 실행 또는 에디터 병합 시 매크로 사이에 삽입할 딜레이 (0=없음)"
+            "시퀀스 실행: 한 매크로가 완전히 끝난 뒤 실제 시간으로 대기하며 "
+            "재생 속도는 적용되지 않습니다.\n"
+            "에디터 병합: 같은 숫자를 기록 타임라인 간격으로 삽입하므로 "
+            "병합 후 재생 속도가 적용됩니다."
         )
         self._gap_spin.setFixedWidth(95)
         toolbar.addWidget(self._gap_spin)
@@ -216,6 +260,9 @@ class MacroSequencerWidget(QWidget):
     # ── 드래그앤드롭 (파일 시스템에서) ──────────────────────────────────────
 
     def _drag_enter(self, event: QDragEnterEvent) -> None:
+        if self._engine is not None:
+            event.ignore()
+            return
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
         else:
@@ -223,6 +270,9 @@ class MacroSequencerWidget(QWidget):
             QListWidget.dragEnterEvent(self._list, event)
 
     def _drop_event(self, event: QDropEvent) -> None:
+        if self._engine is not None:
+            event.ignore()
+            return
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             for url in event.mimeData().urls():
@@ -238,7 +288,18 @@ class MacroSequencerWidget(QWidget):
     # ── 항목 관리 ─────────────────────────────────────────────────────────────
 
     def _add_item(self, path: Path) -> None:
-        item = _MacroItem(path)
+        if self._engine is not None:
+            self._log_message("실행 중에는 매크로 목록을 변경할 수 없습니다")
+            return
+        normalized_path = path.resolve(strict=False)
+        if not normalized_path.exists():
+            self._log_message(f"파일을 찾을 수 없습니다: {path}")
+            return
+        for existing in self._items:
+            if existing.path.resolve(strict=False) == normalized_path:
+                self._log_message(f"이미 목록에 있습니다: {normalized_path.name}")
+                return
+        item = _MacroItem(normalized_path)
         self._items.append(item)
         self._refresh_list_item(len(self._items) - 1)
         self._update_buttons()
@@ -266,6 +327,9 @@ class MacroSequencerWidget(QWidget):
 
     def _sync_items_from_list(self) -> None:
         """내부 드래그앤드롭 재정렬 후 _items 순서를 동기화한다."""
+        if self._engine is not None:
+            self._refresh_all()
+            return
         new_items: list[_MacroItem] = []
         for i in range(self._list.count()):
             li = self._list.item(i)
@@ -286,18 +350,22 @@ class MacroSequencerWidget(QWidget):
         """목록에 항목이 있는지 반환한다."""
         return bool(self._items)
 
+    def item_count(self) -> int:
+        """현재 시퀀스의 매크로 단계 수를 반환한다."""
+        return len(self._items)
+
     def is_running(self) -> bool:
-        """시퀀스가 실행 중인지 반환한다."""
-        return self._engine is not None and self._engine.is_running()
+        """worker가 종료 확인되기 전까지 active run으로 간주한다."""
+        return self._engine is not None
 
     def run_sequence(self, speed: float = 1.0) -> None:
         """외부(main_window)에서 시퀀스를 시작한다."""
-        if self._items and not self.is_running():
+        if self._items and self._engine is None:
             self._run_sequence(speed=speed)
 
-    def stop_sequence(self) -> None:
-        """외부(main_window)에서 시퀀스를 중지한다."""
-        self._stop_sequence()
+    def stop_sequence(self) -> bool:
+        """중지를 요청하고 worker 종료가 확인됐는지 반환한다."""
+        return self._stop_sequence()
 
     def save_flow(self) -> None:
         """외부(main_window)에서 현재 플로우를 저장한다."""
@@ -323,6 +391,9 @@ class MacroSequencerWidget(QWidget):
             self._add_item(Path(path))
 
     def _remove_selected(self) -> None:
+        if self._engine is not None:
+            self._log_message("실행 중에는 매크로 목록을 변경할 수 없습니다")
+            return
         rows = sorted(
             {idx.row() for idx in self._list.selectedIndexes()},
             reverse=True,
@@ -335,7 +406,7 @@ class MacroSequencerWidget(QWidget):
 
     def _on_selection_changed(self) -> None:
         has_sel = bool(self._list.selectedItems())
-        self._act_remove.setEnabled(has_sel)
+        self._act_remove.setEnabled(has_sel and self._engine is None)
 
     def _on_item_double_clicked(self, item: object) -> None:
         """목록 항목 더블클릭 시 해당 매크로를 에디터로 불러온다."""
@@ -363,6 +434,9 @@ class MacroSequencerWidget(QWidget):
             self._load_flow_from_path(Path(path))
 
     def _load_flow_from_path(self, path: Path) -> None:
+        if self._engine is not None:
+            self._log_message("실행 중에는 플로우를 교체할 수 없습니다")
+            return
         try:
             flow = load_flow(str(path))
         except Exception as exc:
@@ -370,6 +444,15 @@ class MacroSequencerWidget(QWidget):
             return
 
         self._items.clear()
+
+        gap_ms = _linear_gap_ms(flow)
+        if gap_ms is None:
+            self._log_message(
+                "분기 또는 서로 다른 대기값이 있는 플로우는 단순 시퀀서 간격으로 "
+                "표현할 수 없습니다. 기존 간격 값을 유지합니다."
+            )
+        else:
+            self._gap_spin.setValue(gap_ms)
 
         # 선형 플로우에서 매크로 노드만 순서대로 추출한다.
         # 저장 시 매크로 사이에 WaitFixedNode가 삽입될 수 있으므로 대기 노드는 건너뛴다.
@@ -491,7 +574,7 @@ class MacroSequencerWidget(QWidget):
     # ── 시퀀스 실행 ───────────────────────────────────────────────────────────
 
     def _run_sequence(self, speed: float = 1.0) -> None:
-        if not self._items:
+        if not self._items or self._engine is not None:
             return
 
         # 상태 초기화
@@ -510,52 +593,141 @@ class MacroSequencerWidget(QWidget):
         temp_flow_path = flow_base / "__temp_sequence__.macroflow"
         flow = self._build_flow(temp_flow_path)
 
-        self._engine = FlowEngine(
+        self._run_generation += 1
+        generation = self._run_generation
+        self._active_generation = generation
+        engine = FlowEngine(
             str(temp_flow_path),
-            on_node_start=self._on_node_start,
-            on_node_done=self._on_node_done,
-            on_complete=lambda s: self.sequence_complete.emit(s),
-            on_error=lambda m: self.sequence_error.emit(m),
+            on_node_start=lambda node_id, label, gen=generation: self._node_started.emit(
+                gen, node_id, label
+            ),
+            on_node_done=lambda node_id, success, message, gen=generation: (
+                self._node_finished.emit(gen, node_id, success, message)
+            ),
+            on_complete=lambda status, gen=generation: self._sequence_finished.emit(
+                gen, status
+            ),
+            on_error=lambda message, gen=generation: self._sequence_failed.emit(
+                gen, message
+            ),
             speed=speed,
         )
-        self._engine.start(flow)
+        self._engine = engine
+        self._update_buttons()
+        try:
+            engine.start(flow)
+        except Exception:
+            if self._engine is engine and self._active_generation == generation:
+                self._engine = None
+                self._active_generation = None
+                self._update_buttons()
+            raise
         self._log_message(f"시퀀스 실행 시작 (속도 {speed:.1f}x)")
 
-    def _stop_sequence(self) -> None:
-        if self._engine:
-            self._engine.stop()
+    def _stop_sequence(self) -> bool:
+        engine = self._engine
+        generation = self._active_generation
+        if engine is None:
+            return True
+
+        engine.stop()
+        if self._engine is not engine:
+            return True
+        if engine.is_running():
+            self._log_message("시퀀스 중지 요청됨 — worker 종료 대기 중")
+            self._stop_watch_timer.start()
+            self._update_buttons()
+            return False
+
+        if generation is not None:
+            self._finish_stopped_generation(generation)
+        else:
             self._engine = None
+            self._update_buttons()
         self._log_message("시퀀스 중지됨")
+        return True
+
+    def _poll_stopping_engine(self) -> None:
+        engine = self._engine
+        generation = self._active_generation
+        if engine is None:
+            self._stop_watch_timer.stop()
+            return
+        if engine.is_running():
+            return
+        if generation is not None:
+            self._finish_stopped_generation(generation)
+        else:
+            self._engine = None
+            self._stop_watch_timer.stop()
+            self._update_buttons()
+        self._log_message("시퀀스 worker 종료 확인")
+
+    def _finish_stopped_generation(self, generation: int) -> bool:
+        if generation != self._active_generation:
+            return False
+        self._stop_watch_timer.stop()
+        self._engine = None
+        self._active_generation = None
+        self._update_buttons()
+        return True
 
     def _on_node_start(self, node_id: str, label: str) -> None:
-        """FlowEngine 스레드에서 호출 — 목록 업데이트는 메인 스레드에서."""
+        """호환용 callback: 현재 generation을 포함해 GUI thread로 전달한다."""
+        generation = self._active_generation
+        if generation is not None:
+            self._node_started.emit(generation, node_id, label)
+
+    def _apply_node_start(self, generation: int, node_id: str, label: str) -> None:
+        if generation != self._active_generation:
+            return
         idx = self._node_id_to_idx(node_id)
-        if idx >= 0:
+        if 0 <= idx < len(self._items):
             self._items[idx].status = "running"
             self._items[idx].message = ""
-            QTimer.singleShot(0, lambda: self._refresh_list_item(idx))
-        QTimer.singleShot(0, lambda: self._log_message(f"실행: {label}"))
+            self._refresh_list_item(idx)
+            self.sequence_progress.emit(idx + 1, len(self._items))
+        self._log_message(f"실행: {label}")
 
     def _on_node_done(self, node_id: str, success: bool, message: str) -> None:
+        generation = self._active_generation
+        if generation is not None:
+            self._node_finished.emit(generation, node_id, success, message)
+
+    def _apply_node_done(
+        self,
+        generation: int,
+        node_id: str,
+        success: bool,
+        message: str,
+    ) -> None:
+        if generation != self._active_generation:
+            return
         idx = self._node_id_to_idx(node_id)
-        if idx >= 0:
+        if 0 <= idx < len(self._items):
             self._items[idx].status = "done" if success else "error"
             self._items[idx].message = message
-            QTimer.singleShot(0, lambda: self._refresh_list_item(idx))
+            self._refresh_list_item(idx)
         status_str = "완료" if success else "오류"
-        QTimer.singleShot(0, lambda: self._log_message(f"{status_str}: {message}"))
+        self._log_message(f"{status_str}: {message}")
 
-    def _on_complete(self, status: str) -> None:
+    def _apply_sequence_complete(self, generation: int, status: str) -> None:
+        if not self._finish_stopped_generation(generation):
+            return
         self._log_message(f"시퀀스 {status}")
-        self._engine = None
+        self.sequence_complete.emit(status)
 
-    def _on_error(self, message: str) -> None:
+    def _apply_sequence_error(self, generation: int, message: str) -> None:
+        if not self._finish_stopped_generation(generation):
+            return
         self._log_message(f"오류: {message}")
         QMessageBox.warning(self, "시퀀스 오류", message)
-        self._engine = None
+        self.sequence_error.emit(message)
 
     def _node_id_to_idx(self, node_id: str) -> int:
         """macro_000 형식 node_id를 _items 인덱스로 변환한다."""
+        if not node_id.startswith("macro_"):
+            return -1
         try:
             return int(node_id.split("_")[-1])
         except (ValueError, IndexError):
@@ -570,7 +742,7 @@ class MacroSequencerWidget(QWidget):
         하나의 MacroData로 병합한 뒤 merge_to_editor 신호를 방출한다.
         이벤트의 source_file 필드에 원본 파일명이 기록되어 에디터 '출처' 열에 표시된다.
         """
-        if len(self._items) < 2:
+        if self._engine is not None or len(self._items) < 2:
             return
 
         from macroflow.macro_file import load, merge_macros
@@ -603,9 +775,19 @@ class MacroSequencerWidget(QWidget):
 
     def _update_buttons(self) -> None:
         has_items = bool(self._items)
-        self._act_save_flow.setEnabled(has_items)
-        self._act_save_flow_as.setEnabled(has_items)
-        self._act_merge.setEnabled(len(self._items) >= 2)
+        editable = self._engine is None
+        self._act_add.setEnabled(editable)
+        self._act_remove.setEnabled(editable and bool(self._list.selectedItems()))
+        self._act_open_flow.setEnabled(editable)
+        self._act_save_flow.setEnabled(editable and has_items)
+        self._act_save_flow_as.setEnabled(editable and has_items)
+        self._act_merge.setEnabled(editable and len(self._items) >= 2)
+        self._gap_spin.setEnabled(editable)
+        self._list.setDragEnabled(editable)
+        self._list.setAcceptDrops(editable)
+        viewport = self._list.viewport()
+        if viewport is not None:
+            viewport.setAcceptDrops(editable)
 
     # ── 로그 ──────────────────────────────────────────────────────────────────
 

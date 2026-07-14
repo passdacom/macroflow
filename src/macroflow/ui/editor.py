@@ -96,6 +96,8 @@ from macroflow.ui.editor_rows import (
     POSITION_EDIT_KINDS,
     _build_rows,
     _DisplayRow,
+    delay_input_to_override,
+    delay_override_to_input,
 )
 from macroflow.ui.editor_summary import _summary_text
 from macroflow.ui.editor_table import (
@@ -208,8 +210,12 @@ class EventEditorWidget(QWidget):
 
         toolbar.addSeparator()
 
-        self._act_set_delay = QAction("딜레이 일괄", self)
-        self._act_set_delay.setToolTip("모든 이벤트의 딜레이를 동일한 값으로 설정합니다")
+        self._act_set_delay = QAction("표시 동작 재생 대기 일괄", self)
+        self._act_set_delay.setToolTip(
+            "현재 표에 표시된 동작의 실행 전 대기를 동일하게 덮어씁니다\n"
+            "클릭/키 입력은 한 동작으로 취급하며 숨겨진 해제·이동에는 적용하지 않습니다\n"
+            "-1=녹화 타이밍 사용, 0=즉시 실행"
+        )
         self._act_set_delay.triggered.connect(self._set_delay_all)
         self._act_set_delay.setEnabled(False)
         toolbar.addAction(self._act_set_delay)
@@ -249,10 +255,11 @@ class EventEditorWidget(QWidget):
 
         toolbar.addSeparator()
 
-        self._chk_relative_time = QCheckBox("⏱ 상대 시간")
+        self._chk_relative_time = QCheckBox("⏱ 기록 간격")
         self._chk_relative_time.setToolTip(
-            "체크: 시간(ms) 열을 이전 이벤트 대비 delta로 표시\n"
-            "해제: 녹화 시작 기준 절대 시간 표시"
+            "체크: 기록 시점 열을 이전 표시 행과의 녹화 간격으로 표시\n"
+            "해제: 녹화 시작 기준 기록 시점 표시\n"
+            "재생 대기 override는 별도 열에 표시됩니다"
         )
         self._chk_relative_time.setChecked(False)
         self._chk_relative_time.toggled.connect(self._on_relative_time_toggled)
@@ -263,6 +270,15 @@ class EventEditorWidget(QWidget):
         # 이벤트 테이블
         self._table = QTableWidget(0, len(_COLUMNS))
         self._table.setHorizontalHeaderLabels(_COLUMNS)
+        time_header = self._table.horizontalHeaderItem(COL_TIME)
+        delay_header = self._table.horizontalHeaderItem(COL_DELAY)
+        assert time_header is not None and delay_header is not None
+        time_header.setToolTip(
+            "녹화 시작 기준 시점. '기록 간격'을 켜면 이전 표시 행과의 녹화 간격"
+        )
+        delay_header.setToolTip(
+            "비어 있으면 녹화 타이밍 사용. 0=직전 이벤트 뒤 즉시, 양수=대기 후 실행"
+        )
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setAlternatingRowColors(True)
@@ -416,8 +432,11 @@ class EventEditorWidget(QWidget):
             self.f6_capture_ended.emit()
 
     def _on_relative_time_toggled(self, checked: bool) -> None:
-        """상대 시간 체크박스 토글 — 테이블을 다시 렌더링한다."""
+        """기록 간격 체크박스 토글 — 테이블을 다시 렌더링한다."""
         self._relative_time = checked
+        time_header = self._table.horizontalHeaderItem(COL_TIME)
+        assert time_header is not None
+        time_header.setText("기록 간격(ms)" if checked else "기록 시점(ms)")
         self._refresh()
 
     def get_event_range_for_rows(
@@ -558,7 +577,11 @@ class EventEditorWidget(QWidget):
         self._add_context_action(menu, "▶ 이 이벤트만 실행", lambda: self._play_single_event(row_idx))
         menu.addSeparator()
 
-        self._add_context_action(menu, "딜레이 설정(&D)...", lambda: self._edit_delay(row_idx))
+        self._add_context_action(
+            menu,
+            "재생 대기 설정(&D)...",
+            lambda: self._edit_delay(row_idx),
+        )
 
         if row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
             self._add_context_action(menu, "키 값 변경(&K)...", lambda: self._edit_key(row_idx))
@@ -664,20 +687,29 @@ class EventEditorWidget(QWidget):
             return
         display_row = self._rows[row]
         primary = self._macro.events[display_row.primary_idx]
-        current = primary.delay_override_ms if primary.delay_override_ms is not None else 0
+        current = delay_override_to_input(primary.delay_override_ms)
 
         val, ok = QInputDialog.getInt(
-            self, "딜레이 설정",
-            f"행 #{row + 1} 딜레이 (ms):\n"
-            "0 입력 시 원래 타이밍으로 복원.\n"
-            "음수(-) 입력 시 직전 이벤트보다 빨리 실행 (즉시 실행 방향).",
-            current, -60000, 60000, 10,
+            self,
+            "재생 대기 설정",
+            f"행 #{row + 1} 실행 전 대기 (ms):\n"
+            "-1 = 녹화 타이밍 사용\n"
+            " 0 = 직전 이벤트 뒤 즉시 실행\n"
+            "양수 = 지정 시간 대기 후 실행",
+            current,
+            -1,
+            60000,
+            10,
         )
         if not ok:
             return
         self._push_undo()
         try:
-            new_macro = set_delay_single(self._macro, primary.id, val if val != 0 else None)
+            new_macro = set_delay_single(
+                self._macro,
+                primary.id,
+                delay_input_to_override(val),
+            )
         except KeyError:
             self._undo_stack.pop()
             QMessageBox.warning(self, "오류", "이벤트를 찾을 수 없습니다.")
@@ -1006,6 +1038,19 @@ class EventEditorWidget(QWidget):
     def _delete_mouse_moves(self) -> None:
         if self._macro is None:
             return
+        move_count = sum(1 for event in self._macro.events if event.type == "mouse_move")
+        if move_count == 0:
+            return
+        reply = QMessageBox.question(
+            self,
+            "이동 삭제",
+            f"mouse_move 이벤트 {move_count}개를 영구 삭제할까요?\n\n"
+            "필요하면 Ctrl+Z로 되돌릴 수 있습니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         self._push_undo()
         self._macro = delete_mouse_moves(self._macro)
         self._refresh()
@@ -1015,16 +1060,30 @@ class EventEditorWidget(QWidget):
         if self._macro is None:
             return
         val, ok = QInputDialog.getInt(
-            self, "딜레이 일괄 설정",
-            "모든 이벤트에 적용할 딜레이 (ms):\n"
-            "0 입력 시 원래 타이밍으로 복원.\n"
-            "음수(-) 입력 시 직전 이벤트보다 빨리 실행.",
-            100, -60000, 60000, 10,
+            self,
+            "표시 동작 재생 대기 일괄 설정",
+            "현재 표시된 각 동작의 실행 전 대기 (ms):\n"
+            "클릭/키 입력은 한 동작으로 처리합니다.\n"
+            "-1 = 모두 녹화 타이밍 사용\n"
+            " 0 = 각 이벤트를 직전 이벤트 뒤 즉시 실행\n"
+            "양수 = 각 이벤트 전에 지정 시간 대기",
+            100,
+            -1,
+            60000,
+            10,
         )
         if not ok:
             return
         self._push_undo()
-        self._macro = set_delay_all(self._macro, val)
+        target_ids = {
+            self._macro.events[row.primary_idx].id
+            for row in self._rows
+        }
+        self._macro = set_delay_all(
+            self._macro,
+            delay_input_to_override(val),
+            event_ids=target_ids,
+        )
         self._refresh()
         self.macro_changed.emit(self._macro)
 
@@ -1108,7 +1167,7 @@ class EventEditorWidget(QWidget):
         form.addRow("텍스트:", text_edit)
 
         delay_spin = create_delay_spin(1000)
-        form.addRow("딜레이:", delay_spin)
+        form.addRow("실행 전 대기:", delay_spin)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -1209,7 +1268,7 @@ class EventEditorWidget(QWidget):
         # ── 딜레이 ──────────────────────────────────────────────────────────
         delay_form = QFormLayout()
         delay_spin = create_delay_spin(1000)
-        delay_form.addRow("딜레이:", delay_spin)
+        delay_form.addRow("실행 전 대기:", delay_spin)
         layout_v.addLayout(delay_form)
 
         # ── 버튼 ────────────────────────────────────────────────────────────
