@@ -47,6 +47,8 @@ from macroflow.script_engine import (
 
 logger = logging.getLogger(__name__)
 
+_MAX_GAP_MS = 30_000
+
 # ── 상태 색상 ─────────────────────────────────────────────────────────────────
 _STATUS_COLORS: dict[str, QColor] = {
     "pending":   QColor(80,  80,  80),
@@ -145,8 +147,10 @@ def _project_linear_flow(
                     "매크로 사이가 아닌 대기 노드는 단순 시퀀서로 열 수 없습니다."
                 )
             duration_ms = int(node.duration_ms)
-            if not 0 <= duration_ms <= 60_000:
-                raise ValueError("시퀀서 간격은 0~60000ms 범위여야 합니다.")
+            if not 0 <= duration_ms <= _MAX_GAP_MS:
+                raise ValueError(
+                    f"시퀀서 간격은 0~{_MAX_GAP_MS}ms 범위여야 합니다."
+                )
             durations.append(duration_ms)
             current_id = node.next
             continue
@@ -287,7 +291,7 @@ class MacroSequencerWidget(QWidget):
         toolbar.addWidget(QLabel(" 매크로 사이 대기:"))
         self._gap_spin = QSpinBox()
         self._gap_spin.setMinimum(0)
-        self._gap_spin.setMaximum(30000)
+        self._gap_spin.setMaximum(_MAX_GAP_MS)
         self._gap_spin.setValue(500)
         self._gap_spin.setSuffix("ms")
         self._gap_spin.setToolTip(
@@ -580,6 +584,8 @@ class MacroSequencerWidget(QWidget):
         try:
             flow = load_flow(str(path))
             macro_paths, gap_ms = _project_linear_flow(flow, path)
+            if not self._gap_spin.minimum() <= gap_ms <= self._gap_spin.maximum():
+                raise ValueError("현재 시퀀서 UI에서 표현할 수 없는 간격입니다.")
             loaded_items = [_MacroItem(macro_path) for macro_path in macro_paths]
         except Exception as exc:
             QMessageBox.critical(self, "플로우 열기 오류", str(exc))

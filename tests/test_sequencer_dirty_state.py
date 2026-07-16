@@ -345,6 +345,39 @@ def test_lossy_flow_projection_is_rejected() -> None:
             uneven_path = root / "uneven.macroflow"
             save_flow(uneven_flow, str(uneven_path))
 
+            oversized_gap_flow = MacroFlow(
+                version="1.0",
+                name="oversized-gap",
+                created_at="2026-07-16T00:00:00",
+                start_node_id="macro_000",
+                nodes={
+                    "macro_000": MacroNode(
+                        id="macro_000",
+                        label="first",
+                        macro_path=first.name,
+                        next_on_success="wait_000",
+                        next_on_failure="end_error",
+                    ),
+                    "wait_000": WaitFixedNode(
+                        id="wait_000",
+                        label="45000ms",
+                        duration_ms=45_000,
+                        next="macro_001",
+                    ),
+                    "macro_001": MacroNode(
+                        id="macro_001",
+                        label="second",
+                        macro_path=second.name,
+                        next_on_success="end_success",
+                        next_on_failure="end_error",
+                    ),
+                    "end_success": end_success,
+                    "end_error": end_error,
+                },
+            )
+            oversized_gap_path = root / "oversized-gap.macroflow"
+            save_flow(oversized_gap_flow, str(oversized_gap_path))
+
             widget = MacroSequencerWidget()
             widget.add_macro_file(first)
             original_paths = [item.path for item in widget._items]
@@ -355,6 +388,7 @@ def test_lossy_flow_projection_is_rejected() -> None:
             ):
                 assert not widget._load_flow_from_path(branch_path)
                 assert not widget._load_flow_from_path(uneven_path)
+                assert not widget._load_flow_from_path(oversized_gap_path)
             assert [item.path for item in widget._items] == original_paths
             assert widget._gap_spin.value() == original_gap
             assert widget.is_dirty()
@@ -448,6 +482,77 @@ def test_main_window_dirty_tab_and_close_cancel() -> None:
             assert not blocked_event.isAccepted()
             overlay_stop_mock.assert_called_once_with()
             confirm_mock.assert_not_called()
+
+            recording_event = QCloseEvent()
+            recording_order = []
+
+            class FinishedRecordingThread:
+                def join(self, timeout=None):
+                    recording_order.append("join_recording")
+                    window._state = "idle"
+
+                def is_alive(self):
+                    return False
+
+            window._state = "stopping"
+            window._recording_stop_thread = FinishedRecordingThread()
+            with (
+                patch.object(window._sequencer, "is_running", return_value=False),
+                patch.object(
+                    window._sequencer,
+                    "confirm_discard_changes",
+                    side_effect=lambda: recording_order.append("confirm") or False,
+                ),
+            ):
+                window.closeEvent(recording_event)
+            assert recording_order == ["join_recording", "confirm"]
+            assert not recording_event.isAccepted()
+
+            timeout_event = QCloseEvent()
+            timeout_order = []
+
+            class AliveRecordingThread:
+                def join(self, timeout=None):
+                    timeout_order.append("join_recording")
+
+                def is_alive(self):
+                    return True
+
+            timeout_confirm = Mock(return_value=False)
+            window._state = "stopping"
+            window._recording_stop_thread = AliveRecordingThread()
+            with (
+                patch.object(window._sequencer, "is_running", return_value=False),
+                patch.object(
+                    window._sequencer,
+                    "confirm_discard_changes",
+                    timeout_confirm,
+                ),
+                patch.object(QMessageBox, "warning"),
+            ):
+                window.closeEvent(timeout_event)
+            assert timeout_order == ["join_recording"]
+            assert not timeout_event.isAccepted()
+            timeout_confirm.assert_not_called()
+
+            playback_event = QCloseEvent()
+            playback_confirm = Mock(return_value=False)
+            window._state = "playing"
+            with (
+                patch.object(player, "stop"),
+                patch.object(player, "is_playing", return_value=True),
+                patch.object(window._sequencer, "is_running", return_value=False),
+                patch.object(
+                    window._sequencer,
+                    "confirm_discard_changes",
+                    playback_confirm,
+                ),
+                patch.object(QMessageBox, "warning"),
+            ):
+                window.closeEvent(playback_event)
+            assert window._state == "playing"
+            assert not playback_event.isAccepted()
+            playback_confirm.assert_not_called()
 
             window._state = "idle"
             window._sequencer._set_dirty(False)
