@@ -18,7 +18,9 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import os
 import random as _random_module
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -292,8 +294,26 @@ def save_flow(flow: MacroFlow, path: str) -> None:
         "nodes": {nid: _node_to_dict(node) for nid, node in flow.nodes.items()},
     }
 
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            prefix=f".{p.name}.",
+            suffix=".tmp",
+            dir=p.parent,
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            json.dump(data, temp_file, ensure_ascii=False, indent=2)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_path, p)
+    except Exception:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        raise
 
     logger.debug(f"Flow saved to {path}")
 

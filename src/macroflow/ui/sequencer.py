@@ -41,7 +41,6 @@ from macroflow.script_engine import (
     MacroFlow,
     MacroNode,
     WaitFixedNode,
-    iter_linear_macro_paths,
     load_flow,
     save_flow,
 )
@@ -92,6 +91,90 @@ def _linear_gap_ms(flow: MacroFlow) -> int | None:
     return first if all(value == first for value in durations) else None
 
 
+def _project_linear_flow(
+    flow: MacroFlow,
+    flow_path: str | Path,
+) -> tuple[list[Path], int]:
+    """플로우를 단순 시퀀서로 손실 없이 투영한다.
+
+    성공 경로는 ``Macro (Wait Macro)* [End]`` 형태여야 하며, 모든 대기값은
+    동일해야 한다. 매크로 실패 경로는 error EndNode로 끝나는 경우만 허용한다.
+    그 밖의 분기·지원하지 않는 노드·미사용 노드는 저장 시 유실되므로 거부한다.
+    """
+    if flow.start_node_id not in flow.nodes:
+        raise ValueError("시작 노드를 찾을 수 없습니다.")
+
+    base = Path(flow_path).parent
+    current_id: str | None = flow.start_node_id
+    visited: set[str] = set()
+    error_end_ids: set[str] = set()
+    paths: list[Path] = []
+    durations: list[int] = []
+
+    while current_id is not None:
+        if current_id in visited:
+            raise ValueError("순환 플로우는 단순 시퀀서로 열 수 없습니다.")
+        node = flow.nodes.get(current_id)
+        if node is None:
+            raise ValueError(f"노드 ID를 찾을 수 없습니다: {current_id!r}")
+        visited.add(current_id)
+
+        if isinstance(node, MacroNode):
+            raw_path = Path(node.macro_path)
+            macro_path = (
+                raw_path.resolve(strict=False)
+                if raw_path.is_absolute()
+                else (base / raw_path).resolve(strict=False)
+            )
+            paths.append(macro_path)
+
+            if node.next_on_failure is not None:
+                failure_node = flow.nodes.get(node.next_on_failure)
+                if not isinstance(failure_node, EndNode) or failure_node.status != "error":
+                    raise ValueError(
+                        "분기 실패 경로가 있는 플로우는 단순 시퀀서로 열 수 없습니다."
+                    )
+                error_end_ids.add(node.next_on_failure)
+            current_id = node.next_on_success
+            continue
+
+        if isinstance(node, WaitFixedNode):
+            next_node = flow.nodes.get(node.next) if node.next is not None else None
+            if not paths or not isinstance(next_node, MacroNode):
+                raise ValueError(
+                    "매크로 사이가 아닌 대기 노드는 단순 시퀀서로 열 수 없습니다."
+                )
+            duration_ms = int(node.duration_ms)
+            if not 0 <= duration_ms <= 60_000:
+                raise ValueError("시퀀서 간격은 0~60000ms 범위여야 합니다.")
+            durations.append(duration_ms)
+            current_id = node.next
+            continue
+
+        if isinstance(node, EndNode):
+            if node.status != "success":
+                raise ValueError("성공 경로가 오류 종료 노드로 연결되어 있습니다.")
+            current_id = None
+            continue
+
+        raise ValueError(
+            "분기 또는 지원하지 않는 노드가 있어 단순 시퀀서로 열 수 없습니다."
+        )
+
+    if not paths:
+        raise ValueError("매크로 노드가 없는 플로우는 단순 시퀀서로 열 수 없습니다.")
+    if durations and len(durations) != len(paths) - 1:
+        raise ValueError("일부 구간에만 대기가 있어 단일 간격으로 표현할 수 없습니다.")
+    if durations and any(value != durations[0] for value in durations[1:]):
+        raise ValueError("서로 다른 대기값은 단일 시퀀서 간격으로 표현할 수 없습니다.")
+
+    represented_ids = visited | error_end_ids
+    if represented_ids != set(flow.nodes):
+        raise ValueError("시퀀서에 표시되지 않는 노드가 있어 로드를 거부했습니다.")
+
+    return paths, durations[0] if durations else 0
+
+
 class _MacroItem:
     """시퀀서 목록의 단일 항목."""
 
@@ -120,6 +203,7 @@ class MacroSequencerWidget(QWidget):
     sequence_progress = pyqtSignal(int, int)  # current, total macro step
     open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
     merge_to_editor = pyqtSignal(object)  # 병합 결과 MacroData → 에디터로 전달
+    dirty_changed = pyqtSignal(bool)      # 미저장 변경 상태
     _node_started = pyqtSignal(int, str, str)
     _node_finished = pyqtSignal(int, str, bool, str)
     _sequence_finished = pyqtSignal(int, str)
@@ -132,6 +216,8 @@ class MacroSequencerWidget(QWidget):
         self._run_generation = 0
         self._active_generation: int | None = None
         self._current_flow_path: Path | None = None
+        self._is_dirty = False
+        self._suppress_dirty = False
         self._setup_ui()
         self._node_started.connect(self._apply_node_start)
         self._node_finished.connect(self._apply_node_done)
@@ -211,6 +297,7 @@ class MacroSequencerWidget(QWidget):
             "병합 후 재생 속도가 적용됩니다."
         )
         self._gap_spin.setFixedWidth(95)
+        self._gap_spin.valueChanged.connect(self._on_gap_changed)
         toolbar.addWidget(self._gap_spin)
 
         layout.addWidget(toolbar)
@@ -303,6 +390,7 @@ class MacroSequencerWidget(QWidget):
         self._items.append(item)
         self._refresh_list_item(len(self._items) - 1)
         self._update_buttons()
+        self._set_dirty(True)
 
     def _refresh_list_item(self, idx: int) -> None:
         """단일 목록 행을 갱신한다."""
@@ -316,6 +404,7 @@ class MacroSequencerWidget(QWidget):
         if list_item is None:
             return
         list_item.setText(item_data.display_text)
+        list_item.setData(Qt.ItemDataRole.UserRole, str(item_data.path))
         color = _STATUS_COLORS.get(item_data.status, QColor(80, 80, 80))
         list_item.setForeground(QBrush(color))
 
@@ -330,17 +419,19 @@ class MacroSequencerWidget(QWidget):
         if self._engine is not None:
             self._refresh_all()
             return
+        previous_paths = [item.path for item in self._items]
+        items_by_path = {str(item.path): item for item in self._items}
         new_items: list[_MacroItem] = []
         for i in range(self._list.count()):
-            li = self._list.item(i)
-            if li is None:
+            list_item = self._list.item(i)
+            if list_item is None:
                 continue
-            text = li.text()
-            for item in self._items:
-                if item.path.name in text:
-                    new_items.append(item)
-                    break
+            path_value = list_item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(path_value, str) and path_value in items_by_path:
+                new_items.append(items_by_path[path_value])
         self._items = new_items
+        if [item.path for item in new_items] != previous_paths:
+            self._set_dirty(True)
 
     def add_macro_file(self, path: Path) -> None:
         """외부에서 매크로 파일을 시퀀서에 추가한다."""
@@ -353,6 +444,22 @@ class MacroSequencerWidget(QWidget):
     def item_count(self) -> int:
         """현재 시퀀스의 매크로 단계 수를 반환한다."""
         return len(self._items)
+
+    def is_dirty(self) -> bool:
+        """저장되지 않은 시퀀서 변경이 있는지 반환한다."""
+        return self._is_dirty
+
+    def _set_dirty(self, dirty: bool) -> None:
+        """미저장 상태를 변경하고 실제 전이만 알린다."""
+        if self._is_dirty == dirty:
+            return
+        self._is_dirty = dirty
+        self.dirty_changed.emit(dirty)
+
+    def _on_gap_changed(self, _value: int) -> None:
+        """목록이 있는 시퀀스의 대기값 변경을 미저장 변경으로 기록한다."""
+        if self._items and not self._suppress_dirty:
+            self._set_dirty(True)
 
     def is_running(self) -> bool:
         """worker가 종료 확인되기 전까지 active run으로 간주한다."""
@@ -367,13 +474,40 @@ class MacroSequencerWidget(QWidget):
         """중지를 요청하고 worker 종료가 확인됐는지 반환한다."""
         return self._stop_sequence()
 
-    def save_flow(self) -> None:
+    def save_flow(self) -> bool:
         """외부(main_window)에서 현재 플로우를 저장한다."""
-        self._save_flow()
+        return self._save_flow()
 
-    def save_flow_as(self) -> None:
+    def save_flow_as(self) -> bool:
         """외부(main_window)에서 현재 플로우를 다른 이름으로 저장한다."""
-        self._save_flow_as()
+        return self._save_flow_as()
+
+    def confirm_discard_changes(self) -> bool:
+        """미저장 변경의 저장·폐기·취소를 확인한다.
+
+        Returns:
+            열기 또는 종료를 계속해도 되면 True. 저장 취소·실패 또는
+            명시적 취소이면 False.
+        """
+        if not self._is_dirty:
+            return True
+
+        answer = QMessageBox.question(
+            self,
+            "시퀀서 변경 내용 저장",
+            "저장하지 않은 시퀀서 변경 내용이 있습니다. 저장할까요?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        if answer == QMessageBox.StandardButton.Save:
+            if self._current_flow_path is not None:
+                return self._do_save_flow(self._current_flow_path)
+            return self._save_flow_as()
+        return False
 
     def _get_default_dir(self) -> str:
         """파일 다이얼로그 초기 폴더를 반환한다."""
@@ -398,11 +532,15 @@ class MacroSequencerWidget(QWidget):
             {idx.row() for idx in self._list.selectedIndexes()},
             reverse=True,
         )
+        removed = False
         for row in rows:
             if 0 <= row < len(self._items):
                 self._items.pop(row)
+                removed = True
         self._refresh_all()
         self._update_buttons()
+        if removed:
+            self._set_dirty(True)
 
     def _on_selection_changed(self) -> None:
         has_sel = bool(self._list.selectedItems())
@@ -433,43 +571,39 @@ class MacroSequencerWidget(QWidget):
         if path:
             self._load_flow_from_path(Path(path))
 
-    def _load_flow_from_path(self, path: Path) -> None:
+    def _load_flow_from_path(self, path: Path) -> bool:
         if self._engine is not None:
             self._log_message("실행 중에는 플로우를 교체할 수 없습니다")
-            return
+            return False
+        if not self.confirm_discard_changes():
+            return False
         try:
             flow = load_flow(str(path))
+            macro_paths, gap_ms = _project_linear_flow(flow, path)
+            loaded_items = [_MacroItem(macro_path) for macro_path in macro_paths]
         except Exception as exc:
             QMessageBox.critical(self, "플로우 열기 오류", str(exc))
-            return
+            return False
 
-        self._items.clear()
-
-        gap_ms = _linear_gap_ms(flow)
-        if gap_ms is None:
-            self._log_message(
-                "분기 또는 서로 다른 대기값이 있는 플로우는 단순 시퀀서 간격으로 "
-                "표현할 수 없습니다. 기존 간격 값을 유지합니다."
-            )
-        else:
+        self._suppress_dirty = True
+        try:
+            self._items = loaded_items
             self._gap_spin.setValue(gap_ms)
-
-        # 선형 플로우에서 매크로 노드만 순서대로 추출한다.
-        # 저장 시 매크로 사이에 WaitFixedNode가 삽입될 수 있으므로 대기 노드는 건너뛴다.
-        for macro_path in iter_linear_macro_paths(flow, path):
-            self._items.append(_MacroItem(macro_path))
+        finally:
+            self._suppress_dirty = False
 
         self._current_flow_path = path
         self._refresh_all()
         self._update_buttons()
+        self._set_dirty(False)
         self._log_message(f"플로우 로드: {path.name}")
+        return True
 
-    def _save_flow(self) -> None:
+    def _save_flow(self) -> bool:
         if not self._items:
-            return
+            return False
         if self._current_flow_path is None:
-            self._save_flow_as()
-            return
+            return self._save_flow_as()
 
         answer = QMessageBox.question(
             self,
@@ -479,32 +613,35 @@ class MacroSequencerWidget(QWidget):
             QMessageBox.StandardButton.No,
         )
         if answer != QMessageBox.StandardButton.Yes:
-            return
+            return False
 
-        self._do_save_flow(self._current_flow_path)
+        return self._do_save_flow(self._current_flow_path)
 
-    def _save_flow_as(self) -> None:
+    def _save_flow_as(self) -> bool:
         if not self._items:
-            return
+            return False
         path, _ = QFileDialog.getSaveFileName(
             self, "다른 이름으로 플로우 저장",
             self._get_default_dir(),
             "MacroFlow (*.macroflow)",
         )
         if not path:
-            return
+            return False
         if not path.endswith(".macroflow"):
             path += ".macroflow"
-        self._current_flow_path = Path(path)
-        self._do_save_flow(self._current_flow_path)
+        return self._do_save_flow(Path(path))
 
-    def _do_save_flow(self, path: Path) -> None:
-        flow = self._build_flow(path)
+    def _do_save_flow(self, path: Path) -> bool:
         try:
+            flow = self._build_flow(path)
             save_flow(flow, str(path))
-            self._log_message(f"플로우 저장: {path.name}")
         except Exception as exc:
             QMessageBox.critical(self, "플로우 저장 오류", str(exc))
+            return False
+        self._current_flow_path = path
+        self._set_dirty(False)
+        self._log_message(f"플로우 저장: {path.name}")
+        return True
 
     def _build_flow(self, save_path: Path) -> MacroFlow:
         """현재 목록에서 선형 MacroFlow를 생성한다.

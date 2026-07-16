@@ -133,6 +133,7 @@ class MainWindow(QMainWindow):
         self._sequencer.open_in_editor.connect(self._load_file_and_switch_tab)
         # 시퀀서 병합 → 에디터 탭으로 전달
         self._sequencer.merge_to_editor.connect(self._on_merge_to_editor)
+        self._sequencer.dirty_changed.connect(self._update_sequencer_tab_title)
         # 시퀀서 실행 완료/오류 시 emergency hook 해제 + 툴바 갱신
         self._sequencer.sequence_complete.connect(self._on_sequence_done)
         self._sequencer.sequence_error.connect(self._on_sequence_done)
@@ -381,8 +382,20 @@ class MainWindow(QMainWindow):
         if self._state == "recording":
             self._do_stop_recording()
         elif self._state == "playing":
-            from macroflow import player
-            player.stop()
+            self._stop_playback()
+        if self._sequencer.is_running() and not self._stop_sequencer():
+            QMessageBox.warning(
+                self,
+                "시퀀서 종료 대기",
+                "시퀀서 실행이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.",
+            )
+            if event is not None:
+                event.ignore()
+            return
+        if not self._sequencer.confirm_discard_changes():
+            if event is not None:
+                event.ignore()
+            return
         if sys.platform == "win32" and self._hotkeys_registered:
             self._unregister_hotkeys()
         self._save_settings()
@@ -582,6 +595,12 @@ class MainWindow(QMainWindow):
         """현재 활성 탭이 즐겨찾기인지 반환한다."""
         return self._tabs.currentWidget() is self._favorites
 
+    def _update_sequencer_tab_title(self, dirty: bool) -> None:
+        """시퀀서 탭에 미저장 변경 표시를 반영한다."""
+        index = self._tabs.indexOf(self._sequencer)
+        if index >= 0:
+            self._tabs.setTabText(index, "시퀀서 *" if dirty else "시퀀서")
+
     def _on_tab_changed(self, _index: int) -> None:
         """탭 전환 시 툴바 버튼 상태와 상태바 힌트를 갱신한다."""
         self._update_toolbar()
@@ -700,18 +719,23 @@ class MainWindow(QMainWindow):
         self._refresh_recent_menu()
         logger.info(f"녹화 완료: {count}개 이벤트")
 
+    def _stop_sequencer(self) -> bool:
+        """시퀀서 worker와 관련 overlay/hook/UI 상태를 함께 정리한다."""
+        stopped = self._sequencer.stop_sequence()
+        self._overlay.stop()
+        if sys.platform == "win32":
+            from macroflow.win32 import stop_emergency_hook
+            stop_emergency_hook()
+        self._update_toolbar()
+        self._sb_state.setText(
+            "시퀀스 중지" if stopped else "시퀀스 중지 요청됨 — worker 종료 대기 중"
+        )
+        return stopped
+
     def _toggle_sequencer(self) -> None:
         """시퀀서 탭에서 F7: 시퀀스 실행 중이면 중지, 아니면 실행."""
         if self._sequencer.is_running():
-            stopped = self._sequencer.stop_sequence()
-            self._overlay.stop()
-            if sys.platform == "win32":
-                from macroflow.win32 import stop_emergency_hook
-                stop_emergency_hook()
-            self._update_toolbar()
-            self._sb_state.setText(
-                "시퀀스 중지" if stopped else "시퀀스 중지 요청됨 — worker 종료 대기 중"
-            )
+            self._stop_sequencer()
         elif self._state != "idle":
             self._sb_state.setText("녹화/재생 중에는 시퀀스를 시작할 수 없습니다")
         elif self._sequencer.has_items():
