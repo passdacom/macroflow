@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py"
 type: "rationale"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
 location: "L72"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # Keep the session active while no player thread is alive between cycles.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[.mark_between_cycles()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/rationale #graphify/EXTRACTED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

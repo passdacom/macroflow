@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_sequencer_backlog.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+community: "EndNode MacroFlow FlowEngine MacroNode"
 location: "L104"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # test_sequencer_exposes_save_and_save_as_actions()
@@ -16,4 +16,4 @@ tags:
 - [[test_sequencer_backlog.py]] - `contains` [EXTRACTED]
 - [[시퀀서 툴바는 덮어쓰기 저장과 다른 이름 저장 액션을 분리한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/EXTRACTED #community/EndNode_MacroFlow_FlowEngine_MacroNode

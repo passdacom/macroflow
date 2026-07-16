@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_append_recording.py"
 type: "code"
-community: "append recording test append"
+community: ".mouseMoveEvent TestPlaybackTiming play run"
 location: "L9"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/append_recording_test_append
+  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
 ---
 
 # _macro()
@@ -19,4 +19,4 @@ tags:
 - [[test_append_recording_empty_capture_returns_edited_copy_without_timestamp_error()]] - `calls` [EXTRACTED]
 - [[test_append_recording_places_new_events_after_base_last_event_with_gap()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/append_recording_test_append
+#graphify/code #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run

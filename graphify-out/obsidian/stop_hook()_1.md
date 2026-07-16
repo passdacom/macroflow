@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py"
 type: "code"
-community: "mock.py hooks.py get logical"
+community: "convert raw TestConvertRaw stop"
 location: "L319"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/mock.py_hooks.py_get_logical
+  - community/convert_raw_TestConvertRaw_stop
 ---
 
 # stop_hook()
@@ -16,4 +16,4 @@ tags:
 - [[hooks.py]] - `contains` [EXTRACTED]
 - [[stop_recording()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical
+#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_stop

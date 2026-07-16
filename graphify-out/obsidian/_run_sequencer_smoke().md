@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_runtime_safety_smoke.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+community: "rdp runtime safety smoke.py"
 location: "L257"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/rdp_runtime_safety_smoke.py
 ---
 
 # _run_sequencer_smoke()
@@ -24,4 +24,4 @@ tags:
 - [[run_smoke()_1]] - `calls` [EXTRACTED]
 - [[save()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/INFERRED #community/rdp_runtime_safety_smoke.py

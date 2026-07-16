@@ -73,12 +73,12 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 53 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MacroSettings]]
-- 4 edges to [[_COMMUNITY_execute event PlayState test]]
-- 4 edges to [[_COMMUNITY_EventEditorWidget add single row]]
-- 1 edge to [[_COMMUNITY_test editor context menu.py]]
+- 5 edges to [[_COMMUNITY_EventEditorWidget add single row]]
+- 3 edges to [[_COMMUNITY_.mouseMoveEvent TestPlaybackTiming play run]]
+- 1 edge to [[_COMMUNITY_execute event PlayState test]]
 
 ## Top bridge nodes
-- [[_build_rows()]] - degree 35, connects to 4 communities
+- [[_build_rows()]] - degree 35, connects to 3 communities
 - [[editor_rows.py]] - degree 24, connects to 2 communities
 - [[test_position_edit_policy_covers_drag_orphan_and_visible_moves_only()]] - degree 7, connects to 2 communities
 - [[test_color_check_drag_rows_render_without_losing_mismatch_metadata()]] - degree 6, connects to 2 communities

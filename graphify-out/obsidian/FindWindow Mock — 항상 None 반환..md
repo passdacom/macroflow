@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/mock.py"
 type: "rationale"
-community: "mock.py hooks.py get logical"
+community: "mock.py find window get"
 location: "L71"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/mock.py_hooks.py_get_logical
+  - community/mock.py_find_window_get
 ---
 
 # FindWindow Mock — 항상 None 반환.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[find_window()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical
+#graphify/rationale #graphify/EXTRACTED #community/mock.py_find_window_get

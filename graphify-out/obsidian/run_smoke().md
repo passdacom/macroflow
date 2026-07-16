@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py"
 type: "code"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
 location: "L27"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # run_smoke()
@@ -28,4 +28,4 @@ tags:
 - [[rdp_overlay_audit_smoke.py]] - `contains` [EXTRACTED]
 - [[save()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

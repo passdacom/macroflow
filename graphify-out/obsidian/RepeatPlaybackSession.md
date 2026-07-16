@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py"
 type: "code"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
 location: "L49"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # RepeatPlaybackSession
@@ -44,7 +44,9 @@ tags:
 - [[새 녹화 시작 전 기존 매크로를 pre_recording_.json 으로 임시 저장한다.]] - `uses` [INFERRED]
 - [[속도 콤보 변경 처리. '직접 입력...' 선택 시 수동 입력 다이얼로그를 띄운다.]] - `uses` [INFERRED]
 - [[시퀀서 '에디터로 병합' 결과를 에디터 탭에 로드한다.          병합된 MacroData를 편집 가능한 상태로 에디터에 표시한다.]] - `uses` [INFERRED]
+- [[시퀀서 worker와 관련 overlayhookUI 상태를 함께 정리한다.]] - `uses` [INFERRED]
 - [[시퀀서 더블클릭 시 매크로를 로드하고 에디터 탭으로 전환한다.]] - `uses` [INFERRED]
+- [[시퀀서 탭에 미저장 변경 표시를 반영한다.]] - `uses` [INFERRED]
 - [[시퀀서 탭에서 F7 시퀀스 실행 중이면 중지, 아니면 실행.]] - `uses` [INFERRED]
 - [[시퀀스 완료오류 시 emergency hook 해제 후 툴바·상태바를 갱신한다.]] - `uses` [INFERRED]
 - [[앱 포커스 상태에서 ESC×3 긴급 중지.]] - `uses` [INFERRED]
@@ -63,4 +65,4 @@ tags:
 - [[현재 파일에 덮어쓰기 저장한다.          _current_file이 설정된 경우 확인 다이얼로그 후 덮어쓰기.         _curr]] - `uses` [INFERRED]
 - [[현재 활성 탭이 즐겨찾기인지 반환한다.]] - `uses` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

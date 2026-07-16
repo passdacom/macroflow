@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/append_recording.py"
 type: "rationale"
-community: "append recording test append"
+community: ".mouseMoveEvent TestPlaybackTiming play run"
 location: "L46"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/append_recording_test_append
+  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
 ---
 
 # Append a newly recorded macro to ``base_macro`` and return a new MacroData.
@@ -15,4 +15,4 @@ tags:
 - [[MacroData]] - `uses` [INFERRED]
 - [[append_recording()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/append_recording_test_append
+#graphify/rationale #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run

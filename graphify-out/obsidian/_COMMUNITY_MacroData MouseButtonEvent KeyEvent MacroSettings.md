@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.07
-members: 230
+members: 226
 ---
 
 # MacroData MouseButtonEvent KeyEvent MacroSettings
 
 **Cohesion:** 0.07 - loosely connected
-**Members:** 230 nodes
+**Members:** 226 nodes
 
 ## Members
 - [[RRGGBB 문자열을 (R, G, B) 튜플로 변환한다._1]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
@@ -95,11 +95,7 @@ members: 230
 - [[_Signal]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_remark.py
 - [[_convert_raw 함수 — raw 이벤트 → MacroEvent 변환 테스트.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
 - [[_dict_to_event()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py
-- [[_macro()]] - code - /root/.openclaw/workspace/macroflow/tests/test_functional_audit_regressions.py
-- [[_meta()]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_runtime_safety_smoke.py
-- [[_wait_macro()]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_runtime_safety_smoke.py
 - [[build_smoke_macro()]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_gui_smoke.py
-- [[build_stop_macro()]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_runtime_safety_smoke.py
 - [[color_check_on_mismatch='wait'가 저장 후 동일하게 로드되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
 - [[color_trigger 이벤트 — GetPixel 기반 픽셀 색 감지 대기.      core-beliefs.md 원칙 7 스크린샷 API]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
 - [[condition 이벤트 — DSL 표현식 기반 조건 분기.      Attributes         expression 평가할 DSL 표]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/types.py
@@ -138,7 +134,7 @@ members: 230
 - [[stop 모드는 설정 시간 이후에도 색이 안 맞으면 재생을 중단한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
 - [[stop 모드도 설정 시간 동안 색 변화를 기다리고, 맞으면 클릭을 진행한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
 - [[stop() 호출 후 재생이 중단되어야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_player.py
-- [[test_condition_elapsed_time_preserves_following_recorded_gap()]] - code - /root/.openclaw/workspace/macroflow/tests/test_functional_audit_regressions.py
+- [[test_color_check_click_default_timeout_remains_ten_seconds()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
 - [[test_edit_wheel_delta()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
 - [[test_event_types_roundtrip()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
 - [[test_nested_event_remark_roundtrip()]] - code - /root/.openclaw/workspace/macroflow/tests/test_macro_file.py
@@ -249,26 +245,26 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 159 edges to [[_COMMUNITY_execute event PlayState test]]
-- 91 edges to [[_COMMUNITY_test macro file.py load]]
-- 76 edges to [[_COMMUNITY_MacroSequencerWidget EndNode MacroFlow FlowEngine]]
-- 56 edges to [[_COMMUNITY_EventEditorWidget add single row]]
+- 127 edges to [[_COMMUNITY_execute event PlayState test]]
+- 89 edges to [[_COMMUNITY_test macro file.py load]]
+- 67 edges to [[_COMMUNITY_EndNode MacroFlow FlowEngine MacroNode]]
+- 64 edges to [[_COMMUNITY_EventEditorWidget add single row]]
+- 59 edges to [[_COMMUNITY_MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession]]
 - 53 edges to [[_COMMUNITY_build rows editor rows.py]]
-- 50 edges to [[_COMMUNITY_MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions]]
-- 43 edges to [[_COMMUNITY_convert raw TestConvertRaw stop]]
+- 50 edges to [[_COMMUNITY_.mouseMoveEvent TestPlaybackTiming play run]]
+- 45 edges to [[_COMMUNITY_convert raw TestConvertRaw stop]]
 - 25 edges to [[_COMMUNITY_test color settings regressions.py]]
-- 14 edges to [[_COMMUNITY_test editor context menu.py]]
-- 12 edges to [[_COMMUNITY_rdp runtime safety smoke.py]]
+- 16 edges to [[_COMMUNITY_rdp runtime safety smoke.py]]
 - 10 edges to [[_COMMUNITY_test expression sandbox module.py]]
 - 10 edges to [[_COMMUNITY_test editor insertions.py insert]]
 - 9 edges to [[_COMMUNITY_TestTargetApp test target app.py]]
-- 9 edges to [[_COMMUNITY_append recording test append]]
+- 3 edges to [[_COMMUNITY_test editor table.py table]]
+- 2 edges to [[_COMMUNITY_test editor capture.py start]]
 - 2 edges to [[_COMMUNITY_test rdp gui smoke]]
-- 1 edge to [[_COMMUNITY_mock.py hooks.py get logical]]
 
 ## Top bridge nodes
 - [[MouseButtonEvent]] - degree 241, connects to 9 communities
-- [[MacroData]] - degree 250, connects to 8 communities
-- [[MacroSettings]] - degree 179, connects to 8 communities
-- [[KeyEvent]] - degree 180, connects to 7 communities
-- [[MacroMeta]] - degree 127, connects to 7 communities
+- [[MacroData]] - degree 257, connects to 8 communities
+- [[MacroSettings]] - degree 179, connects to 7 communities
+- [[KeyEvent]] - degree 180, connects to 6 communities
+- [[ColorTriggerEvent]] - degree 170, connects to 6 communities

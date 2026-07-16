@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
-location: "L164"
+community: "EndNode MacroFlow FlowEngine MacroNode"
+location: "L166"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # _dict_to_node()
@@ -21,4 +21,4 @@ tags:
 - [[script_engine.py]] - `contains` [EXTRACTED]
 - [[딕셔너리를 FlowNode 인스턴스로 변환한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/EXTRACTED #community/EndNode_MacroFlow_FlowEngine_MacroNode

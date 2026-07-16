@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_sequencer_backlog.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+community: "EndNode MacroFlow FlowEngine MacroNode"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # test_sequencer_backlog.py
@@ -23,4 +23,4 @@ tags:
 - [[test_sequencer_rejects_duplicate_files_after_path_normalization()]] - `contains` [EXTRACTED]
 - [[test_sequencer_status_mapping_ignores_wait_and_end_nodes()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/EXTRACTED #community/EndNode_MacroFlow_FlowEngine_MacroNode

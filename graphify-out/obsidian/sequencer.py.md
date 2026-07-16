@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+community: "EndNode MacroFlow FlowEngine MacroNode"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # sequencer.py
@@ -17,7 +17,8 @@ tags:
 - [[_MacroItem]] - `contains` [EXTRACTED]
 - [[__init__.py_1]] - `imports_from` [EXTRACTED]
 - [[_linear_gap_ms()]] - `contains` [EXTRACTED]
+- [[_project_linear_flow()]] - `contains` [EXTRACTED]
 - [[display_text()]] - `contains` [EXTRACTED]
 - [[main_window.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/EXTRACTED #community/EndNode_MacroFlow_FlowEngine_MacroNode

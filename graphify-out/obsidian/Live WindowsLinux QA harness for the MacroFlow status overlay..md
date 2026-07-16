@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py"
 type: "rationale"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # Live Windows/Linux QA harness for the MacroFlow status overlay.
@@ -15,4 +15,4 @@ tags:
 - [[OverlayWindow]] - `uses` [INFERRED]
 - [[rdp_overlay_audit_smoke.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/rationale #graphify/EXTRACTED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_player_runtime_safety.py"
 type: "code"
-community: "execute event PlayState test"
+community: ".mouseMoveEvent TestPlaybackTiming play run"
 location: "L58"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/execute_event_PlayState_test
+  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
 ---
 
 # test_stop_interrupts_wait_event_without_post_stop_callback()
@@ -19,4 +19,4 @@ tags:
 - [[play()]] - `calls` [INFERRED]
 - [[test_player_runtime_safety.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test
+#graphify/code #graphify/INFERRED #community/.mouseMoveEvent_TestPlaybackTiming_play_run

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_flow_engine_runtime_safety.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+community: "EndNode MacroFlow FlowEngine MacroNode"
 location: "L54"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # test_stop_interrupts_fixed_wait_without_success_callback()
@@ -21,4 +21,4 @@ tags:
 - [[WaitFixedNode]] - `calls` [INFERRED]
 - [[test_flow_engine_runtime_safety.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_iter_linear_macro_paths_normalization.py"
 type: "code"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+community: "EndNode MacroFlow FlowEngine MacroNode"
 location: "L16"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # test_iter_linear_macro_paths_normalizes_relative_dot_segments()
@@ -20,4 +20,4 @@ tags:
 - [[iter_linear_macro_paths()]] - `calls` [INFERRED]
 - [[test_iter_linear_macro_paths_normalization.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode

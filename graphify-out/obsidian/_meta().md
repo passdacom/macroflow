@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_runtime_safety_smoke.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+community: "rdp runtime safety smoke.py"
 location: "L29"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
+  - community/rdp_runtime_safety_smoke.py
 ---
 
 # _meta()
@@ -17,4 +17,4 @@ tags:
 - [[build_stop_macro()]] - `calls` [EXTRACTED]
 - [[rdp_runtime_safety_smoke.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
+#graphify/code #graphify/EXTRACTED #community/rdp_runtime_safety_smoke.py

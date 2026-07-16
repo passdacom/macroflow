@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "code"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
 location: "L66"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # MainWindow
@@ -67,11 +67,13 @@ tags:
 - [[._start_recording()]] - `method` [EXTRACTED]
 - [[._stop_playback()]] - `method` [EXTRACTED]
 - [[._stop_recording_worker()]] - `method` [EXTRACTED]
+- [[._stop_sequencer()]] - `method` [EXTRACTED]
 - [[._toggle_playback()]] - `method` [EXTRACTED]
 - [[._toggle_recording()]] - `method` [EXTRACTED]
 - [[._toggle_sequencer()]] - `method` [EXTRACTED]
 - [[._unregister_hotkeys()]] - `method` [EXTRACTED]
 - [[._update_range_spinboxes()]] - `method` [EXTRACTED]
+- [[._update_sequencer_tab_title()]] - `method` [EXTRACTED]
 - [[._update_toolbar()]] - `method` [EXTRACTED]
 - [[.closeEvent()]] - `method` [EXTRACTED]
 - [[.keyPressEvent()]] - `method` [EXTRACTED]
@@ -97,4 +99,4 @@ tags:
 - [[main()]] - `calls` [INFERRED]
 - [[main_window.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

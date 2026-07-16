@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_f6_capture.py"
 type: "code"
-community: "EventEditorWidget add single row"
+community: "test editor capture.py start"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/EventEditorWidget_add_single_row
+  - community/test_editor_capture.py_start
 ---
 
 # _install_fake_pyqt()
@@ -15,4 +15,4 @@ tags:
 - [[_import_editor()_1]] - `calls` [EXTRACTED]
 - [[test_editor_f6_capture.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/EventEditorWidget_add_single_row
+#graphify/code #graphify/EXTRACTED #community/test_editor_capture.py_start

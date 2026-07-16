@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "EventEditorWidget add single row"
-location: "L1010"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+location: "L1034"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/EventEditorWidget_add_single_row
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # 현재 매크로와 앱 공통 색 체크 timeout/폴링 기본값을 편집한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/EventEditorWidget_add_single_row
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

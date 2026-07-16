@@ -2,7 +2,7 @@
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "rationale"
 community: "execute event PlayState test"
-location: "L649"
+location: "L669"
 tags:
   - graphify/rationale
   - graphify/INFERRED

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L1509"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+location: "L1533"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # 새 녹화 시작 전 기존 매크로를 pre_recording_*.json 으로 임시 저장한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

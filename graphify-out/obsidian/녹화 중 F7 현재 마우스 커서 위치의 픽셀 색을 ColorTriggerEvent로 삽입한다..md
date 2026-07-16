@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L983"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+location: "L1007"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # 녹화 중 F7: 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

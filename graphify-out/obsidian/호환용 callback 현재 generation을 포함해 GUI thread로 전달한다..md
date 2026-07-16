@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
 type: "rationale"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
-location: "L676"
+community: "EndNode MacroFlow FlowEngine MacroNode"
+location: "L813"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # 호환용 callback: 현재 generation을 포함해 GUI thread로 전달한다.
@@ -20,4 +20,4 @@ tags:
 - [[MacroNode]] - `uses` [INFERRED]
 - [[WaitFixedNode]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode

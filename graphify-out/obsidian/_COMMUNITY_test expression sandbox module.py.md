@@ -50,8 +50,8 @@ SORT file.name ASC
 
 ## Connections to other communities
 - 10 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MacroSettings]]
-- 2 edges to [[_COMMUNITY_MacroSequencerWidget EndNode MacroFlow FlowEngine]]
-- 1 edge to [[_COMMUNITY_MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions]]
+- 2 edges to [[_COMMUNITY_EndNode MacroFlow FlowEngine MacroNode]]
+- 1 edge to [[_COMMUNITY_MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession]]
 - 1 edge to [[_COMMUNITY_execute event PlayState test]]
 
 ## Top bridge nodes

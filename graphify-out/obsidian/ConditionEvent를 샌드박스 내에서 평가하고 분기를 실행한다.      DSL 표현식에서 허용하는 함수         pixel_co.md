@@ -2,7 +2,7 @@
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "rationale"
 community: "test expression sandbox module.py"
-location: "L585"
+location: "L605"
 tags:
   - graphify/rationale
   - graphify/INFERRED

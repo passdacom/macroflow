@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "rationale"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
-location: "L442"
+community: "EndNode MacroFlow FlowEngine MacroNode"
+location: "L462"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # 매크로 JSON 파일을 동기적으로 재생하고 다음 노드 ID를 반환한다.
@@ -16,4 +16,4 @@ tags:
 - [[ConditionEvent]] - `uses` [INFERRED]
 - [[LoopEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode

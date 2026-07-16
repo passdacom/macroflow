@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py"
 type: "code"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # full_playback_options()
@@ -18,4 +18,4 @@ tags:
 - [[playback_repeat.py]] - `contains` [EXTRACTED]
 - [[test_full_playback_options_ignore_range_spinbox_values()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

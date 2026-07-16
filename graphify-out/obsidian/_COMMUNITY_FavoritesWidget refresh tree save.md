@@ -1,13 +1,13 @@
 ---
 type: community
 cohesion: 0.05
-members: 79
+members: 76
 ---
 
 # FavoritesWidget refresh tree save
 
 **Cohesion:** 0.05 - loosely connected
-**Members:** 79 nodes
+**Members:** 76 nodes
 
 ## Members
 - [[.__init__()_1]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
@@ -17,7 +17,6 @@ members: 79
 - [[._add_selected_to_sequencer()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._all_indexed_filenames()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._apply_search_filter()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
-- [[._build_batch_item_menu()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._build_group_menu()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._build_item_menu()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._context_menu()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
@@ -44,7 +43,6 @@ members: 79
 - [[._selected_item_count()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._selected_item_filenames()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[._selected_item_paths()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
-- [[.addMenu()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py
 - [[.add_favorite()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[.dropEvent()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[.set_favorites_dir()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
@@ -75,7 +73,6 @@ members: 79
 - [[검색어에 따라 트리 항목 표시숨김을 적용한다.          검색어가 비어있으면 모두 표시.         검색어가 있으면 이름에 검색어(대]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[그룹 펼침접힘 상태를 인덱스에 즉시 반영한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[기본 그룹이 없으면 인덱스 맨 앞에 생성한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
-- [[다중 선택된 즐겨찾기 항목의 일괄 작업 메뉴를 구성한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[드래그앤드롭 완료 후 트리 순서를 인덱스에 반영한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[드래그앤드롭 유효성을 검사하는 즐겨찾기 트리 위젯.      그룹 항목은 루트 레벨 재정렬만 허용하고,     매크로 항목은 반드시 그룹 하위에]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
 - [[드롭 위치를 검사하여 유효하지 않은 이동을 차단한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py
@@ -98,16 +95,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 39 edges to [[_COMMUNITY_MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions]]
+- 43 edges to [[_COMMUNITY_MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession]]
 - 14 edges to [[_COMMUNITY_EventEditorWidget add single row]]
 - 2 edges to [[_COMMUNITY_test macro file.py load]]
 - 2 edges to [[_COMMUNITY_test editor table.py table]]
-- 1 edge to [[_COMMUNITY_MacroSequencerWidget EndNode MacroFlow FlowEngine]]
-- 1 edge to [[_COMMUNITY_test editor context menu.py]]
 
 ## Top bridge nodes
-- [[FavoritesWidget]] - degree 76, connects to 2 communities
+- [[FavoritesWidget]] - degree 78, connects to 2 communities
 - [[._refresh_tree()]] - degree 21, connects to 2 communities
 - [[.add_favorite()]] - degree 9, connects to 2 communities
-- [[.addMenu()]] - degree 5, connects to 2 communities
 - [[._build_item_menu()]] - degree 11, connects to 1 community
+- [[._load_index()]] - degree 7, connects to 1 community

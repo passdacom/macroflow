@@ -2,7 +2,7 @@
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "code"
 community: "test expression sandbox module.py"
-location: "L579"
+location: "L599"
 tags:
   - graphify/code
   - graphify/EXTRACTED

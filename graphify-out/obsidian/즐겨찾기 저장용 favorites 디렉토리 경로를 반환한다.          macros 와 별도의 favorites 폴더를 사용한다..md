@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L1429"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+location: "L1453"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # 즐겨찾기 저장용 favorites 디렉토리 경로를 반환한다.          macros/ 와 별도의 favorites/ 폴더를 사용한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

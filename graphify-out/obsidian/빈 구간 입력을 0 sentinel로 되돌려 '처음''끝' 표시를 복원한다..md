@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L905"
+community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+location: "L929"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
 ---
 
 # 빈 구간 입력을 0 sentinel로 되돌려 '처음'/'끝' 표시를 복원한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession

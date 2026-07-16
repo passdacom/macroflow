@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/append_recording.py"
 type: "rationale"
-community: "append recording test append"
+community: ".mouseMoveEvent TestPlaybackTiming play run"
 location: "L22"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/append_recording_test_append
+  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
 ---
 
 # Return copies of ``events`` shifted so the first event starts at a timestamp.
@@ -15,4 +15,4 @@ tags:
 - [[MacroData]] - `uses` [INFERRED]
 - [[shift_event_timestamps()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/append_recording_test_append
+#graphify/rationale #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run

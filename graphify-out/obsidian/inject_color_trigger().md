@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
 type: "code"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+community: "convert raw TestConvertRaw stop"
 location: "L339"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - community/convert_raw_TestConvertRaw_stop
 ---
 
 # inject_color_trigger()
@@ -18,4 +18,4 @@ tags:
 - [[recorder.py]] - `contains` [EXTRACTED]
 - [[녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.      녹화 중이 아니면 무시된다.      Args]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_stop

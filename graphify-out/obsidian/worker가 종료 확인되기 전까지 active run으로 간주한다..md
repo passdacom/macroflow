@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
 type: "rationale"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
-location: "L358"
+community: "EndNode MacroFlow FlowEngine MacroNode"
+location: "L465"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # worker가 종료 확인되기 전까지 active run으로 간주한다.
@@ -20,4 +20,4 @@ tags:
 - [[MacroNode]] - `uses` [INFERRED]
 - [[WaitFixedNode]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode

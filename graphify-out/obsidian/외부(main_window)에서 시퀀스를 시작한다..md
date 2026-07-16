@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
 type: "rationale"
-community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
-location: "L362"
+community: "EndNode MacroFlow FlowEngine MacroNode"
+location: "L469"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+  - community/EndNode_MacroFlow_FlowEngine_MacroNode
 ---
 
 # 외부(main_window)에서 시퀀스를 시작한다.
@@ -20,4 +20,4 @@ tags:
 - [[MacroNode]] - `uses` [INFERRED]
 - [[WaitFixedNode]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
+#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode

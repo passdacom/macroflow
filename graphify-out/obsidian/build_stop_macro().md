@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_runtime_safety_smoke.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+community: "rdp runtime safety smoke.py"
 location: "L41"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
+  - community/rdp_runtime_safety_smoke.py
 ---
 
 # build_stop_macro()
@@ -22,4 +22,4 @@ tags:
 - [[rdp_runtime_safety_smoke.py]] - `contains` [EXTRACTED]
 - [[test_stop_macro_waits_before_real_click()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
+#graphify/code #graphify/INFERRED #community/rdp_runtime_safety_smoke.py

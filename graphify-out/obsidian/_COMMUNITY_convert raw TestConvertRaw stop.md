@@ -1,13 +1,13 @@
 ---
 type: community
-cohesion: 0.10
-members: 35
+cohesion: 0.09
+members: 38
 ---
 
 # convert raw TestConvertRaw stop
 
-**Cohesion:** 0.10 - loosely connected
-**Members:** 35 nodes
+**Cohesion:** 0.09 - loosely connected
+**Members:** 38 nodes
 
 ## Members
 - [[.setup_method()]] - code - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
@@ -36,13 +36,16 @@ members: 35
 - [[TestConvertRaw]] - code - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
 - [[TestRecorderIntegration]] - code - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
 - [[TestVkToKey]] - code - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
+- [[WM_QUIT을 펌프 스레드에 보내 Hook을 해제하고 스레드를 종료한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py
 - [[_check_esc_triple()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[_consumer_loop()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[_convert_raw()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[_vk_to_key()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[get_event_count()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[inject_color_trigger()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[is_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[recorder.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
+- [[stop_hook()_1]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py
 - [[stop_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
 - [[test_recorder.py]] - code - /root/.openclaw/workspace/macroflow/tests/test_recorder.py
 
@@ -54,14 +57,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 43 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MacroSettings]]
-- 8 edges to [[_COMMUNITY_MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions]]
-- 3 edges to [[_COMMUNITY_mock.py hooks.py get logical]]
-- 2 edges to [[_COMMUNITY_execute event PlayState test]]
+- 45 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MacroSettings]]
+- 7 edges to [[_COMMUNITY_MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession]]
+- 4 edges to [[_COMMUNITY_execute event PlayState test]]
+- 1 edge to [[_COMMUNITY_.mouseMoveEvent TestPlaybackTiming play run]]
 
 ## Top bridge nodes
 - [[_convert_raw()]] - degree 24, connects to 3 communities
-- [[stop_recording()]] - degree 11, connects to 3 communities
-- [[recorder.py]] - degree 10, connects to 3 communities
+- [[stop_recording()]] - degree 11, connects to 2 communities
+- [[recorder.py]] - degree 10, connects to 2 communities
+- [[inject_color_trigger()]] - degree 5, connects to 2 communities
 - [[.test_inject_color_trigger_accepts_configured_timeout_and_interval()]] - degree 5, connects to 2 communities
-- [[.test_start_stop_returns_macro_data()]] - degree 5, connects to 2 communities
