@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_flow_engine_runtime_safety.py"
+source_file: "./tests/test_flow_engine_runtime_safety.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L21"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # test_missing_macro_reports_node_failure_once()
@@ -19,4 +19,4 @@ tags:
 - [[MacroNode]] - `calls` [INFERRED]
 - [[test_flow_engine_runtime_safety.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

@@ -10,11 +10,11 @@ members: 5
 **Members:** 5 nodes
 
 ## Members
-- [[Real-PyQt subprocess regressions for runtime-only UI paths.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_qt_runtime_safety.py
-- [[_run_offscreen()]] - code - /root/.openclaw/workspace/macroflow/tests/test_qt_runtime_safety.py
-- [[test_main_window_shortcut_fallback_uses_real_pyqt_shortcut()]] - code - /root/.openclaw/workspace/macroflow/tests/test_qt_runtime_safety.py
-- [[test_qt_runtime_safety.py]] - code - /root/.openclaw/workspace/macroflow/tests/test_qt_runtime_safety.py
-- [[test_sequencer_worker_callbacks_update_visible_state_on_gui_thread()]] - code - /root/.openclaw/workspace/macroflow/tests/test_qt_runtime_safety.py
+- [[Real-PyQt subprocess regressions for runtime-only UI paths.]] - rationale - ./tests/test_qt_runtime_safety.py
+- [[_run_offscreen()]] - code - ./tests/test_qt_runtime_safety.py
+- [[test_main_window_shortcut_fallback_uses_real_pyqt_shortcut()]] - code - ./tests/test_qt_runtime_safety.py
+- [[test_qt_runtime_safety.py]] - code - ./tests/test_qt_runtime_safety.py
+- [[test_sequencer_worker_callbacks_update_visible_state_on_gui_thread()]] - code - ./tests/test_qt_runtime_safety.py
 
 ## Live Query (requires Dataview plugin)
 

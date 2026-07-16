@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_docs_command_contract.py"
+source_file: "./tests/test_docs_command_contract.py"
 type: "code"
 community: "test docs command contract.py"
 location: "L8"

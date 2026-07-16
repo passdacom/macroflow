@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
+source_file: "./src/macroflow/recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw stop"
+community: "convert raw TestConvertRaw recorder.py"
 location: "L339"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/convert_raw_TestConvertRaw_stop
+  - community/convert_raw_TestConvertRaw_recorder.py
 ---
 
 # inject_color_trigger()
@@ -18,4 +18,4 @@ tags:
 - [[recorder.py]] - `contains` [EXTRACTED]
 - [[녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.      녹화 중이 아니면 무시된다.      Args]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_stop
+#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_recorder.py

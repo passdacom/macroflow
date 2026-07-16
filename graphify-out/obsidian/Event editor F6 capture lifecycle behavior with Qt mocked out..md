@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_f6_capture.py"
+source_file: "./tests/test_editor_f6_capture.py"
 type: "rationale"
-community: "test editor capture.py start"
+community: "EventEditorWidget add single row"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/test_editor_capture.py_start
+  - community/EventEditorWidget_add_single_row
 ---
 
 # Event editor F6 capture lifecycle behavior with Qt mocked out.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_editor_f6_capture.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/test_editor_capture.py_start
+#graphify/rationale #graphify/EXTRACTED #community/EventEditorWidget_add_single_row

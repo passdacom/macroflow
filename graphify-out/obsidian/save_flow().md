@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L277"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # save_flow()
@@ -16,4 +16,4 @@ tags:
 - [[_node_to_dict()]] - `calls` [EXTRACTED]
 - [[script_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_playback_repeat.py"
+source_file: "./tests/test_playback_repeat.py"
 type: "code"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 location: "L45"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # test_full_playback_options_ignore_range_spinbox_values()
@@ -16,4 +16,4 @@ tags:
 - [[full_playback_options()]] - `calls` [INFERRED]
 - [[test_playback_repeat.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

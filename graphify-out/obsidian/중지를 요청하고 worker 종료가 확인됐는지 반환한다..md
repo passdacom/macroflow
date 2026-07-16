@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
+source_file: "./src/macroflow/ui/sequencer.py"
 type: "rationale"
-community: "EndNode MacroFlow FlowEngine MacroNode"
-location: "L474"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L478"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # 중지를 요청하고 worker 종료가 확인됐는지 반환한다.
@@ -20,4 +20,4 @@ tags:
 - [[MacroNode]] - `uses` [INFERRED]
 - [[WaitFixedNode]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

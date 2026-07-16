@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py"
+source_file: "./src/macroflow/ui/editor_rows.py"
 type: "code"
 community: "build rows editor rows.py"
 location: "L113"

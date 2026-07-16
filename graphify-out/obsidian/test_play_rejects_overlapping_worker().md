@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player_runtime_safety.py"
+source_file: "./tests/test_player_runtime_safety.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "execute event PlayState test"
 location: "L171"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/execute_event_PlayState_test
 ---
 
 # test_play_rejects_overlapping_worker()
@@ -17,4 +17,4 @@ tags:
 - [[play()]] - `calls` [INFERRED]
 - [[test_player_runtime_safety.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_sequencer_dirty_state.py"
+source_file: "./tests/test_sequencer_dirty_state.py"
 type: "code"
 community: "test sequencer dirty state.py"
 location: "L28"

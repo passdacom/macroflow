@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "rationale"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L59"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # GetPixel 기반 픽셀 색 감지 대기 노드.
@@ -16,4 +16,4 @@ tags:
 - [[ConditionEvent]] - `uses` [INFERRED]
 - [[LoopEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

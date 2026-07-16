@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # QMainWindow
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[MainWindow]] - `inherits` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/code #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

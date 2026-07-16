@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/__init__.py"
+source_file: "./src/macroflow/ui/__init__.py"
 type: "code"
-community: "execute event PlayState test"
+community: "mock.py hooks.py get logical"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/execute_event_PlayState_test
+  - community/mock.py_hooks.py_get_logical
 ---
 
 # __init__.py
@@ -17,4 +17,4 @@ tags:
 - [[main_window.py]] - `imports_from` [EXTRACTED]
 - [[sequencer.py]] - `imports_from` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test
+#graphify/code #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical

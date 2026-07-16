@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/expression_sandbox.py"
+source_file: "./src/macroflow/expression_sandbox.py"
 type: "rationale"
 community: "test expression sandbox module.py"
 location: "L75"

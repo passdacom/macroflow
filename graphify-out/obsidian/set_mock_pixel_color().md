@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/mock.py"
+source_file: "./src/macroflow/win32/mock.py"
 type: "code"
-community: "mock.py find window get"
+community: "mock.py hooks.py get logical"
 location: "L33"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/mock.py_find_window_get
+  - community/mock.py_hooks.py_get_logical
 ---
 
 # set_mock_pixel_color()
@@ -15,4 +15,4 @@ tags:
 - [[mock.py]] - `contains` [EXTRACTED]
 - [[테스트에서 GetPixel 반환값을 제어하기 위한 헬퍼.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/mock.py_find_window_get
+#graphify/code #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical

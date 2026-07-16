@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_ui_package_imports.py"
+source_file: "./tests/test_ui_package_imports.py"
 type: "code"
 community: "test package imports.py test"
 location: "L9"

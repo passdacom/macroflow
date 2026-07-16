@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_functional_audit_regressions.py"
+source_file: "./tests/test_functional_audit_regressions.py"
 type: "code"
-community: "execute event PlayState test"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L42"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/execute_event_PlayState_test
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # _macro()
@@ -19,4 +19,4 @@ tags:
 - [[test_delay_override_shifts_following_timestamp_and_preserves_click()]] - `calls` [EXTRACTED]
 - [[test_functional_audit_regressions.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test
+#graphify/code #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

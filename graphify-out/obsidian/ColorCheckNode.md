@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L58"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # ColorCheckNode
@@ -24,4 +24,4 @@ tags:
 - [[test_flow_color_timeout_rejects_match_after_deadline()]] - `calls` [INFERRED]
 - [[test_stop_interrupts_color_check_poll_without_callback()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

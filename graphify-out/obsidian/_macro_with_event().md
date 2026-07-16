@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py"
+source_file: "./tests/test_editor_context_menu.py"
 type: "code"
-community: "EventEditorWidget add single row"
+community: "test editor context menu.py"
 location: "L139"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/EventEditorWidget_add_single_row
+  - community/test_editor_context_menu.py
 ---
 
 # _macro_with_event()
@@ -16,4 +16,4 @@ tags:
 - [[test_editor_context_menu.py]] - `contains` [EXTRACTED]
 - [[test_text_input_menu_includes_text_edit_and_common_insert_actions()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/EventEditorWidget_add_single_row
+#graphify/code #graphify/EXTRACTED #community/test_editor_context_menu.py

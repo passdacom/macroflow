@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tools/run_rdp_gui_smoke.ps1"
+source_file: "./tools/run_rdp_gui_smoke.ps1"
 type: "code"
 community: "run rdp gui smoke.ps1"
 location: "L1"

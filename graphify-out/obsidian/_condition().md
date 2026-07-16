@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_script_engine_security.py"
+source_file: "./tests/test_script_engine_security.py"
 type: "code"
 community: "test expression sandbox module.py"
 location: "L14"

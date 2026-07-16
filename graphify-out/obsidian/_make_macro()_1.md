@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player_runtime_safety.py"
+source_file: "./tests/test_player_runtime_safety.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "execute event PlayState test"
 location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/execute_event_PlayState_test
 ---
 
 # _make_macro()
@@ -23,4 +23,4 @@ tags:
 - [[test_stop_interrupts_wait_event_without_post_stop_callback()]] - `calls` [EXTRACTED]
 - [[test_user_stop_during_click_color_wait_does_not_emit_mismatch_error()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

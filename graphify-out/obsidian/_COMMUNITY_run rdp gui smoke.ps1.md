@@ -10,7 +10,7 @@ members: 1
 **Members:** 1 nodes
 
 ## Members
-- [[run_rdp_gui_smoke.ps1]] - code - /root/.openclaw/workspace/macroflow/tools/run_rdp_gui_smoke.ps1
+- [[run_rdp_gui_smoke.ps1]] - code - ./tools/run_rdp_gui_smoke.ps1
 
 ## Live Query (requires Dataview plugin)
 

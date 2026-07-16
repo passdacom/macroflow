@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_append_recording.py"
+source_file: "./tests/test_append_recording.py"
 type: "rationale"
 community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L1"

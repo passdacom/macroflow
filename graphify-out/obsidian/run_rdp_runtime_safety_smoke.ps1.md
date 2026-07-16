@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tools/run_rdp_runtime_safety_smoke.ps1"
+source_file: "./tools/run_rdp_runtime_safety_smoke.ps1"
 type: "code"
 community: "run rdp runtime safety"
 location: "L1"

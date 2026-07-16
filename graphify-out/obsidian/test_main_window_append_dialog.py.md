@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_main_window_append_dialog.py"
+source_file: "./tests/test_main_window_append_dialog.py"
 type: "code"
 community: "test main window append"
 location: "L1"

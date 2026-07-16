@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_flow_engine_runtime_safety.py"
+source_file: "./tests/test_flow_engine_runtime_safety.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L89"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # test_stop_interrupts_color_check_poll_without_callback()
@@ -21,4 +21,4 @@ tags:
 - [[MacroFlow]] - `calls` [INFERRED]
 - [[test_flow_engine_runtime_safety.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

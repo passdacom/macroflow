@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_gui_smoke.py"
+source_file: "./tools/rdp_gui_smoke.py"
 type: "code"
 community: "TestTargetApp test target app.py"
 location: "L190"

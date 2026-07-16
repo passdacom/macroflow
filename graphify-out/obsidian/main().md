@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/main.py"
+source_file: "./src/macroflow/main.py"
 type: "code"
 community: "main main.py setup logging"
 location: "L65"

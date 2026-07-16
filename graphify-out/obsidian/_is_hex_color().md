@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_table.py"
+source_file: "./src/macroflow/ui/editor_table.py"
 type: "code"
 community: "test editor table.py table"
 location: "L28"

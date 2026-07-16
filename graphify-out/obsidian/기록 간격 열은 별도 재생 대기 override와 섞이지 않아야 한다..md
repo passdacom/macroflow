@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_relative_time.py"
+source_file: "./tests/test_editor_relative_time.py"
 type: "rationale"
 community: "build rows editor rows.py"
 location: "L68"

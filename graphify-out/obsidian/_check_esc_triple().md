@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
+source_file: "./src/macroflow/recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw stop"
+community: "convert raw TestConvertRaw recorder.py"
 location: "L210"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_stop
+  - community/convert_raw_TestConvertRaw_recorder.py
 ---
 
 # _check_esc_triple()
@@ -16,4 +16,4 @@ tags:
 - [[_consumer_loop()]] - `calls` [EXTRACTED]
 - [[recorder.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_stop
+#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_recorder.py

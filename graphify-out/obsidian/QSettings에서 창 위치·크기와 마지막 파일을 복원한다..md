@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
+source_file: "./src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
-location: "L506"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+location: "L525"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # QSettings에서 창 위치·크기와 마지막 파일을 복원한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/rationale #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

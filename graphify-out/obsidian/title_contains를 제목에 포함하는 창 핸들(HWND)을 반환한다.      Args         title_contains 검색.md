@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py"
+source_file: "./src/macroflow/win32/hooks.py"
 type: "rationale"
 community: "execute event PlayState test"
 location: "L399"

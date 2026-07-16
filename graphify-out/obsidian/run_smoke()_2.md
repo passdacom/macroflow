@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_sequencer_flow_smoke.py"
+source_file: "./tools/rdp_sequencer_flow_smoke.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L81"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # run_smoke()
@@ -26,4 +26,4 @@ tags:
 - [[rdp_sequencer_flow_smoke.py]] - `contains` [EXTRACTED]
 - [[save()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

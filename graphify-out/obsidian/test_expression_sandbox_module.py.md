@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_expression_sandbox_module.py"
+source_file: "./tests/test_expression_sandbox_module.py"
 type: "code"
 community: "test expression sandbox module.py"
 location: "L1"

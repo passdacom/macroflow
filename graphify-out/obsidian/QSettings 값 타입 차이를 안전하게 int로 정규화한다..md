@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
+source_file: "./src/macroflow/ui/main_window.py"
 type: "rationale"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
-location: "L429"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
+location: "L448"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # QSettings 값 타입 차이를 안전하게 int로 정규화한다.
@@ -21,4 +21,4 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/rationale #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

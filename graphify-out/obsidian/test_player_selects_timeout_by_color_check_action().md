@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_color_settings_regressions.py"
+source_file: "./tests/test_color_settings_regressions.py"
 type: "code"
-community: "test color settings regressions.py"
+community: "execute event PlayState test"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/test_color_settings_regressions.py
+  - community/execute_event_PlayState_test
 ---
 
 # test_player_selects_timeout_by_color_check_action()
@@ -17,4 +17,4 @@ tags:
 - [[test_color_settings_regressions.py]] - `contains` [EXTRACTED]
 - [[클릭 색 체크 runtime은 이벤트의 mismatch action별 timeout을 선택해야 한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/test_color_settings_regressions.py
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

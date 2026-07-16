@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_sequencer_backlog.py"
+source_file: "./tests/test_sequencer_backlog.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L124"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # test_main_save_shortcuts_route_to_sequencer_on_sequencer_tab()
@@ -16,4 +16,4 @@ tags:
 - [[test_sequencer_backlog.py]] - `contains` [EXTRACTED]
 - [[메인 창 Ctrl+S다른 이름 저장은 시퀀서 탭에서 플로우 저장으로 위임한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
+source_file: "./src/macroflow/ui/sequencer.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
-location: "L178"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L182"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # _MacroItem
@@ -23,4 +23,4 @@ tags:
 - [[WaitFixedNode]] - `uses` [INFERRED]
 - [[sequencer.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

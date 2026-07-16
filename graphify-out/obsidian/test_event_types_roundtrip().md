@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "./tests/test_macro_file.py"
 type: "code"
 community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L323"

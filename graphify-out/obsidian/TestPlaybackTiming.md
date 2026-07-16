@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
+source_file: "./tests/test_player.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "execute event PlayState test"
 location: "L146"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/execute_event_PlayState_test
 ---
 
 # TestPlaybackTiming
@@ -31,4 +31,4 @@ tags:
 - [[test_player.py]] - `contains` [EXTRACTED]
 - [[절대 타임스탬프 기준 재생 및 드리프트 보정 테스트.      core-beliefs.md 원칙 3 검증.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

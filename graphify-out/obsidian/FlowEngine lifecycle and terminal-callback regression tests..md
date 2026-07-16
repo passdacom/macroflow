@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_flow_engine_runtime_safety.py"
+source_file: "./tests/test_flow_engine_runtime_safety.py"
 type: "rationale"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # FlowEngine lifecycle and terminal-callback regression tests.
@@ -20,4 +20,4 @@ tags:
 - [[WaitFixedNode]] - `uses` [INFERRED]
 - [[test_flow_engine_runtime_safety.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

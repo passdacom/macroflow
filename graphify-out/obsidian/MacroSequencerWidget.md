@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
+source_file: "./src/macroflow/ui/sequencer.py"
 type: "code"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
-location: "L193"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L197"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # MacroSequencerWidget
@@ -84,6 +84,7 @@ tags:
 - [[경로에서 매크로를 로드하여 에디터에 표시한다.]] - `uses` [INFERRED]
 - [[구간 SpinBox 값에서 event_range (start, end exclusive)를 계산한다.]] - `uses` [INFERRED]
 - [[구간 재생 전용 버튼 구간이 설정된 경우에만 1회 재생한다.]] - `uses` [INFERRED]
+- [[녹화 저장 worker 완료를 기다리고 완료 signal까지 UI에 반영한다.]] - `uses` [INFERRED]
 - [[녹화 중 F7 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다.]] - `uses` [INFERRED]
 - [[매크로 로드 후 구간 SpinBox 범위를 갱신한다.]] - `uses` [INFERRED]
 - [[매크로 시퀀서 위젯.      QListWidget 기반 드래그앤드롭 정렬 + 실행 상태 표시.     매크로 JSON 파일을 목록에 추가하여]] - `rationale_for` [EXTRACTED]
@@ -112,4 +113,4 @@ tags:
 - [[현재 파일에 덮어쓰기 저장한다.          _current_file이 설정된 경우 확인 다이얼로그 후 덮어쓰기.         _curr]] - `uses` [INFERRED]
 - [[현재 활성 탭이 즐겨찾기인지 반환한다.]] - `uses` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

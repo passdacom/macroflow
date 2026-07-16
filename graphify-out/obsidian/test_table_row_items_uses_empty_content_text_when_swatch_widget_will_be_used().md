@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_table.py"
+source_file: "./tests/test_editor_table.py"
 type: "code"
 community: "test editor table.py table"
 location: "L231"

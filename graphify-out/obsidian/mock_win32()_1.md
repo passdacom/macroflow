@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
+source_file: "./tests/test_player.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "execute event PlayState test"
 location: "L89"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/execute_event_PlayState_test
 ---
 
 # mock_win32()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[test_player.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_functional_audit_regressions.py"
+source_file: "./tests/test_functional_audit_regressions.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L169"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # test_flow_color_check_timeout_zero_waits_until_match()
@@ -17,4 +17,4 @@ tags:
 - [[FlowEngine]] - `calls` [INFERRED]
 - [[test_functional_audit_regressions.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

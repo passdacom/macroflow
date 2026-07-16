@@ -10,7 +10,7 @@ members: 1
 **Members:** 1 nodes
 
 ## Members
-- [[Return whether a complete repeat-session stop was requested.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
+- [[Return whether a complete repeat-session stop was requested.]] - rationale - ./src/macroflow/ui/playback_repeat.py
 
 ## Live Query (requires Dataview plugin)
 

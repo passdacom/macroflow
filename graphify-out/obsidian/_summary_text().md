@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_summary.py"
+source_file: "./src/macroflow/ui/editor_summary.py"
 type: "code"
 community: "summary text test editor"
 location: "L9"

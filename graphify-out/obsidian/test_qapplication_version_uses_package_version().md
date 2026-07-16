@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_version.py"
+source_file: "./tests/test_version.py"
 type: "code"
 community: "test version.py test package"
 location: "L18"

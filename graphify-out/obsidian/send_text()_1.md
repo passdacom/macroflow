@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/sendinput.py"
+source_file: "./src/macroflow/win32/sendinput.py"
 type: "code"
 community: "execute event PlayState test"
 location: "L253"

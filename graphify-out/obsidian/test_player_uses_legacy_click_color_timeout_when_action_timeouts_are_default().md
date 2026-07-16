@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_color_settings_regressions.py"
+source_file: "./tests/test_color_settings_regressions.py"
 type: "code"
-community: "test color settings regressions.py"
+community: "execute event PlayState test"
 location: "L65"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/test_color_settings_regressions.py
+  - community/execute_event_PlayState_test
 ---
 
 # test_player_uses_legacy_click_color_timeout_when_action_timeouts_are_default()
@@ -17,4 +17,4 @@ tags:
 - [[legacy 단일 timeout만 설정한 기존 호출 경로도 기존 값으로 동작해야 한다.]] - `rationale_for` [EXTRACTED]
 - [[test_color_settings_regressions.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/test_color_settings_regressions.py
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

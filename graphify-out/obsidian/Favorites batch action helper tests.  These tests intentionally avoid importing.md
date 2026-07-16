@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_favorites_batch.py"
+source_file: "./tests/test_favorites_batch.py"
 type: "rationale"
 community: "FavoritesWidget refresh tree save"
 location: "L1"

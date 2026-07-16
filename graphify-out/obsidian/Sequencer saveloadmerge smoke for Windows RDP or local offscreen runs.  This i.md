@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tools/rdp_sequencer_flow_smoke.py"
+source_file: "./tools/rdp_sequencer_flow_smoke.py"
 type: "rationale"
 community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L1"

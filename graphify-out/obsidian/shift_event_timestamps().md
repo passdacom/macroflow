@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/append_recording.py"
+source_file: "./src/macroflow/ui/append_recording.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "append recording test append"
 location: "L17"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/append_recording_test_append
 ---
 
 # shift_event_timestamps()
@@ -17,4 +17,4 @@ tags:
 - [[append_recording.py]] - `contains` [EXTRACTED]
 - [[test_shift_event_timestamps_preserves_relative_deltas_and_original_events()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/EXTRACTED #community/append_recording_test_append

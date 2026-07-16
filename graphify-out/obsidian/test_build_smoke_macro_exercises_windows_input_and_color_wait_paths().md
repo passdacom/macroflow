@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_rdp_gui_smoke_harness.py"
+source_file: "./tests/test_rdp_gui_smoke_harness.py"
 type: "code"
 community: "test rdp gui smoke"
 location: "L27"

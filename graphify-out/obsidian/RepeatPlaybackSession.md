@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py"
+source_file: "./src/macroflow/ui/playback_repeat.py"
 type: "code"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 location: "L49"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # RepeatPlaybackSession
@@ -38,6 +38,7 @@ tags:
 - [[경로에서 매크로를 로드하여 에디터에 표시한다.]] - `uses` [INFERRED]
 - [[구간 SpinBox 값에서 event_range (start, end exclusive)를 계산한다.]] - `uses` [INFERRED]
 - [[구간 재생 전용 버튼 구간이 설정된 경우에만 1회 재생한다.]] - `uses` [INFERRED]
+- [[녹화 저장 worker 완료를 기다리고 완료 signal까지 UI에 반영한다.]] - `uses` [INFERRED]
 - [[녹화 중 F7 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다.]] - `uses` [INFERRED]
 - [[매크로 로드 후 구간 SpinBox 범위를 갱신한다.]] - `uses` [INFERRED]
 - [[빈 구간 입력을 0 sentinel로 되돌려 '처음''끝' 표시를 복원한다.]] - `uses` [INFERRED]
@@ -65,4 +66,4 @@ tags:
 - [[현재 파일에 덮어쓰기 저장한다.          _current_file이 설정된 경우 확인 다이얼로그 후 덮어쓰기.         _curr]] - `uses` [INFERRED]
 - [[현재 활성 탭이 즐겨찾기인지 반환한다.]] - `uses` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

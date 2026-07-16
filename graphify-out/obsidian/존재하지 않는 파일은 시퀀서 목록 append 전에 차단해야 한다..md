@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_sequencer_add_item_validation.py"
+source_file: "./tests/test_sequencer_add_item_validation.py"
 type: "rationale"
 community: "test sequencer add item"
 location: "L11"

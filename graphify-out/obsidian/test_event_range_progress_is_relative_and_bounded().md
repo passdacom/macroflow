@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player_runtime_safety.py"
+source_file: "./tests/test_player_runtime_safety.py"
 type: "code"
-community: ".mouseMoveEvent TestPlaybackTiming play run"
+community: "execute event PlayState test"
 location: "L99"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/.mouseMoveEvent_TestPlaybackTiming_play_run
+  - community/execute_event_PlayState_test
 ---
 
 # test_event_range_progress_is_relative_and_bounded()
@@ -18,4 +18,4 @@ tags:
 - [[play()]] - `calls` [INFERRED]
 - [[test_player_runtime_safety.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/.mouseMoveEvent_TestPlaybackTiming_play_run
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

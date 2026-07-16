@@ -10,7 +10,7 @@ members: 1
 **Members:** 1 nodes
 
 ## Members
-- [[__init__.py_3]] - code - /root/.openclaw/workspace/macroflow/tests/__init__.py
+- [[__init__.py_3]] - code - ./tests/__init__.py
 
 ## Live Query (requires Dataview plugin)
 

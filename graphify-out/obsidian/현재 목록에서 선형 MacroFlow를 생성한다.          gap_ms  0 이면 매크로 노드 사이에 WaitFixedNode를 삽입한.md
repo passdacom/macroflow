@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py"
+source_file: "./src/macroflow/ui/sequencer.py"
 type: "rationale"
-community: "EndNode MacroFlow FlowEngine MacroNode"
-location: "L647"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L653"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # 현재 목록에서 선형 MacroFlow를 생성한다.          gap_ms > 0 이면 매크로 노드 사이에 WaitFixedNode를 삽입한
@@ -20,4 +20,4 @@ tags:
 - [[MacroNode]] - `uses` [INFERRED]
 - [[WaitFixedNode]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

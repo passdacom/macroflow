@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_sequencer_backlog.py"
+source_file: "./tests/test_sequencer_backlog.py"
 type: "code"
-community: "EndNode MacroFlow FlowEngine MacroNode"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
 location: "L71"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/EndNode_MacroFlow_FlowEngine_MacroNode
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # test_linear_flow_reports_saved_uniform_gap()
@@ -20,4 +20,4 @@ tags:
 - [[test_sequencer_backlog.py]] - `contains` [EXTRACTED]
 - [[선형 플로우의 균일한 대기 노드는 저장된 매크로 사이 대기로 복원된다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/EndNode_MacroFlow_FlowEngine_MacroNode
+#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

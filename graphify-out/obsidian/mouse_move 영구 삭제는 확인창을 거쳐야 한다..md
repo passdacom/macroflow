@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_ui_health_contract.py"
+source_file: "./tests/test_ui_health_contract.py"
 type: "rationale"
 community: "test health contract.py test"
 location: "L23"

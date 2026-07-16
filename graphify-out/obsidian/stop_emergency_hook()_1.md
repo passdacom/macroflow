@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py"
+source_file: "./src/macroflow/win32/hooks.py"
 type: "code"
-community: "MacroSequencerWidget MainWindow OverlayWindow RepeatPlaybackSession"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 location: "L353"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # stop_emergency_hook()
@@ -22,4 +22,4 @@ tags:
 - [[hooks.py]] - `contains` [EXTRACTED]
 - [[긴급 중지 Hook을 해제하고 스레드를 종료한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroSequencerWidget_MainWindow_OverlayWindow_RepeatPlaybackSession
+#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

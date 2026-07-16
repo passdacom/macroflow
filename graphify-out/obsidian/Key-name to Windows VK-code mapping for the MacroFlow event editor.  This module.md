@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_keys.py"
+source_file: "./src/macroflow/ui/editor_keys.py"
 type: "rationale"
 community: "key name test editor"
 location: "L1"

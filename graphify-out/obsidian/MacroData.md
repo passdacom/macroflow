@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/types.py"
+source_file: "./src/macroflow/types.py"
 type: "code"
 community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L273"
@@ -163,6 +163,7 @@ tags:
 - [[기존 파일이 있을 때 저장하면 .bak 파일이 생성되어야 한다.]] - `uses` [INFERRED]
 - [[내부 드래그앤드롭 재정렬 후 _items 순서를 동기화한다.]] - `uses` [INFERRED]
 - [[내용 열을 대표 색상 행 정도로 줄이되, 더 긴 내용은 자동으로 맞춘다.]] - `uses` [INFERRED]
+- [[녹화 저장 worker 완료를 기다리고 완료 signal까지 UI에 반영한다.]] - `uses` [INFERRED]
 - [[녹화 중 F7 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다.]] - `uses` [INFERRED]
 - [[녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.      녹화 중이 아니면 무시된다.      Args]] - `uses` [INFERRED]
 - [[녹화를 중지하고 캡처된 전체 이벤트를 MacroData로 반환한다.      Returns         raw_events == events]] - `uses` [INFERRED]

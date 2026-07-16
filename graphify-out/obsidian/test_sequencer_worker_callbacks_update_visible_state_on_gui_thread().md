@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_qt_runtime_safety.py"
+source_file: "./tests/test_qt_runtime_safety.py"
 type: "code"
 community: "test runtime safety.py run"
 location: "L49"

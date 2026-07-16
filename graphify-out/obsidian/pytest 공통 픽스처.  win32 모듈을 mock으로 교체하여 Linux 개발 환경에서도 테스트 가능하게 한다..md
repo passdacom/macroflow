@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/conftest.py"
+source_file: "./tests/conftest.py"
 type: "rationale"
 community: "conftest.py mock hook mock"
 location: "L1"
