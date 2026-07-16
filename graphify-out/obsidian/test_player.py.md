@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "execute event PlayState test"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/execute_event_PlayState_test
 ---
 
 # test_player.py
@@ -19,7 +19,7 @@ tags:
 - [[TestHexToRgb]] - `contains` [EXTRACTED]
 - [[TestPlaybackTiming]] - `contains` [EXTRACTED]
 - [[TestTextInputPlayback]] - `contains` [EXTRACTED]
-- [[_make_macro()_2]] - `contains` [EXTRACTED]
+- [[_make_macro()_3]] - `contains` [EXTRACTED]
 - [[mock_win32()_1]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

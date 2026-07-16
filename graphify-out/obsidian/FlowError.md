@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
-location: "L150"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L158"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # FlowError
@@ -18,4 +18,4 @@ tags:
 - [[LoopEvent]] - `uses` [INFERRED]
 - [[script_engine.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

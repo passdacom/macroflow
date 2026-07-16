@@ -13,6 +13,7 @@ tags:
 
 ## Connections
 - [[test_editor_insertions.py]] - `contains` [EXTRACTED]
+- [[test_insert_click_event_preserves_explicit_zero_delay()]] - `calls` [EXTRACTED]
 - [[test_insert_click_events_creates_double_click_sequence_and_shifts_tail()]] - `calls` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/test_editor_insertions.py_insert

@@ -2,7 +2,7 @@
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py"
 type: "rationale"
 community: "FavoritesWidget refresh tree save"
-location: "L525"
+location: "L531"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
 type: "code"
-community: "load test macro file.py"
-location: "L295"
+community: "test macro file.py load"
+location: "L358"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/load_test_macro_file.py
+  - community/test_macro_file.py_load
 ---
 
 # set_delay_single()
@@ -20,4 +20,4 @@ tags:
 - [[test_set_delay_single_invalid_id()]] - `calls` [INFERRED]
 - [[test_set_delay_single_to_none()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/load_test_macro_file.py
+#graphify/code #graphify/INFERRED #community/test_macro_file.py_load

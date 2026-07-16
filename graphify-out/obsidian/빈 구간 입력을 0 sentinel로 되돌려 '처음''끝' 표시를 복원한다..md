@@ -2,7 +2,7 @@
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
 type: "rationale"
 community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L750"
+location: "L905"
 tags:
   - graphify/rationale
   - graphify/INFERRED

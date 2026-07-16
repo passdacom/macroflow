@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L522"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L590"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # set_color_check_on_mismatch()
@@ -18,4 +18,4 @@ tags:
 - [[macro_file.py]] - `contains` [EXTRACTED]
 - [[test_set_color_check_on_mismatch_selects_target_mode_directly()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

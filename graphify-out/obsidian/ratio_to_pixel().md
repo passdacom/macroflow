@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/mock.py"
 type: "code"
-community: "mock.py find window get"
+community: "mock.py hooks.py get logical"
 location: "L116"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/mock.py_find_window_get
+  - community/mock.py_hooks.py_get_logical
 ---
 
 # ratio_to_pixel()
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[mock.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/mock.py_find_window_get
+#graphify/code #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical

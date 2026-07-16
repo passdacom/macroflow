@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
 type: "code"
-community: "execute event PlayState player.py"
-location: "L81"
+community: "execute event PlayState test"
+location: "L83"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # _execute_event()
@@ -23,6 +23,7 @@ tags:
 - [[.test_wait_event_sleeps()]] - `calls` [INFERRED]
 - [[.test_wait_mode_polls_until_match()]] - `calls` [INFERRED]
 - [[PlaybackError]] - `calls` [EXTRACTED]
+- [[_execute_event_sequence()]] - `calls` [EXTRACTED]
 - [[_hex_to_rgb()_1]] - `calls` [EXTRACTED]
 - [[_play_loop()]] - `calls` [EXTRACTED]
 - [[_wait_for_click_color_check()]] - `calls` [EXTRACTED]
@@ -39,6 +40,7 @@ tags:
 - [[send_mouse_move()_1]] - `calls` [INFERRED]
 - [[send_mouse_wheel()_1]] - `calls` [INFERRED]
 - [[send_text()_1]] - `calls` [INFERRED]
+- [[test_loop_nested_delay_override_uses_scheduler_and_speed()]] - `calls` [INFERRED]
 - [[단일 이벤트를 실행한다.      Args         event 실행할 이벤트.         settings clickdrag 판별]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

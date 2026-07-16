@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_relative_time.py"
 type: "code"
-community: "build rows DisplayRow editor"
-location: "L79"
+community: "build rows editor rows.py"
+location: "L80"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # TestColorDisplayRows
@@ -18,4 +18,4 @@ tags:
 - [[MouseButtonEvent]] - `uses` [INFERRED]
 - [[test_editor_relative_time.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/EXTRACTED #community/build_rows_editor_rows.py

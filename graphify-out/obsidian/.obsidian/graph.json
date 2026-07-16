@@ -1,7 +1,7 @@
 {
   "colorGroups": [
     {
-      "query": "tag:#community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent",
+      "query": "tag:#community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings",
       "color": {
         "a": 1,
         "rgb": 5142951
@@ -15,157 +15,248 @@
       }
     },
     {
-      "query": "tag:#community/EventEditorWidget_add_single_row",
+      "query": "tag:#community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine",
       "color": {
         "a": 1,
         "rgb": 14767961
       }
     },
     {
-      "query": "tag:#community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow",
+      "query": "tag:#community/EventEditorWidget_add_single_row",
       "color": {
         "a": 1,
         "rgb": 7780274
+      }
+    },
+    {
+      "query": "tag:#community/execute_event_PlayState_test",
+      "color": {
+        "a": 1,
+        "rgb": 5873999
       }
     },
     {
       "query": "tag:#community/FavoritesWidget_refresh_tree_save",
       "color": {
         "a": 1,
-        "rgb": 5873999
-      }
-    },
-    {
-      "query": "tag:#community/execute_event_PlayState_player.py",
-      "color": {
-        "a": 1,
         "rgb": 15583560
       }
     },
     {
-      "query": "tag:#community/convert_raw_TestConvertRaw_hooks.py",
+      "query": "tag:#community/mock.py_hooks.py_get_logical",
       "color": {
         "a": 1,
         "rgb": 11565729
       }
     },
     {
-      "query": "tag:#community/build_rows_DisplayRow_editor",
+      "query": "tag:#community/TestTargetApp_test_target_app.py",
       "color": {
         "a": 1,
         "rgb": 16752039
+      }
+    },
+    {
+      "query": "tag:#community/build_rows_editor_rows.py",
+      "color": {
+        "a": 1,
+        "rgb": 10253663
+      }
+    },
+    {
+      "query": "tag:#community/test_macro_file.py_load",
+      "color": {
+        "a": 1,
+        "rgb": 12234924
       }
     },
     {
       "query": "tag:#community/test_editor_table.py_table",
       "color": {
         "a": 1,
-        "rgb": 10253663
-      }
-    },
-    {
-      "query": "tag:#community/load_test_macro_file.py",
-      "color": {
-        "a": 1,
-        "rgb": 12234924
-      }
-    },
-    {
-      "query": "tag:#community/mock.py_find_window_get",
-      "color": {
-        "a": 1,
         "rgb": 5142951
+      }
+    },
+    {
+      "query": "tag:#community/convert_raw_TestConvertRaw_stop",
+      "color": {
+        "a": 1,
+        "rgb": 15896107
+      }
+    },
+    {
+      "query": "tag:#community/test_expression_sandbox_module.py",
+      "color": {
+        "a": 1,
+        "rgb": 14767961
       }
     },
     {
       "query": "tag:#community/test_editor_insertions.py_insert",
       "color": {
         "a": 1,
-        "rgb": 15896107
-      }
-    },
-    {
-      "query": "tag:#community/test_editor_remark.py_FakeTableForWidth",
-      "color": {
-        "a": 1,
-        "rgb": 14767961
-      }
-    },
-    {
-      "query": "tag:#community/test_editor_capture.py_start",
-      "color": {
-        "a": 1,
         "rgb": 7780274
       }
     },
     {
-      "query": "tag:#community/append_recording_recording_done",
+      "query": "tag:#community/test_color_settings_regressions.py",
       "color": {
         "a": 1,
         "rgb": 5873999
       }
     },
     {
-      "query": "tag:#community/key_name_test_editor",
+      "query": "tag:#community/rdp_runtime_safety_smoke.py",
       "color": {
         "a": 1,
         "rgb": 15583560
       }
     },
     {
-      "query": "tag:#community/test_favorites_search.py_get",
+      "query": "tag:#community/append_recording_test_append",
       "color": {
         "a": 1,
         "rgb": 11565729
       }
     },
     {
-      "query": "tag:#community/summary_text_test_editor",
+      "query": "tag:#community/test_editor_context_menu.py",
       "color": {
         "a": 1,
         "rgb": 16752039
       }
     },
     {
-      "query": "tag:#community/conftest.py_mock_hook_mock",
+      "query": "tag:#community/key_name_test_editor",
       "color": {
         "a": 1,
         "rgb": 10253663
       }
     },
     {
-      "query": "tag:#community/test_version.py_test_package",
+      "query": "tag:#community/main_main.py_setup_logging",
       "color": {
         "a": 1,
         "rgb": 12234924
       }
     },
     {
-      "query": "tag:#community/test_package_imports.py_test",
+      "query": "tag:#community/test_favorites_search.py_get",
       "color": {
         "a": 1,
         "rgb": 5142951
       }
     },
     {
-      "query": "tag:#community/Return_whether_complete_repeat",
+      "query": "tag:#community/summary_text_test_editor",
       "color": {
         "a": 1,
         "rgb": 15896107
       }
     },
     {
-      "query": "tag:#community/Return_user_facing_repeat",
+      "query": "tag:#community/conftest.py_mock_hook_mock",
       "color": {
         "a": 1,
         "rgb": 14767961
       }
     },
     {
-      "query": "tag:#community/init_.py",
+      "query": "tag:#community/test_health_contract.py_test",
       "color": {
         "a": 1,
         "rgb": 7780274
+      }
+    },
+    {
+      "query": "tag:#community/test_runtime_safety.py_run",
+      "color": {
+        "a": 1,
+        "rgb": 5873999
+      }
+    },
+    {
+      "query": "tag:#community/test_docs_command_contract.py",
+      "color": {
+        "a": 1,
+        "rgb": 15583560
+      }
+    },
+    {
+      "query": "tag:#community/test_sequencer_add_item",
+      "color": {
+        "a": 1,
+        "rgb": 11565729
+      }
+    },
+    {
+      "query": "tag:#community/test_main_window_append",
+      "color": {
+        "a": 1,
+        "rgb": 16752039
+      }
+    },
+    {
+      "query": "tag:#community/test_version.py_test_package",
+      "color": {
+        "a": 1,
+        "rgb": 10253663
+      }
+    },
+    {
+      "query": "tag:#community/test_package_imports.py_test",
+      "color": {
+        "a": 1,
+        "rgb": 12234924
+      }
+    },
+    {
+      "query": "tag:#community/test_rdp_gui_smoke",
+      "color": {
+        "a": 1,
+        "rgb": 5142951
+      }
+    },
+    {
+      "query": "tag:#community/test_rdp_gui_smoke",
+      "color": {
+        "a": 1,
+        "rgb": 15896107
+      }
+    },
+    {
+      "query": "tag:#community/Return_whether_complete_repeat",
+      "color": {
+        "a": 1,
+        "rgb": 14767961
+      }
+    },
+    {
+      "query": "tag:#community/Return_user_facing_repeat",
+      "color": {
+        "a": 1,
+        "rgb": 7780274
+      }
+    },
+    {
+      "query": "tag:#community/init_.py",
+      "color": {
+        "a": 1,
+        "rgb": 5873999
+      }
+    },
+    {
+      "query": "tag:#community/run_rdp_runtime_safety",
+      "color": {
+        "a": 1,
+        "rgb": 15583560
+      }
+    },
+    {
+      "query": "tag:#community/run_rdp_gui_smoke.ps1",
+      "color": {
+        "a": 1,
+        "rgb": 11565729
       }
     }
   ]

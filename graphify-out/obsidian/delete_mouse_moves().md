@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
 type: "code"
-community: "load test macro file.py"
-location: "L254"
+community: "test macro file.py load"
+location: "L310"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/load_test_macro_file.py
+  - community/test_macro_file.py_load
 ---
 
 # delete_mouse_moves()
@@ -19,4 +19,4 @@ tags:
 - [[test_delete_mouse_moves()]] - `calls` [INFERRED]
 - [[test_reset_to_raw()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/load_test_macro_file.py
+#graphify/code #graphify/INFERRED #community/test_macro_file.py_load

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py"
 type: "code"
-community: "execute event PlayState player.py"
+community: "execute event PlayState test"
 location: "L367"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # get_pixel_color()
@@ -23,4 +23,4 @@ tags:
 - [[_wait_for_color_check()]] - `calls` [INFERRED]
 - [[hooks.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

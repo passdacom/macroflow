@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "convert raw TestConvertRaw stop"
 location: "L195"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/convert_raw_TestConvertRaw_stop
 ---
 
 # TestRecorderIntegration
@@ -24,4 +24,4 @@ tags:
 - [[start_recording  stop_recording 흐름 테스트.]] - `rationale_for` [EXTRACTED]
 - [[test_recorder.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_stop

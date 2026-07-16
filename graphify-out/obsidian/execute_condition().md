@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "code"
-community: "MacroSequencerWidget FlowEngine EndNode MacroFlow"
-location: "L600"
+community: "test expression sandbox module.py"
+location: "L579"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+  - community/test_expression_sandbox_module.py
 ---
 
 # execute_condition()
@@ -16,5 +16,6 @@ tags:
 - [[_execute_event()]] - `calls` [INFERRED]
 - [[_validate_expression()]] - `calls` [EXTRACTED]
 - [[script_engine.py]] - `contains` [EXTRACTED]
+- [[test_condition_enforces_cumulative_wait_budget()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+#graphify/code #graphify/EXTRACTED #community/test_expression_sandbox_module.py

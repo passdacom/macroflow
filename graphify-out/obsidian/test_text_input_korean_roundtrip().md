@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
 type: "code"
-community: "load test macro file.py"
-location: "L454"
+community: "test macro file.py load"
+location: "L524"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/load_test_macro_file.py
+  - community/test_macro_file.py_load
 ---
 
 # test_text_input_korean_roundtrip()
@@ -21,4 +21,4 @@ tags:
 - [[test_macro_file.py]] - `contains` [EXTRACTED]
 - [[한글 TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/load_test_macro_file.py
+#graphify/code #graphify/INFERRED #community/test_macro_file.py_load

@@ -1,34 +1,26 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "/root/.openclaw/workspace/macroflow/tests/test_player_runtime_safety.py"
 type: "code"
-community: "load test macro file.py"
-location: "L39"
+community: "execute event PlayState test"
+location: "L23"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/load_test_macro_file.py
+  - community/execute_event_PlayState_test
 ---
 
 # _make_macro()
 
 ## Connections
-- [[.mouseMoveEvent()]] - `calls` [INFERRED]
-- [[KeyEvent]] - `calls` [INFERRED]
 - [[MacroData]] - `calls` [INFERRED]
 - [[MacroMeta]] - `calls` [INFERRED]
 - [[MacroSettings]] - `calls` [INFERRED]
-- [[MouseButtonEvent]] - `calls` [INFERRED]
-- [[test_delete_mouse_moves()]] - `calls` [EXTRACTED]
-- [[test_event_remark_roundtrip_and_json_field()]] - `calls` [EXTRACTED]
-- [[test_macro_file.py]] - `contains` [EXTRACTED]
-- [[test_reset_to_raw()]] - `calls` [EXTRACTED]
-- [[test_save_and_load_roundtrip()]] - `calls` [EXTRACTED]
-- [[test_save_creates_bak()]] - `calls` [EXTRACTED]
-- [[test_set_delay_all()]] - `calls` [EXTRACTED]
-- [[test_set_delay_single()]] - `calls` [EXTRACTED]
-- [[test_set_delay_single_invalid_id()]] - `calls` [EXTRACTED]
-- [[test_set_delay_single_to_none()]] - `calls` [EXTRACTED]
-- [[test_settings_color_timeout_fields_roundtrip()]] - `calls` [EXTRACTED]
-- [[테스트용 최소 MacroData를 생성한다.]] - `rationale_for` [EXTRACTED]
+- [[test_event_range_progress_is_relative_and_bounded()]] - `calls` [EXTRACTED]
+- [[test_play_allows_terminal_worker_handoff()]] - `calls` [EXTRACTED]
+- [[test_play_rejects_overlapping_worker()]] - `calls` [EXTRACTED]
+- [[test_player_runtime_safety.py]] - `contains` [EXTRACTED]
+- [[test_stop_interrupts_scheduled_gap_before_next_input()]] - `calls` [EXTRACTED]
+- [[test_stop_interrupts_wait_event_without_post_stop_callback()]] - `calls` [EXTRACTED]
+- [[test_user_stop_during_click_color_wait_does_not_emit_mismatch_error()]] - `calls` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/load_test_macro_file.py
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

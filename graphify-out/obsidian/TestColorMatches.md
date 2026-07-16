@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
 type: "code"
-community: "execute event PlayState player.py"
-location: "L67"
+community: "execute event PlayState test"
+location: "L68"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # TestColorMatches
@@ -28,4 +28,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_player.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

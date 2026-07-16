@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/append_recording.py"
 type: "code"
-community: "append recording recording done"
+community: "append recording test append"
 location: "L40"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/append_recording_recording_done
+  - community/append_recording_test_append
 ---
 
 # append_recording()
@@ -20,4 +20,4 @@ tags:
 - [[test_append_recording_empty_capture_returns_edited_copy_without_timestamp_error()]] - `calls` [INFERRED]
 - [[test_append_recording_places_new_events_after_base_last_event_with_gap()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/append_recording_recording_done
+#graphify/code #graphify/INFERRED #community/append_recording_test_append

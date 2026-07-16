@@ -12,16 +12,11 @@ tags:
 # test_favorites_batch.py
 
 ## Connections
-- [[FavoritesWidget multi-selection batch action tests.]] - `rationale_for` [EXTRACTED]
-- [[_app()]] - `contains` [EXTRACTED]
-- [[_child_by_filename()]] - `contains` [EXTRACTED]
-- [[_default_group()]] - `contains` [EXTRACTED]
-- [[_ensure_real_qt()]] - `contains` [EXTRACTED]
-- [[_select_children()]] - `contains` [EXTRACTED]
-- [[_write_favorites()]] - `contains` [EXTRACTED]
-- [[test_selected_favorites_are_emitted_to_sequencer()]] - `contains` [EXTRACTED]
-- [[test_selected_favorites_move_to_target_group()]] - `contains` [EXTRACTED]
-- [[test_selected_favorites_remove_with_single_confirmation()]] - `contains` [EXTRACTED]
-- [[widget_role_path_key()]] - `contains` [EXTRACTED]
+- [[Favorites batch action helper tests.  These tests intentionally avoid importing]] - `rationale_for` [EXTRACTED]
+- [[_index()]] - `contains` [EXTRACTED]
+- [[test_move_filenames_to_group_does_not_duplicate_existing_target_items()]] - `contains` [EXTRACTED]
+- [[test_move_filenames_to_group_removes_from_sources_and_appends_to_target()]] - `contains` [EXTRACTED]
+- [[test_remove_filenames_from_groups_removes_batch_from_every_group()]] - `contains` [EXTRACTED]
+- [[test_unique_filenames_preserves_selection_order_and_drops_duplicates()]] - `contains` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/FavoritesWidget_refresh_tree_save

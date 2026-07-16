@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_relative_time.py"
 type: "rationale"
-community: "build rows DisplayRow editor"
-location: "L95"
+community: "build rows editor rows.py"
+location: "L96"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # 색 트리거 행도 target_color를 색상 박스로 표시할 수 있어야 한다.
@@ -16,4 +16,4 @@ tags:
 - [[ColorTriggerEvent]] - `uses` [INFERRED]
 - [[MouseButtonEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/build_rows_DisplayRow_editor
+#graphify/rationale #graphify/INFERRED #community/build_rows_editor_rows.py

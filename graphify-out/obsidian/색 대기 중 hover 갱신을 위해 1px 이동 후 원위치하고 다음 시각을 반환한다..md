@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L262"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L424"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 색 대기 중 hover 갱신을 위해 1px 이동 후 원위치하고 다음 시각을 반환한다.
@@ -26,4 +26,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[_nudge_cursor_if_due()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

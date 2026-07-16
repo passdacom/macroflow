@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_rows.py"
 type: "code"
-community: "build rows DisplayRow editor"
+community: "build rows editor rows.py"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # test_editor_rows.py
@@ -27,4 +27,4 @@ tags:
 - [[test_wheel_rows_group_contiguous_same_axis_events_only()]] - `contains` [EXTRACTED]
 - [[이벤트 에디터 표시 row 순수 로직 회귀 테스트.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/EXTRACTED #community/build_rows_editor_rows.py

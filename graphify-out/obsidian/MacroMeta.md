@@ -1,21 +1,25 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/types.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L213"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # MacroMeta
 
 ## Connections
+- [[Build a long-wait macro whose post-wait click must never run after F7.]] - `uses` [INFERRED]
+- [[Build the deterministic MacroFlow scenario used by the RDP smoke test.]] - `uses` [INFERRED]
 - [[ESC key_down 3번 연속(0.5초 이내) 감지 시 True를 반환한다.]] - `uses` [INFERRED]
 - [[Editor undohistory pure helper tests.]] - `uses` [INFERRED]
+- [[End-to-end regressions discovered by the 2026-07 functional audit.]] - `uses` [INFERRED]
 - [[Event editor context-menu composition tests with Qt mocked out.]] - `uses` [INFERRED]
 - [[Event editor remark persistence behavior with Qt mocked out.]] - `uses` [INFERRED]
+- [[Format a status line that remains printable on Windows cp949 consoles.]] - `uses` [INFERRED]
 - [[JSON 파일에서 MacroData를 로드한다.      마이그레이션이 필요한 경우 자동으로 수행한다.      Args         pat]] - `uses` [INFERRED]
 - [[LL Hook을 등록하고 이벤트 캡처를 시작한다.      Args         on_emergency_stop ESC×3 감지 시 호출할]] - `uses` [INFERRED]
 - [[MacroData를 JSON 파일로 저장한다.      기존 파일이 있으면 .bak으로 백업 후 덮어쓴다.      Args         m]] - `uses` [INFERRED]
@@ -23,6 +27,12 @@ tags:
 - [[MacroFlow JSON 직렬화·역직렬화 및 편집 유틸리티.  저장 시 .bak 파일 자동 생성. 로드 시 스키마 버전 마이그레이션 수행. r]] - `uses` [INFERRED]
 - [[MacroFlow 이벤트 캡처 엔진.  Win32 LL Hook (WH_MOUSE_LL + WH_KEYBOARD_LL)으로 캡처한 원시 이벤트를]] - `uses` [INFERRED]
 - [[MouseWheelEvent가 저장 후 동일 값으로 복원되어야 한다.]] - `uses` [INFERRED]
+- [[Playback lifecycle and range-progress regression tests.]] - `uses` [INFERRED]
+- [[Return the observable contract for live worker-to-Qt handoff.]] - `uses` [INFERRED]
+- [[Return the observable contract for the live global-hotkey smoke.]] - `uses` [INFERRED]
+- [[Run both live Windows scenarios and write structured evidence.]] - `uses` [INFERRED]
+- [[Run the GUI smoke test and return the structured status payload.]] - `uses` [INFERRED]
+- [[Sequencer saveloadmerge smoke for Windows RDP or local offscreen runs.  This i]] - `uses` [INFERRED]
 - [[TestColorCheckWait]] - `uses` [INFERRED]
 - [[TestColorMatches]] - `uses` [INFERRED]
 - [[TestColorTriggerInfiniteWait]] - `uses` [INFERRED]
@@ -32,7 +42,10 @@ tags:
 - [[TestTextInputPlayback]] - `uses` [INFERRED]
 - [[TextInputEvent 실행 시 send_text가 호출되어야 한다.]] - `uses` [INFERRED]
 - [[TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - `uses` [INFERRED]
+- [[UI 일괄 설정은 숨겨진 mouse-upmovekey-up까지 늦추지 않는다.]] - `uses` [INFERRED]
 - [[VK 코드를 사람이 읽을 수 있는 키 이름으로 변환한다.]] - `uses` [INFERRED]
+- [[Windows RDP GUI smoke harness for MacroFlow.  This script is intentionally a man]] - `uses` [INFERRED]
+- [[Windows RDP runtime-safety smoke for MacroFlow hotkeys and Sequencer.  Run this]] - `uses` [INFERRED]
 - [[_FakeAction]] - `uses` [INFERRED]
 - [[_FakeMenu]] - `uses` [INFERRED]
 - [[_FakeTableForWidth]] - `uses` [INFERRED]
@@ -42,10 +55,15 @@ tags:
 - [[_Signal_2]] - `uses` [INFERRED]
 - [[_macro()]] - `calls` [INFERRED]
 - [[_macro()_1]] - `calls` [INFERRED]
+- [[_macro()_2]] - `calls` [INFERRED]
 - [[_macro_with_events()]] - `calls` [INFERRED]
 - [[_make_macro()]] - `calls` [INFERRED]
 - [[_make_macro()_1]] - `calls` [INFERRED]
 - [[_make_macro()_2]] - `calls` [INFERRED]
+- [[_make_macro()_3]] - `calls` [INFERRED]
+- [[_meta()]] - `calls` [INFERRED]
+- [[_meta()_1]] - `calls` [INFERRED]
+- [[build_smoke_macro()]] - `calls` [INFERRED]
 - [[color_check_on_mismatch='wait'가 저장 후 동일하게 로드되어야 한다.]] - `uses` [INFERRED]
 - [[conditionloop 내부 이벤트의 비고도 저장·로드되어야 한다.]] - `uses` [INFERRED]
 - [[delay_override_ms가 설정된 이벤트는 그 딜레이만큼 기다려야 한다.]] - `uses` [INFERRED]
@@ -53,7 +71,6 @@ tags:
 - [[delete_mouse_moves는 events에서 mouse_move만 제거하고 raw_events는 유지한다.]] - `uses` [INFERRED]
 - [[deque에서 원시 이벤트를 소비하여 _event_buffer에 쌓는다.]] - `uses` [INFERRED]
 - [[edit_wheel_delta는 지정 이벤트의 delta만 변경하고 나머지는 유지한다.]] - `uses` [INFERRED]
-- [[events 전체의 delay_override_ms를 동일 값으로 설정한다.      Args         macro 원본 MacroDat]] - `uses` [INFERRED]
 - [[events를 raw_events 전체 복사본으로 되돌린다 (is_edited=False).      Args         macro 원본]] - `uses` [INFERRED]
 - [[events에서 mouse_move 이벤트를 모두 제거한다. raw_events는 유지.      Args         macro 원본 M]] - `uses` [INFERRED]
 - [[events에서 특정 id의 KeyEvent key·vk_code를 수정한다.      Args         macro 원본 MacroDa]] - `uses` [INFERRED]
@@ -86,24 +103,33 @@ tags:
 - [[timeout_ms가 없는 기존 색 트리거는 무제한 대기(0)로 로드하고, 명시값은 보존한다.]] - `uses` [INFERRED]
 - [[types.py]] - `contains` [EXTRACTED]
 - [[wait 모드 픽셀 색이 일치할 때까지 폴링 후 클릭이 진행되어야 한다.]] - `uses` [INFERRED]
+- [[기존 JSON의 단일 클릭 색 체크 timeout은 세 action timeout 기본값으로 승계된다.]] - `uses` [INFERRED]
 - [[기존 JSON처럼 remark 필드가 없어도 빈 비고로 정상 로드해야 한다.]] - `uses` [INFERRED]
 - [[기존 파일이 있을 때 저장하면 .bak 파일이 생성되어야 한다.]] - `uses` [INFERRED]
 - [[녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.      녹화 중이 아니면 무시된다.      Args]] - `uses` [INFERRED]
 - [[녹화를 중지하고 캡처된 전체 이벤트를 MacroData로 반환한다.      Returns         raw_events == events]] - `uses` [INFERRED]
+- [[다음 매크로의 선행 timestamp를 경계 간격에 이중 가산하지 않는다.]] - `uses` [INFERRED]
+- [[대상 events의 재생 대기를 동일 값 또는 녹화 타이밍(None)으로 설정한다.      Args         macro 원본 Macr]] - `uses` [INFERRED]
 - [[독립 색 트리거 대기 중에도 1초 이후 hover 갱신용 미세 이동을 수행한다.]] - `uses` [INFERRED]
 - [[딕셔너리를 AnyEvent 서브클래스 인스턴스로 변환한다.      Args         d JSON에서 파싱된 이벤트 딕셔너리.]] - `uses` [INFERRED]
+- [[매크로 내부 고정 대기는 재생 속도에 맞춰 짧아져야 한다.]] - `uses` [INFERRED]
 - [[매크로 파일 메타데이터.      Attributes         version JSON 스키마 버전. 마이그레이션 판단에 사용.]] - `rationale_for` [EXTRACTED]
+- [[명시적 고정 대기에 소비된 시간은 후속 절대 timestamp를 밀어야 한다.]] - `uses` [INFERRED]
 - [[모든 이벤트 타입이 저장 후 동일 타입으로 복원되어야 한다.]] - `uses` [INFERRED]
 - [[빈 문자열 TextInputEvent는 send_text를 호출하지 않아야 한다.]] - `uses` [INFERRED]
+- [[새 action별 timeout이 저장되어 있으면 legacy 단일 timeout으로 덮지 않는다.]] - `uses` [INFERRED]
 - [[색 체크 대기 1초 이후에는 hover 갱신을 위해 커서를 미세 이동 후 복귀한다.]] - `uses` [INFERRED]
 - [[색 체크 불일치 동작은 순환이 아니라 원하는 모드를 바로 저장할 수 있어야 한다.]] - `uses` [INFERRED]
 - [[색 트리거 이벤트의 명시 timeout_ms는 저장 후 로드해도 0으로 덮이면 안 된다.]] - `uses` [INFERRED]
 - [[없는 id를 사용하면 KeyError가 발생해야 한다.]] - `uses` [INFERRED]
 - [[여러 MacroData를 타임스탬프 오프셋을 적용하여 하나로 병합한다.      각 매크로 사이에 gap_ms 간격을 두고, source_fil]] - `uses` [INFERRED]
+- [[외부 JSON 숫자를 안전한 runtime 범위로 정규화한다.]] - `uses` [INFERRED]
 - [[원시 Hook 이벤트를 MacroEvent 객체로 변환한다.      Args         raw hooks.py에서 push한 (kind]] - `uses` [INFERRED]
 - [[이벤트 비고는 저장 JSON에 기록되고 다시 로드되어야 한다.]] - `uses` [INFERRED]
 - [[이어서 녹화 append helper tests.]] - `uses` [INFERRED]
+- [[재생 대기 override도 녹화 타임라인과 동일하게 속도 배율을 적용한다.]] - `uses` [INFERRED]
 - [[저장 후 로드하면 동일한 MacroData가 반환되어야 한다.]] - `uses` [INFERRED]
+- [[저장된 settings 딕셔너리를 MacroSettings로 변환한다.      기존 파일에는 클릭 색 체크 timeout이 `color_che]] - `uses` [INFERRED]
 - [[절대 타임스탬프 기준 재생 및 드리프트 보정 테스트.      core-beliefs.md 원칙 3 검증.]] - `uses` [INFERRED]
 - [[존재하지 않는 파일을 로드하면 FileNotFoundError가 발생해야 한다.]] - `uses` [INFERRED]
 - [[클릭 색 체크 timeout_ms=0은 색이 나올 때까지 무제한 대기한다.]] - `uses` [INFERRED]
@@ -114,4 +140,4 @@ tags:
 - [[한글 TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - `uses` [INFERRED]
 - [[현재까지 캡처된 이벤트 수를 반환한다 (녹화 중 폴링용).]] - `uses` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
 type: "code"
-community: "load test macro file.py"
-location: "L309"
+community: "test macro file.py load"
+location: "L363"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/load_test_macro_file.py
+  - community/test_macro_file.py_load
 ---
 
 # test_wheel_event_roundtrip()
@@ -21,4 +21,4 @@ tags:
 - [[save()]] - `calls` [INFERRED]
 - [[test_macro_file.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/load_test_macro_file.py
+#graphify/code #graphify/INFERRED #community/test_macro_file.py_load

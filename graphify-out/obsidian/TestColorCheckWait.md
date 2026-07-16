@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L278"
+community: "execute event PlayState test"
+location: "L354"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/execute_event_PlayState_test
 ---
 
 # TestColorCheckWait
@@ -30,4 +30,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_player.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

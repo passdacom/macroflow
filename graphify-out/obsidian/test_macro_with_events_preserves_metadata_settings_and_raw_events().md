@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[_event()]] - `calls` [EXTRACTED]
-- [[_macro()]] - `calls` [EXTRACTED]
+- [[_macro()_1]] - `calls` [EXTRACTED]
 - [[macro_with_events()]] - `calls` [INFERRED]
 - [[test_editor_history.py]] - `contains` [EXTRACTED]
 

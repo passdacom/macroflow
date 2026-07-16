@@ -1,13 +1,13 @@
 ---
 type: community
-cohesion: 0.07
-members: 43
+cohesion: 0.08
+members: 39
 ---
 
 # test editor table.py table
 
-**Cohesion:** 0.07 - loosely connected
-**Members:** 43 nodes
+**Cohesion:** 0.08 - loosely connected
+**Members:** 39 nodes
 
 ## Members
 - [[.__init__()_16]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
@@ -15,12 +15,8 @@ members: 43
 - [[.__init__()_13]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
 - [[.__init__()_14]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
 - [[.__init__()_11]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
-- [[._repaint_row_default()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
-- [[._repaint_row_highlight()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.flags()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
-- [[.highlight_event()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.setAlignment()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
-- [[.setBackground()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
 - [[.setFlags()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
 - [[.setForeground()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
 - [[.setStyleSheet()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
@@ -62,15 +58,14 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 9 edges to [[_COMMUNITY_EventEditorWidget add single row]]
-- 3 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MouseMoveEvent]]
+- 8 edges to [[_COMMUNITY_EventEditorWidget add single row]]
 - 2 edges to [[_COMMUNITY_FavoritesWidget refresh tree save]]
-- 1 edge to [[_COMMUNITY_MacroSequencerWidget FlowEngine EndNode MacroFlow]]
+- 1 edge to [[_COMMUNITY_MacroSequencerWidget EndNode MacroFlow FlowEngine]]
 - 1 edge to [[_COMMUNITY_MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions]]
 
 ## Top bridge nodes
-- [[.highlight_event()]] - degree 4, connects to 2 communities
-- [[._repaint_row_default()]] - degree 4, connects to 2 communities
-- [[._repaint_row_highlight()]] - degree 4, connects to 2 communities
 - [[.setForeground()]] - degree 4, connects to 2 communities
 - [[test_editor_table.py]] - degree 18, connects to 1 community
+- [[_table_row_items()]] - degree 10, connects to 1 community
+- [[_QTableWidgetItem]] - degree 7, connects to 1 community
+- [[_should_use_color_detail_widget()]] - degree 6, connects to 1 community

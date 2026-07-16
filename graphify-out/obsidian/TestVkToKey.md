@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "convert raw TestConvertRaw stop"
 location: "L174"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/convert_raw_TestConvertRaw_stop
 ---
 
 # TestVkToKey
@@ -23,4 +23,4 @@ tags:
 - [[MouseWheelEvent]] - `uses` [INFERRED]
 - [[test_recorder.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_stop

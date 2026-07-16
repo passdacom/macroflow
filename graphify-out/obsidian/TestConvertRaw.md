@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "convert raw TestConvertRaw stop"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/convert_raw_TestConvertRaw_stop
 ---
 
 # TestConvertRaw
@@ -35,4 +35,4 @@ tags:
 - [[_convert_raw 함수 — raw 이벤트 → MacroEvent 변환 테스트.]] - `rationale_for` [EXTRACTED]
 - [[test_recorder.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_stop

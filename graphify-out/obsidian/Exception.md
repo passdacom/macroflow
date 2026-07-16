@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # Exception
@@ -14,7 +14,9 @@ tags:
 - [[._load_file()]] - `calls` [INFERRED]
 - [[._run()]] - `calls` [EXTRACTED]
 - [[._save_and_add_to_favorites()]] - `calls` [INFERRED]
+- [[._start_playback()]] - `calls` [INFERRED]
 - [[._stop_recording_worker()]] - `calls` [INFERRED]
+- [[._toggle_sequencer()]] - `calls` [INFERRED]
 - [[FlowError]] - `inherits` [EXTRACTED]
 - [[PlaybackError]] - `inherits` [EXTRACTED]
 - [[_emg_keyboard_proc()]] - `calls` [INFERRED]
@@ -23,4 +25,4 @@ tags:
 - [[_play_loop()]] - `calls` [EXTRACTED]
 - [[main()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

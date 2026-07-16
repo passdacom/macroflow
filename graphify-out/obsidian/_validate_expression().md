@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
 type: "code"
-community: "MacroSequencerWidget FlowEngine EndNode MacroFlow"
-location: "L566"
+community: "test expression sandbox module.py"
+location: "L569"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+  - graphify/INFERRED
+  - community/test_expression_sandbox_module.py
 ---
 
 # _validate_expression()
@@ -14,6 +14,10 @@ tags:
 ## Connections
 - [[execute_condition()]] - `calls` [EXTRACTED]
 - [[script_engine.py]] - `contains` [EXTRACTED]
-- [[표현식이 허용된 AST 노드만 포함하는지 검증한다.      Args         expr 검증할 표현식 문자열.      Raises]] - `rationale_for` [EXTRACTED]
+- [[test_expression_keeps_numeric_multiplication_available()]] - `calls` [INFERRED]
+- [[test_expression_rejects_literal_wait_over_budget()]] - `calls` [INFERRED]
+- [[test_expression_rejects_sequence_multiplication_amplification()]] - `calls` [INFERRED]
+- [[test_script_engine_validation_alias_honors_runtime_wait_limit()]] - `calls` [INFERRED]
+- [[현재 runtime wait 상한으로 expression sandbox 규칙을 검증한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+#graphify/code #graphify/INFERRED #community/test_expression_sandbox_module.py

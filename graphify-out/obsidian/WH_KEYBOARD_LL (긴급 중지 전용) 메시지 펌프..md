@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py"
 type: "rationale"
-community: "convert raw TestConvertRaw hooks.py"
+community: "mock.py hooks.py get logical"
 location: "L278"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/mock.py_hooks.py_get_logical
 ---
 
 # WH_KEYBOARD_LL (긴급 중지 전용) 메시지 펌프.
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[_emg_pump()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/rationale #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical

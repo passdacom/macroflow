@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L50"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # PlaybackError
@@ -37,6 +37,7 @@ tags:
 - [[_wait_for_color()]] - `calls` [EXTRACTED]
 - [[_wait_for_window()]] - `calls` [EXTRACTED]
 - [[delay_override_ms가 설정된 이벤트는 그 딜레이만큼 기다려야 한다.]] - `uses` [INFERRED]
+- [[play()]] - `calls` [EXTRACTED]
 - [[play()가 완료 콜백을 호출해야 한다.]] - `uses` [INFERRED]
 - [[player.py]] - `contains` [EXTRACTED]
 - [[skip 모드는 설정 시간 동안 기다린 뒤에도 안 맞을 때만 클릭을 건너뛴다.]] - `uses` [INFERRED]
@@ -46,9 +47,12 @@ tags:
 - [[timeout_ms=0 색 트리거는 타임아웃 없이 색이 나올 때까지 대기해야 한다.]] - `uses` [INFERRED]
 - [[wait 모드 픽셀 색이 일치할 때까지 폴링 후 클릭이 진행되어야 한다.]] - `uses` [INFERRED]
 - [[독립 색 트리거 대기 중에도 1초 이후 hover 갱신용 미세 이동을 수행한다.]] - `uses` [INFERRED]
+- [[매크로 내부 고정 대기는 재생 속도에 맞춰 짧아져야 한다.]] - `uses` [INFERRED]
+- [[명시적 고정 대기에 소비된 시간은 후속 절대 timestamp를 밀어야 한다.]] - `uses` [INFERRED]
 - [[빈 문자열 TextInputEvent는 send_text를 호출하지 않아야 한다.]] - `uses` [INFERRED]
 - [[색 체크 대기 1초 이후에는 hover 갱신을 위해 커서를 미세 이동 후 복귀한다.]] - `uses` [INFERRED]
+- [[재생 대기 override도 녹화 타임라인과 동일하게 속도 배율을 적용한다.]] - `uses` [INFERRED]
 - [[절대 타임스탬프 기준 재생 및 드리프트 보정 테스트.      core-beliefs.md 원칙 3 검증.]] - `uses` [INFERRED]
 - [[클릭 색 체크 timeout_ms=0은 색이 나올 때까지 무제한 대기한다.]] - `uses` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

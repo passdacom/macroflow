@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py"
 type: "code"
-community: "build rows DisplayRow editor"
+community: "build rows editor rows.py"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # editor_rows.py
@@ -34,5 +34,7 @@ tags:
 - [[_delay_str()]] - `contains` [EXTRACTED]
 - [[_position_detail()]] - `contains` [EXTRACTED]
 - [[_time_ms()]] - `contains` [EXTRACTED]
+- [[delay_input_to_override()]] - `contains` [EXTRACTED]
+- [[delay_override_to_input()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/EXTRACTED #community/build_rows_editor_rows.py

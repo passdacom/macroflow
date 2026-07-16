@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_context_menu.py"
 type: "code"
-community: "FavoritesWidget refresh tree save"
+community: "test editor context menu.py"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/FavoritesWidget_refresh_tree_save
+  - community/test_editor_context_menu.py
 ---
 
 # test_editor_context_menu.py
@@ -26,4 +26,4 @@ tags:
 - [[test_single_color_checked_click_menu_includes_color_policy_submenu()]] - `contains` [EXTRACTED]
 - [[test_text_input_menu_includes_text_edit_and_common_insert_actions()]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/FavoritesWidget_refresh_tree_save
+#graphify/code #graphify/EXTRACTED #community/test_editor_context_menu.py

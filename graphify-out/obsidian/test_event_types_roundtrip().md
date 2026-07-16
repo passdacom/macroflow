@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L269"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L323"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # test_event_types_roundtrip()
@@ -25,4 +25,4 @@ tags:
 - [[test_macro_file.py]] - `contains` [EXTRACTED]
 - [[모든 이벤트 타입이 저장 후 동일 타입으로 복원되어야 한다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

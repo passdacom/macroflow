@@ -18,6 +18,6 @@ tags:
 - [[_insert_and_shift_events()]] - `calls` [EXTRACTED]
 - [[editor_insertions.py]] - `contains` [EXTRACTED]
 - [[test_insert_color_trigger_event_accepts_configured_timeout_and_interval()]] - `calls` [INFERRED]
-- [[test_insert_color_trigger_event_uses_one_second_budget_and_infinite_timeout()]] - `calls` [INFERRED]
+- [[test_insert_color_trigger_event_uses_minimum_budget_and_infinite_timeout()]] - `calls` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/test_editor_insertions.py_insert

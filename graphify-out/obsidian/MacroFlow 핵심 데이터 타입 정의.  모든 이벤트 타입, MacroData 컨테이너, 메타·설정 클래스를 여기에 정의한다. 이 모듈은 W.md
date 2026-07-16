@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/types.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # MacroFlow 핵심 데이터 타입 정의.  모든 이벤트 타입, MacroData 컨테이너, 메타·설정 클래스를 여기에 정의한다. 이 모듈은 W
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[types.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

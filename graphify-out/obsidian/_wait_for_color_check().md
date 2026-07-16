@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
 type: "code"
-community: "execute event PlayState player.py"
-location: "L198"
+community: "execute event PlayState test"
+location: "L346"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # _wait_for_color_check()
@@ -17,4 +17,4 @@ tags:
 - [[player.py]] - `contains` [EXTRACTED]
 - [[색 체크 wait 모드 지정 픽셀 색이 일치할 때까지 폴링한다.      타임아웃 시 경고 로그만 남기고 클릭을 계속 진행한다 (skip과 달]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

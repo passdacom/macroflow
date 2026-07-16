@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[MouseButtonEvent]] - `calls` [INFERRED]
-- [[_macro()]] - `calls` [EXTRACTED]
+- [[_macro()_1]] - `calls` [EXTRACTED]
 - [[test_copy_events_returns_deep_copy_for_undo_snapshot()]] - `calls` [EXTRACTED]
 - [[test_editor_history.py]] - `contains` [EXTRACTED]
 - [[test_macro_with_events_preserves_metadata_settings_and_raw_events()]] - `calls` [EXTRACTED]

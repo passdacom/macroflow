@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py"
 type: "code"
-community: "build rows DisplayRow editor"
-location: "L105"
+community: "build rows editor rows.py"
+location: "L117"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # _button_label()
@@ -16,4 +16,4 @@ tags:
 - [[_build_mouse_up_row()]] - `calls` [EXTRACTED]
 - [[editor_rows.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/EXTRACTED #community/build_rows_editor_rows.py

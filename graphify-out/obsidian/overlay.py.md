@@ -12,8 +12,9 @@ tags:
 # overlay.py
 
 ## Connections
-- [[MacroFlow 미니 오버레이 창.  녹화·재생 중 화면 우하단에 항상 최상위로 표시된다. 크기 200×52px. 드래그 이동 가능.]] - `rationale_for` [EXTRACTED]
+- [[MacroFlow 미니 오버레이 창.  녹화·재생·플로우 실행 중 화면 우하단에 항상 최상위로 표시된다. 상태 텍스트 길이에 맞춰 폭을 늘리며]] - `rationale_for` [EXTRACTED]
 - [[OverlayWindow]] - `contains` [EXTRACTED]
+- [[_status_font()]] - `contains` [EXTRACTED]
 - [[main_window.py]] - `imports_from` [EXTRACTED]
 
 #graphify/code #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/types.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # types.py
@@ -28,4 +28,4 @@ tags:
 - [[WaitEvent]] - `contains` [EXTRACTED]
 - [[WindowTriggerEvent]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

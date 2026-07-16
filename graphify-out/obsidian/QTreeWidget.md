@@ -1,11 +1,11 @@
 ---
 source_file: ""
 type: "code"
-community: "EventEditorWidget add single row"
+community: "FavoritesWidget refresh tree save"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/EventEditorWidget_add_single_row
+  - community/FavoritesWidget_refresh_tree_save
 ---
 
 # QTreeWidget
@@ -13,4 +13,4 @@ tags:
 ## Connections
 - [[FavoritesTreeWidget]] - `inherits` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/EventEditorWidget_add_single_row
+#graphify/code #graphify/EXTRACTED #community/FavoritesWidget_refresh_tree_save

@@ -1,12 +1,12 @@
 ---
 source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_rows.py"
 type: "code"
-community: "build rows DisplayRow editor"
+community: "build rows editor rows.py"
 location: "L266"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # test_hidden_mouse_moves_do_not_change_relative_time_anchor()
@@ -19,4 +19,4 @@ tags:
 - [[test_editor_rows.py]] - `contains` [EXTRACTED]
 - [[숨겨진 mouse_move는 row 목록에서 빠지지만 다음 row의 상대시간 기준을 흐리면 안 된다.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/EXTRACTED #community/build_rows_editor_rows.py

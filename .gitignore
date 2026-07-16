@@ -25,6 +25,9 @@ build/macroflow-win/
 graphify-out/cache/
 graphify-out/converted/
 
+# Local application data
+favorites/
+
 # IDE
 .vscode/
 .idea/

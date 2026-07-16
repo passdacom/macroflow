@@ -1,18 +1,19 @@
 ---
 type: community
 cohesion: 0.03
-members: 160
+members: 192
 ---
 
 # MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions
 
 **Cohesion:** 0.03 - loosely connected
-**Members:** 160 nodes
+**Members:** 192 nodes
 
 ## Members
 - [[.__init__()_4]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[.__init__()_3]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._add_favorite_to_sequencer()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._apply_persisted_color_settings()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._auto_save_prev_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._auto_save_temp()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._calc_event_range()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
@@ -20,6 +21,7 @@ members: 160
 - [[._do_save()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._do_stop_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._emergency_stop()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._flowing_text()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._get_default_dir()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._get_favorites_dir()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._get_macros_dir()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
@@ -35,15 +37,22 @@ members: 160
 - [[._on_play_complete()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._on_play_error()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._on_play_event_range()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._on_recording_done()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._on_sequence_done()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._on_speed_combo_changed()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._on_tab_changed()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._open_file()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._paint_flowing()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._paint_hint()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._paint_playing()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._paint_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[._persist_color_settings()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._playing_text()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._poll_state()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._position_bottom_right()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[._qsettings_int()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._recording_text()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[._refresh_recent_menu()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._register_hotkeys()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._register_shortcut_fallback()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._restore_prev_macro()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
@@ -56,12 +65,14 @@ members: 160
 - [[._setup_statusbar()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._setup_window()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._show_about()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._show_on_top()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._start_append_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._start_playback()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._start_range_playback()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._start_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._stop_playback()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[._stop_recording_worker()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[._sync_width_for_text()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._tick()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._toggle_blink()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[._toggle_playback()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
@@ -74,9 +85,9 @@ members: 160
 - [[.consume_f6_capture()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.get_event_range_for_rows()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.has_items()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py
-- [[.is_f6_capture_active()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.is_running()_1]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/sequencer.py
 - [[.keyPressEvent()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[.load_macro()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.mark_between_cycles()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[.mark_cycle_started()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[.mark_finished()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
@@ -89,22 +100,28 @@ members: 160
 - [[.row_count()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[.setFixedSize()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_table.py
 - [[.set_event_count()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[.set_flow_progress()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[.set_progress()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[.set_repeat()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[.should_poll_wait_for_worker()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[.should_start_cycle()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[.showEvent()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[.show_hint()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[.start()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py
+- [[.start_flowing()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[.start_playing()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[.start_recording()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[.stop()_1]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[.stop_hint()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[Exception]] - code
 - [[F6 캡처 대기 중 힌트 메시지를 표시한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[F6 캡처 대기 힌트 메시지를 그린다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[F6 캡처 모드 현재 마우스 위치와 픽셀 색을 에디터 캡처 콜백으로 전달한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[Keep the session active while no player thread is alive between cycles.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
+- [[Live WindowsLinux QA harness for the MacroFlow status overlay.]] - rationale - /root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py
 - [[MacroFlow 메인 창.  전체 상태 머신(idle  recording  stopping  playing)을 관리한다. F6F7 글로]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[MacroFlow 메인 창. 녹화·재생 상태 머신 + UI 통합.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
-- [[MacroFlow 미니 오버레이 창.  녹화·재생 중 화면 우하단에 항상 최상위로 표시된다. 크기 200×52px. 드래그 이동 가능.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[MacroFlow 미니 오버레이 창.  녹화·재생·플로우 실행 중 화면 우하단에 항상 최상위로 표시된다. 상태 텍스트 길이에 맞춰 폭을 늘리며]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[MainWindow]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[Mark repeat playback as fully finished.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[Mark the repeat worker as active.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
@@ -113,6 +130,8 @@ members: 160
 - [[PlaybackStartOptions]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[Pure helpers for MacroFlow repeat playback session state.  This module is intent]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[QMainWindow]] - code
+- [[QSettings 값 타입 차이를 안전하게 int로 정규화한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[QSettings에 저장된 색 timeout 기본값을 MacroData에 반영한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[QSettings에서 창 위치·크기와 마지막 파일을 복원한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[Repeat playback orchestration helpers.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_playback_repeat.py
 - [[RepeatPlaybackSession]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
@@ -124,17 +143,22 @@ members: 160
 - [[State for one full repeat playback request.      `cycle_index` is zero-based int]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[Update the currently running repeat cycle.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[WM_HOTKEY 처리 (Windows 전용).]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[_inside()]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py
+- [[_status_font()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[cycle_label()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[editor.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py
 - [[full_playback_options()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
-- [[get_progress()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
 - [[inject_color_trigger()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/recorder.py
-- [[is_playing()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/player.py
 - [[macros 폴더에 날짜·시간 파일명으로 자동 저장 후 시퀀서에 추가한다.          다이얼로그 없이 즉시 저장되며, 시퀀서 탭으로 자동]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[main()_2]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py
 - [[main_window.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[overlay.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[parse_args()_1]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py
 - [[playback_repeat.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
 - [[range_playback_options()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py
+- [[rdp_overlay_audit_smoke.py]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py
+- [[run_smoke()]] - code - /root/.openclaw/workspace/macroflow/tools/rdp_overlay_audit_smoke.py
+- [[start_emergency_hook()_1]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py
 - [[stop_emergency_hook()_1]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py
 - [[test_cycle_label_uses_one_based_count()]] - code - /root/.openclaw/workspace/macroflow/tests/test_playback_repeat.py
 - [[test_full_playback_options_ignore_range_spinbox_values()]] - code - /root/.openclaw/workspace/macroflow/tests/test_playback_repeat.py
@@ -148,7 +172,7 @@ members: 160
 - [[구간 재생 전용 버튼 구간이 설정된 경우에만 1회 재생한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[긴급 중지 Hook을 해제하고 스레드를 종료한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py
 - [[녹화 중 F7 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
-- [[녹화재생힌트 상태를 표시하는 미니 플로팅 창.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[녹화재생플로우힌트 상태를 표시하는 미니 플로팅 창.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[매크로 로드 후 구간 SpinBox 범위를 갱신한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[빈 구간 입력을 0 sentinel로 되돌려 '처음''끝' 표시를 복원한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[새 녹화 시작 전 기존 매크로를 pre_recording_.json 으로 임시 저장한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
@@ -157,17 +181,25 @@ members: 160
 - [[시퀀서 더블클릭 시 매크로를 로드하고 에디터 탭으로 전환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[시퀀서 탭에서 F7 시퀀스 실행 중이면 중지, 아니면 실행.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[시퀀스 완료오류 시 emergency hook 해제 후 툴바·상태바를 갱신한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[시퀀스플로우 실행 모드로 오버레이를 표시한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
+- [[시퀀스의 현재전체 매크로 순번을 갱신한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[앱 포커스 상태에서 ESC×3 긴급 중지.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[에디터에서 단일 이벤트 실행 요청 수신 시 해당 범위만 재생한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[영구 저장용 macros 디렉토리 경로를 반환한다.          PyInstaller 패키징 상태이면 exe 파일 옆 macros 폴더,]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[오버레이를 현재 화면 우하단에 다시 배치하고 최상단으로 표시한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[이전 녹화를 복원한다.          새 녹화를 시작하기 직전에 백업해 둔 매크로를 에디터에 로드한다.         실수로 F6을 눌러 기존]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[재생 중 ESC×3 긴급 중지 감지용 키보드 Hook을 시작한다.      LLKHF_INJECTED 이벤트(SendInput 주입)는 무시하므]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py
 - [[재생 진행률(0.0~1.0)을 갱신한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[즐겨찾기 저장용 favorites 디렉토리 경로를 반환한다.          macros 와 별도의 favorites 폴더를 사용한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
-- [[창 위치·크기와 마지막 열었던 파일 경로를 QSettings에 저장한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[창 위치·크기, 마지막 파일, 색 timeout 기본값을 QSettings에 저장한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[최근 녹화 서브메뉴를 임시 저장 파일 목록으로 갱신한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[탭 전환 시 툴바 버튼 상태와 상태바 힌트를 갱신한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[텍스트가 잘리지 않게 폭을 늘리고 표시 중이면 오른쪽 끝 위치를 유지한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/overlay.py
 - [[파일 다이얼로그 초기 폴더를 반환한다.          PyInstaller 패키징 상태이면 exe 파일이 있는 폴더,         개발 환경]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[플로우를 별도 스레드에서 실행 시작한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py
 - [[현재 매크로 뒤에 새 녹화를 이어붙이는 녹화 모드를 시작한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[현재 매크로를 이름 입력 후 즐겨찾기 폴더에 저장하고 즐겨찾기 탭에 추가한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
+- [[현재 매크로의 색 체크트리거 설정을 앱 기본값으로 저장한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[현재 파일에 덮어쓰기 저장한다.          _current_file이 설정된 경우 확인 다이얼로그 후 덮어쓰기.         _curr]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 - [[현재 활성 탭이 즐겨찾기인지 반환한다.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py
 
@@ -179,21 +211,23 @@ SORT file.name ASC
 ```
 
 ## Connections to other communities
-- 55 edges to [[_COMMUNITY_EventEditorWidget add single row]]
-- 44 edges to [[_COMMUNITY_MacroSequencerWidget FlowEngine EndNode MacroFlow]]
-- 43 edges to [[_COMMUNITY_FavoritesWidget refresh tree save]]
-- 38 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MouseMoveEvent]]
-- 19 edges to [[_COMMUNITY_convert raw TestConvertRaw hooks.py]]
-- 8 edges to [[_COMMUNITY_execute event PlayState player.py]]
-- 6 edges to [[_COMMUNITY_load test macro file.py]]
-- 4 edges to [[_COMMUNITY_append recording recording done]]
-- 3 edges to [[_COMMUNITY_build rows DisplayRow editor]]
-- 1 edge to [[_COMMUNITY_test editor capture.py start]]
+- 65 edges to [[_COMMUNITY_MacroSequencerWidget EndNode MacroFlow FlowEngine]]
+- 65 edges to [[_COMMUNITY_EventEditorWidget add single row]]
+- 50 edges to [[_COMMUNITY_MacroData MouseButtonEvent KeyEvent MacroSettings]]
+- 39 edges to [[_COMMUNITY_FavoritesWidget refresh tree save]]
+- 14 edges to [[_COMMUNITY_execute event PlayState test]]
+- 13 edges to [[_COMMUNITY_mock.py hooks.py get logical]]
+- 8 edges to [[_COMMUNITY_convert raw TestConvertRaw stop]]
+- 7 edges to [[_COMMUNITY_test macro file.py load]]
+- 3 edges to [[_COMMUNITY_rdp runtime safety smoke.py]]
+- 2 edges to [[_COMMUNITY_main main.py setup logging]]
+- 1 edge to [[_COMMUNITY_test expression sandbox module.py]]
+- 1 edge to [[_COMMUNITY_append recording test append]]
 - 1 edge to [[_COMMUNITY_test editor table.py table]]
 
 ## Top bridge nodes
-- [[MainWindow]] - degree 74, connects to 7 communities
-- [[OverlayWindow]] - degree 56, connects to 4 communities
-- [[._load_file()]] - degree 10, connects to 4 communities
+- [[MainWindow]] - degree 84, connects to 7 communities
+- [[Exception]] - degree 13, connects to 5 communities
+- [[.start()]] - degree 18, connects to 4 communities
 - [[MacroFlow 메인 창.  전체 상태 머신(idle  recording  stopping  playing)을 관리한다. F6F7 글로]] - degree 8, connects to 4 communities
-- [[매크로 로드 후 구간 SpinBox 범위를 갱신한다.]] - degree 8, connects to 4 communities
+- [[시퀀스 완료오류 시 emergency hook 해제 후 툴바·상태바를 갱신한다.]] - degree 8, connects to 4 communities
