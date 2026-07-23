@@ -15,6 +15,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "pyinstaller>=6.0",
+    "PyYAML>=6.0",
 ]
 # M3(UI) 구현 후 사용: uv sync --extra ui-test
 # CI에서는 xvfb-run 또는 QT_QPA_PLATFORM=offscreen 설정 필요

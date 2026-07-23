@@ -252,6 +252,73 @@ def _flow_to_dict(flow: MacroFlow) -> dict[str, Any]:
     }
 
 
+def _json_values_equal(left: Any, right: Any) -> bool:
+    """JSON 값을 Python의 bool/int 동등성에 기대지 않고 타입까지 비교한다."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _json_values_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _json_values_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    return bool(left == right)
+
+
+def _strict_flow_types_valid(flow: MacroFlow) -> bool:
+    """역직렬화가 허용한 bool/int 혼동 등 JSON schema 타입 손실을 차단한다."""
+    if any(
+        type(value) is not str
+        for value in (flow.version, flow.name, flow.created_at, flow.start_node_id)
+    ):
+        return False
+
+    def nullable_string(value: Any) -> bool:
+        return value is None or type(value) is str
+
+    for node_id, node in flow.nodes.items():
+        if type(node_id) is not str or type(node.id) is not str or type(node.label) is not str:
+            return False
+        if type(node.position) is not dict or any(
+            type(key) is not str or type(value) is not int
+            for key, value in node.position.items()
+        ):
+            return False
+        if isinstance(node, MacroNode):
+            if type(node.macro_path) is not str or not all(
+                nullable_string(value)
+                for value in (node.next_on_success, node.next_on_failure)
+            ):
+                return False
+        elif isinstance(node, ColorCheckNode):
+            if type(node.x_ratio) is not float or type(node.y_ratio) is not float:
+                return False
+            if any(
+                type(value) is not int
+                for value in (node.tolerance, node.timeout_ms, node.check_interval_ms)
+            ) or not all(nullable_string(value) for value in (node.on_match, node.on_timeout)):
+                return False
+            if type(node.target_color) is not str:
+                return False
+        elif isinstance(node, CounterNode):
+            if type(node.name) is not str or any(
+                type(value) is not int for value in (node.initial, node.increment, node.max)
+            ) or not all(
+                nullable_string(value) for value in (node.on_continue, node.on_max_reached)
+            ):
+                return False
+        elif isinstance(node, WaitFixedNode):
+            if type(node.duration_ms) is not int or not nullable_string(node.next):
+                return False
+        elif isinstance(node, EndNode):
+            if type(node.status) is not str:
+                return False
+    return True
+
+
 def load_flow(path: str, *, strict: bool = False) -> MacroFlow:
     """JSON .macroflow 파일을 MacroFlow로 로드한다.
 
@@ -286,7 +353,10 @@ def load_flow(path: str, *, strict: bool = False) -> MacroFlow:
         start_node_id=raw["start_node_id"],
         nodes=nodes,
     )
-    if strict and raw != _flow_to_dict(flow):
+    if strict and (
+        not _strict_flow_types_valid(flow)
+        or not _json_values_equal(raw, _flow_to_dict(flow))
+    ):
         raise ValueError("정규 형식이 아닌 필드가 있어 손실 방지를 위해 로드를 거부했습니다.")
     return flow
 

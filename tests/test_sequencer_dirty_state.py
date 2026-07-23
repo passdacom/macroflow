@@ -36,7 +36,7 @@ def test_dirty_transitions_for_mutations_and_noops() -> None:
 
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=False)
             first = root / "first.json"
             second = root / "second.json"
             first.write_text("{}", encoding="utf-8")
@@ -108,7 +108,7 @@ def test_save_load_and_save_as_failure_are_transactional() -> None:
 
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=False)
             macro = root / "one.json"
             flow_path = root / "sequence.macroflow"
             macro.write_text("{}", encoding="utf-8")
@@ -163,7 +163,7 @@ def test_unsaved_prompt_and_failed_open_preserve_state() -> None:
 
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=False)
             first = root / "first.json"
             second = root / "second.json"
             target = root / "target.macroflow"
@@ -258,7 +258,7 @@ def test_lossy_flow_projection_is_rejected() -> None:
 
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=False)
             first = root / "first.json"
             second = root / "second.json"
             third = root / "third.json"
@@ -415,7 +415,7 @@ def test_linear_flow_with_noncanonical_document_data_is_rejected() -> None:
 
         app = QApplication.instance() or QApplication([])
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=False)
             original = root / "original.json"
             projected = root / "projected.json"
             original.write_text("{}", encoding="utf-8")
