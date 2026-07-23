@@ -28,6 +28,7 @@ from macroflow.types import (
 def _run_offscreen(script: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
+    env["PYTHONUTF8"] = "1"
     return subprocess.run(
         [sys.executable, "-c", textwrap.dedent(script)],
         check=False,
