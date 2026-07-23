@@ -167,6 +167,63 @@ def test_player_start_failure_restores_idle_overlay_state() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_repeat_confirmation_brings_main_window_to_front_first() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import patch
+
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from macroflow import win32
+        from macroflow.types import MacroData, MacroMeta, MacroSettings, WaitEvent
+        from macroflow.ui.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        window = MainWindow()
+        window._macro = MacroData(
+            meta=MacroMeta(
+                version="1.0", app_version="test", created_at="2026-07-23T00:00:00",
+                screen_width=1920, screen_height=1080, dpi_scale=1.0,
+            ),
+            settings=MacroSettings(),
+            raw_events=[],
+            events=[WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=1)],
+        )
+        window._repeat_spin.setValue(2)
+
+        calls = []
+        with patch.object(window, "isMinimized", return_value=False), \\
+             patch.object(window, "show", side_effect=lambda: calls.append("show")), \\
+             patch.object(window, "raise_", side_effect=lambda: calls.append("raise")), \\
+             patch.object(window, "activateWindow", side_effect=lambda: calls.append("activate")), \\
+             patch("macroflow.ui.main_window.sys.platform", "win32"), \\
+             patch.object(
+                 win32,
+                 "bring_window_to_foreground",
+                 side_effect=lambda hwnd: calls.append(("native", hwnd)) or True,
+             ), \\
+             patch.object(
+                 QMessageBox,
+                 "question",
+                 side_effect=lambda *args, **kwargs: (
+                     calls.append("question") or QMessageBox.StandardButton.No
+                 ),
+             ):
+            window._start_playback()
+
+        assert calls == [
+            "show",
+            "raise",
+            "activate",
+            ("native", int(window.winId())),
+            "question",
+        ]
+        assert window._state == "idle"
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_flow_color_check_timeout_zero_waits_until_match(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

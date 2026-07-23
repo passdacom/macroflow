@@ -830,6 +830,19 @@ class MainWindow(QMainWindow):
         elif self._state == "playing":
             self._stop_playback()
 
+    def _bring_to_front_for_prompt(self) -> None:
+        """사용자 확인창을 띄우기 전에 메인 창을 전면으로 복원한다."""
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+        if sys.platform == "win32":
+            from macroflow.win32 import bring_window_to_foreground
+
+            bring_window_to_foreground(int(self.winId()))
+
     def _start_playback(
         self,
         options: PlaybackStartOptions | None = None,
@@ -850,6 +863,7 @@ class MainWindow(QMainWindow):
         interval_ms = self._interval_spin.value()
 
         if options.confirm_repeat and repeat_count > 1:
+            self._bring_to_front_for_prompt()
             reply = QMessageBox.question(
                 self,
                 "반복 재생",
@@ -925,7 +939,7 @@ class MainWindow(QMainWindow):
                     player.play(
                         macro,
                         speed=speed,
-                        on_event=_on_event,
+                        on_event_start=_on_event,
                         on_complete=_on_complete,
                         on_error=_on_error,
                         event_range=_range,

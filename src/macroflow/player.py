@@ -535,6 +535,7 @@ def _play_loop(
     on_complete: Callable[[], None] | None,
     on_error: Callable[[Exception], None] | None,
     event_range: tuple[int, int] | None,
+    on_event_start: Callable[[int, AnyEvent], None] | None = None,
 ) -> None:
     """실제 재생을 수행하는 스레드 함수.
 
@@ -543,11 +544,12 @@ def _play_loop(
     Args:
         macro: 재생할 MacroData (events 배열만 사용).
         speed: 재생 속도 배율 (0.5~10.0).
-        on_event: 각 이벤트 실행 후 호출되는 콜백 (idx, event).
+        on_event: 각 이벤트 실행 완료 후 호출되는 콜백 (idx, event).
         on_complete: 재생 완료 시 콜백.
         on_error: 오류 발생 시 콜백.
         event_range: (start_idx, end_idx) 구간 재생. None이면 전체 재생.
             end_idx는 exclusive (Python slice 규칙).
+        on_event_start: 각 이벤트 실행 직전에 호출되는 콜백 (idx, event).
     """
     global _current_event_idx, _current_event_position, _total_events
     play_start_ns = time.perf_counter_ns()
@@ -609,6 +611,19 @@ def _play_loop(
         if sleep_ns > 1_000_000:
             if _stop_flag.wait(sleep_ns / 1_000_000_000):
                 return
+
+        # UI에는 이벤트 완료가 아니라 실제 실행 시작 시점을 알린다. 색 체크·대기처럼
+        # 한 이벤트가 오래 막히거나 오류로 중단되어도 현재 행이 정확히 남아야 한다.
+        try:
+            if on_event_start:
+                on_event_start(orig_idx, event)
+        except Exception as e:
+            logger.exception(f"Playback start callback error: {e}")
+            if on_error:
+                on_error(e)
+            return
+        if _stop_flag.is_set():
+            return
 
         execute_start_ns = time.perf_counter_ns()
         try:
@@ -672,16 +687,18 @@ def play(
     on_complete: Callable[[], None] | None = None,
     on_error: Callable[[Exception], None] | None = None,
     event_range: tuple[int, int] | None = None,
+    on_event_start: Callable[[int, AnyEvent], None] | None = None,
 ) -> None:
     """MacroData를 별도 스레드에서 재생 시작한다.
 
     Args:
         macro: 재생할 MacroData. events 배열 사용.
         speed: 재생 속도 배율. 기본 1.0.
-        on_event: 각 이벤트 실행 후 UI에 알릴 콜백 (idx, event).
+        on_event: 각 이벤트 실행 완료 후 알릴 콜백 (idx, event).
         on_complete: 재생 완료 시 UI에 알릴 콜백.
         on_error: 오류 발생 시 UI에 알릴 콜백.
         event_range: (start_idx, end_idx) 구간 재생. None이면 전체 재생.
+        on_event_start: 각 이벤트 실행 직전에 UI에 알릴 콜백 (idx, event).
 
     Raises:
         PlaybackError: 기존 재생 worker가 아직 실행 중일 때.
@@ -700,7 +717,7 @@ def play(
 
     _playback_thread = threading.Thread(
         target=_play_loop,
-        args=(macro, speed, on_event, on_complete, on_error, event_range),
+        args=(macro, speed, on_event, on_complete, on_error, event_range, on_event_start),
         daemon=True,
         name="PlaybackThread",
     )

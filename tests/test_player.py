@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -203,6 +204,71 @@ class TestPlaybackTiming:
 
         # 모든 이벤트가 실행되지 않았어야 한다
         assert len(executed) < len(events)
+
+    def test_on_event_reports_event_before_blocking_execution(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """UI 하이라이트는 오래 걸리는 이벤트가 끝난 뒤가 아니라 시작할 때 갱신한다."""
+        event = WaitEvent(
+            id="blocking",
+            type="wait",
+            timestamp_ns=0,
+            duration_ms=1,
+        )
+        execution_started = threading.Event()
+        release_execution = threading.Event()
+        reported: list[tuple[int, AnyEvent]] = []
+
+        def _blocking_execute(
+            _event: AnyEvent,
+            _settings: MacroSettings,
+            _state: _PlayState,
+        ) -> None:
+            execution_started.set()
+            release_execution.wait(timeout=1.0)
+
+        monkeypatch.setattr(player, "_execute_event", _blocking_execute)
+        try:
+            player.play(
+                _make_macro([event]),
+                on_event_start=lambda idx, item: reported.append((idx, item)),
+            )
+            assert execution_started.wait(timeout=1.0)
+
+            assert reported == [(0, event)]
+        finally:
+            release_execution.set()
+            player.stop()
+
+    def test_on_event_start_error_uses_terminal_error_callback(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        event = WaitEvent(id="event", type="wait", timestamp_ns=0, duration_ms=1)
+        errors: list[Exception] = []
+        completed: list[bool] = []
+        executed: list[str] = []
+
+        monkeypatch.setattr(
+            player,
+            "_execute_event",
+            lambda item, _settings, _state: executed.append(item.id),
+        )
+        player.play(
+            _make_macro([event]),
+            on_event_start=lambda _idx, _item: (_ for _ in ()).throw(RuntimeError("ui failed")),
+            on_complete=lambda: completed.append(True),
+            on_error=errors.append,
+        )
+        deadline = time.monotonic() + 1.0
+        while player.is_playing() and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+        assert len(errors) == 1
+        assert str(errors[0]) == "ui failed"
+        assert completed == []
+        assert executed == []
 
     def test_delay_override_respected(self) -> None:
         """delay_override_ms가 설정된 이벤트는 그 딜레이만큼 기다려야 한다."""
