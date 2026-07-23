@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   lint-test:
@@ -15,14 +16,14 @@ jobs:
 
       - uses: astral-sh/setup-uv@v3
         with:
-          version: "latest"
+          version: "0.11.8"
           enable-cache: true
 
       - name: Set up Python 3.11
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --extra dev --python 3.11
+        run: uv sync --locked --extra dev --extra ui-test --python 3.11
 
       - name: Install Qt runtime library
         run: sudo apt-get update && sudo apt-get install --yes libegl1
@@ -47,14 +48,19 @@ jobs:
 
       - uses: astral-sh/setup-uv@v3
         with:
-          version: "latest"
+          version: "0.11.8"
           enable-cache: true
 
       - name: Set up Python 3.11
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --extra dev --python 3.11
+        run: uv sync --locked --extra dev --extra ui-test --python 3.11
+
+      - name: Run pytest on Windows
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run pytest tests/ -v
 
       # pyproject.toml에서 버전을 읽어 EXE 파일명에 반영
       - name: Get version
@@ -79,6 +85,37 @@ jobs:
           BUILD="${{ github.run_number }}"
           mv dist/MacroFlow.exe "dist/MacroFlow-v${VERSION}-build${BUILD}.exe"
 
+      - name: Smoke packaged EXE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Get-ChildItem 'dist/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $process = Start-Process -FilePath $exe -PassThru
+          $deadline = (Get-Date).AddSeconds(30)
+          $window = $null
+          try {
+            do {
+              if ($process.HasExited) {
+                throw "Packaged EXE exited during startup with code $($process.ExitCode)"
+              }
+              $window = Get-Process | Where-Object {
+                $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like 'MacroFlow*'
+              } | Select-Object -First 1
+              if ($window) { break }
+              Start-Sleep -Milliseconds 500
+              $process.Refresh()
+            } while ((Get-Date) -lt $deadline)
+            if (-not $window) {
+              throw 'Packaged EXE did not expose a MacroFlow main window within 30 seconds'
+            }
+            Write-Host "PACKAGED_EXE_SMOKE_OK title=$($window.MainWindowTitle) pid=$($window.Id)"
+          }
+          finally {
+            Get-Process | Where-Object {
+              $_.MainWindowTitle -like 'MacroFlow*' -or $_.Id -eq $process.Id
+            } | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
@@ -89,7 +126,7 @@ jobs:
   release:
     name: Create Release
     needs: build-exe
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
