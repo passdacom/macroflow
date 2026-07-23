@@ -192,7 +192,10 @@ def test_stop_during_event_start_callback_prevents_input(
 
     stop_thread = threading.Thread(target=player.stop)
     stop_thread.start()
-    time.sleep(0.02)
+    deadline = time.monotonic() + 0.5
+    while not player._stop_flag.is_set() and time.monotonic() < deadline:
+        time.sleep(0.001)
+    assert player._stop_flag.is_set()
     release_callback.set()
     stop_thread.join(timeout=1.0)
 

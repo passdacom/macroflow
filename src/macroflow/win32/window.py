@@ -6,8 +6,7 @@ import sys
 from typing import Any
 
 _SW_SHOW = 5
-_HWND_TOPMOST = -1
-_HWND_NOTOPMOST = -2
+_HWND_TOP = 0
 _SWP_NOSIZE = 0x0001
 _SWP_NOMOVE = 0x0002
 _SWP_SHOWWINDOW = 0x0040
@@ -20,21 +19,16 @@ def _activate_with_user32(user32: Any, hwnd: int) -> bool:
         return False
 
     shown = bool(user32.ShowWindow(hwnd, _SW_SHOW))
-    raised = bool(
-        user32.SetWindowPos(hwnd, _HWND_TOPMOST, 0, 0, 0, 0, _RAISE_FLAGS)
-    )
-    lowered = bool(
-        user32.SetWindowPos(hwnd, _HWND_NOTOPMOST, 0, 0, 0, 0, _RAISE_FLAGS)
-    )
+    raised = bool(user32.SetWindowPos(hwnd, _HWND_TOP, 0, 0, 0, 0, _RAISE_FLAGS))
     foregrounded = bool(user32.SetForegroundWindow(hwnd))
-    return shown or (raised and lowered) or foregrounded
+    return shown or raised or foregrounded
 
 
 def bring_window_to_foreground(hwnd: int) -> bool:
     """Bring a native window to the foreground on Windows.
 
-    The temporary TOPMOST → NOTOPMOST transition avoids leaving MacroFlow pinned
-    above other applications while still making a global-hotkey prompt visible.
+    The window is moved to the top of the non-topmost z-order, so MacroFlow is
+    surfaced without risking a persistent always-on-top state.
     """
     if sys.platform != "win32" or hwnd <= 0:
         return False

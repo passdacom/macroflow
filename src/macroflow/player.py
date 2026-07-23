@@ -614,8 +614,14 @@ def _play_loop(
 
         # UI에는 이벤트 완료가 아니라 실제 실행 시작 시점을 알린다. 색 체크·대기처럼
         # 한 이벤트가 오래 막히거나 오류로 중단되어도 현재 행이 정확히 남아야 한다.
-        if on_event_start:
-            on_event_start(orig_idx, event)
+        try:
+            if on_event_start:
+                on_event_start(orig_idx, event)
+        except Exception as e:
+            logger.exception(f"Playback start callback error: {e}")
+            if on_error:
+                on_error(e)
+            return
         if _stop_flag.is_set():
             return
 

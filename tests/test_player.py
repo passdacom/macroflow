@@ -241,6 +241,35 @@ class TestPlaybackTiming:
             release_execution.set()
             player.stop()
 
+    def test_on_event_start_error_uses_terminal_error_callback(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        event = WaitEvent(id="event", type="wait", timestamp_ns=0, duration_ms=1)
+        errors: list[Exception] = []
+        completed: list[bool] = []
+        executed: list[str] = []
+
+        monkeypatch.setattr(
+            player,
+            "_execute_event",
+            lambda item, _settings, _state: executed.append(item.id),
+        )
+        player.play(
+            _make_macro([event]),
+            on_event_start=lambda _idx, _item: (_ for _ in ()).throw(RuntimeError("ui failed")),
+            on_complete=lambda: completed.append(True),
+            on_error=errors.append,
+        )
+        deadline = time.monotonic() + 1.0
+        while player.is_playing() and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+        assert len(errors) == 1
+        assert str(errors[0]) == "ui failed"
+        assert completed == []
+        assert executed == []
+
     def test_delay_override_respected(self) -> None:
         """delay_override_ms가 설정된 이벤트는 그 딜레이만큼 기다려야 한다."""
         delay_ms = 80
