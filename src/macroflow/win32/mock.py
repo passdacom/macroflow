@@ -67,6 +67,13 @@ def stop_emergency_hook() -> None:
 
 # ── 창 감지 ──────────────────────────────────────────────
 
+
+def bring_window_to_foreground(hwnd: int) -> bool:
+    """Foreground activation Mock — 비-Windows에서는 항상 False."""
+    logger.debug(f"[Mock] bring_window_to_foreground({hwnd}) → False")
+    return False
+
+
 def find_window(title_contains: str) -> int | None:
     """FindWindow Mock — 항상 None 반환."""
     logger.debug(f"[Mock] find_window('{title_contains}') → None")

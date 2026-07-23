@@ -168,6 +168,38 @@ def test_stop_interrupts_scheduled_gap_before_next_input(
     assert moves == [(1, 1)]
 
 
+def test_stop_during_event_start_callback_prevents_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    callback_entered = threading.Event()
+    release_callback = threading.Event()
+    executed: list[str] = []
+
+    def _on_event_start(_idx: int, _event: AnyEvent) -> None:
+        callback_entered.set()
+        release_callback.wait(timeout=1.0)
+
+    monkeypatch.setattr(
+        player,
+        "_execute_event",
+        lambda event, _settings, _state: executed.append(event.id),
+    )
+    player.play(
+        _make_macro([WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=1)]),
+        on_event_start=_on_event_start,
+    )
+    assert callback_entered.wait(timeout=0.5)
+
+    stop_thread = threading.Thread(target=player.stop)
+    stop_thread.start()
+    time.sleep(0.02)
+    release_callback.set()
+    stop_thread.join(timeout=1.0)
+
+    assert not stop_thread.is_alive()
+    assert executed == []
+
+
 def test_play_rejects_overlapping_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     entered_wait = threading.Event()
     original_execute = player._execute_event
