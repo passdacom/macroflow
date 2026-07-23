@@ -36,7 +36,7 @@ jobs:
       - name: Validate GitHub Actions workflow
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-          actionlint .github/workflows/build.yml
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/build.yml
           uvx --from zizmor==1.28.0 zizmor --min-severity medium .github/workflows/build.yml
 
       - name: Run ruff

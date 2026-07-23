@@ -36,7 +36,7 @@ def test_ci_uses_locked_dependencies_on_linux_and_windows() -> None:
         assert "uv sync --locked --extra dev --extra ui-test --python 3.11" in commands
 
     validation = _steps(jobs["lint-test"])["Validate GitHub Actions workflow"]["run"]
-    assert "actionlint .github/workflows/build.yml" in validation
+    assert '$(go env GOPATH)/bin/actionlint" .github/workflows/build.yml' in validation
     assert "zizmor --min-severity medium" in validation
 
 
