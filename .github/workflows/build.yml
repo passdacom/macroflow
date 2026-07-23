@@ -154,7 +154,7 @@ jobs:
           }
 
       - name: Upload EXE artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: MacroFlow-exe
           path: dist/MacroFlow-v*
@@ -173,13 +173,13 @@ jobs:
           persist-credentials: false
 
       - name: Download EXE artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: MacroFlow-exe
           path: dist/
 
       - name: Create release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           tag_name: v${{ needs.build-exe.outputs.version }}-build${{ github.run_number }}
           name: "MacroFlow v${{ needs.build-exe.outputs.version }} Build ${{ github.run_number }}"
