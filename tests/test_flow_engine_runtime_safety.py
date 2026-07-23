@@ -134,3 +134,80 @@ def test_stop_interrupts_color_check_poll_without_callback(
     assert elapsed < 0.2
     assert not engine.is_running()
     assert done_calls == []
+
+
+def test_duplicate_start_is_rejected_while_worker_is_alive(tmp_path: Path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    flow = MacroFlow(
+        version="1.0",
+        name="duplicate start",
+        created_at="2026-07-23T00:00:00",
+        start_node_id="end_success",
+        nodes={"end_success": EndNode(id="end_success", label="done")},
+    )
+    engine = FlowEngine(str(tmp_path / "sequence.macroflow"))
+
+    def blocking_run(_flow: MacroFlow) -> None:
+        entered.set()
+        release.wait(timeout=1.0)
+
+    engine._run = blocking_run  # type: ignore[method-assign]
+    engine.start(flow)
+    assert entered.wait(timeout=0.5)
+    first_thread = engine._thread
+
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            engine.start(flow)
+        assert engine._thread is first_thread
+    finally:
+        release.set()
+        engine.stop()
+
+
+def test_stop_timeout_keeps_worker_handle_and_blocks_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from macroflow import player
+
+    class TimedOutThread:
+        def __init__(self) -> None:
+            self.alive = True
+            self.join_timeouts: list[float | None] = []
+
+        def is_alive(self) -> bool:
+            return self.alive
+
+        def join(self, timeout: float | None = None) -> None:
+            self.join_timeouts.append(timeout)
+
+    flow = MacroFlow(
+        version="1.0",
+        name="stop timeout",
+        created_at="2026-07-23T00:00:00",
+        start_node_id="end_success",
+        nodes={"end_success": EndNode(id="end_success", label="done")},
+    )
+    engine = FlowEngine(str(tmp_path / "sequence.macroflow"))
+    worker = TimedOutThread()
+    engine._thread = worker  # type: ignore[assignment]
+    monkeypatch.setattr(player, "stop", lambda: None)
+
+    engine.stop()
+
+    assert engine._thread is worker
+    assert worker.join_timeouts == [5.0]
+    assert engine.is_running()
+    with pytest.raises(RuntimeError, match="already running"):
+        engine.start(flow)
+    assert engine._thread is worker
+
+    worker.alive = False
+    engine.start(flow)
+    restarted_worker = engine._thread
+    assert restarted_worker is not None
+    assert restarted_worker is not worker
+    restarted_worker.join(timeout=0.5)
+    assert not restarted_worker.is_alive()

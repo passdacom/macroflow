@@ -368,25 +368,48 @@ class FlowEngine:
         self._speed = speed
         self._stop_flag = threading.Event()
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.Lock()
+        self._stopping = False
 
     def start(self, flow: MacroFlow) -> None:
         """플로우를 별도 스레드에서 실행 시작한다."""
-        self._stop_flag.clear()
-        self._thread = threading.Thread(
-            target=self._run, args=(flow,), daemon=True, name="FlowEngine"
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            worker_alive = self._thread is not None and self._thread.is_alive()
+            if self._stopping and not worker_alive:
+                self._stopping = False
+            if self._stopping or worker_alive:
+                raise RuntimeError("FlowEngine is already running")
+            self._stop_flag.clear()
+            worker = threading.Thread(
+                target=self._run, args=(flow,), daemon=True, name="FlowEngine"
+            )
+            self._thread = worker
+            try:
+                worker.start()
+            except Exception:
+                self._thread = None
+                raise
 
     def stop(self) -> None:
         """실행을 중단한다."""
-        self._stop_flag.set()
+        with self._lifecycle_lock:
+            self._stop_flag.set()
+            self._stopping = True
+            worker = self._thread
         from macroflow import player
+
         player.stop()
-        if self._thread is not None:
-            self._thread.join(timeout=5.0)
+        if worker is not None:
+            worker.join(timeout=5.0)
+        with self._lifecycle_lock:
+            if worker is self._thread and (
+                worker is None or not worker.is_alive()
+            ):
+                self._stopping = False
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        with self._lifecycle_lock:
+            return self._thread is not None and self._thread.is_alive()
 
     def _run(self, flow: MacroFlow) -> None:
         """플로우 실행 메인 루프."""

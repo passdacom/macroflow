@@ -103,6 +103,7 @@ def test_save_load_and_save_as_failure_are_transactional() -> None:
         from unittest.mock import patch
 
         from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox
+        from macroflow.script_engine import load_flow
         from macroflow.ui.sequencer import MacroSequencerWidget
 
         app = QApplication.instance() or QApplication([])
@@ -124,6 +125,9 @@ def test_save_load_and_save_as_failure_are_transactional() -> None:
                 assert widget._load_flow_from_path(flow_path)
             assert not widget.is_dirty()
             assert widget._current_flow_path == flow_path
+            loaded_created_at = load_flow(str(flow_path)).created_at
+            assert widget._do_save_flow(flow_path)
+            assert load_flow(str(flow_path)).created_at == loaded_created_at
 
             previous_path = root / "previous.macroflow"
             requested_path = root / "requested.macroflow"
@@ -392,6 +396,73 @@ def test_lossy_flow_projection_is_rejected() -> None:
             assert [item.path for item in widget._items] == original_paths
             assert widget._gap_spin.value() == original_gap
             assert widget.is_dirty()
+            widget.close()
+        app.processEvents()
+        """
+    )
+
+
+def test_linear_flow_with_noncanonical_document_data_is_rejected() -> None:
+    _run_offscreen(
+        """
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+        from macroflow.script_engine import EndNode, MacroFlow, MacroNode, save_flow
+        from macroflow.ui.sequencer import MacroSequencerWidget
+
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original = root / "original.json"
+            projected = root / "projected.json"
+            original.write_text("{}", encoding="utf-8")
+            projected.write_text("{}", encoding="utf-8")
+            flow_path = root / "custom.macroflow"
+            save_flow(
+                MacroFlow(
+                    version="2.5",
+                    name="operator-authored flow",
+                    created_at="2024-01-02T03:04:05",
+                    start_node_id="custom-start",
+                    nodes={
+                        "custom-start": MacroNode(
+                            id="custom-start",
+                            label="Operator label",
+                            macro_path=projected.name,
+                            next_on_success="custom-success",
+                            next_on_failure="custom-error",
+                            position={"x": 777, "y": 888},
+                        ),
+                        "custom-success": EndNode(
+                            id="custom-success",
+                            label="Custom done",
+                            status="success",
+                            position={"x": 999, "y": 1000},
+                        ),
+                        "custom-error": EndNode(
+                            id="custom-error",
+                            label="Custom error",
+                            status="error",
+                            position={"x": 1111, "y": 1222},
+                        ),
+                    },
+                ),
+                str(flow_path),
+            )
+
+            widget = MacroSequencerWidget()
+            widget.add_macro_file(original)
+            with (
+                patch.object(widget, "confirm_discard_changes", return_value=True),
+                patch.object(QMessageBox, "critical") as critical,
+            ):
+                assert not widget._load_flow_from_path(flow_path)
+            assert [item.path for item in widget._items] == [original]
+            assert widget.is_dirty()
+            assert "정규" in critical.call_args.args[2]
             widget.close()
         app.processEvents()
         """

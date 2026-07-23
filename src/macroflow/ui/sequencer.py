@@ -176,7 +176,90 @@ def _project_linear_flow(
     if represented_ids != set(flow.nodes):
         raise ValueError("시퀀서에 표시되지 않는 노드가 있어 로드를 거부했습니다.")
 
-    return paths, durations[0] if durations else 0
+    gap_ms = durations[0] if durations else 0
+    expected = _build_canonical_flow(
+        paths,
+        gap_ms,
+        Path(flow_path),
+        created_at=flow.created_at,
+    )
+    if flow != expected:
+        raise ValueError(
+            "정규 시퀀서 문서가 아닌 선형 플로우는 원본 정보를 보존할 수 없어 "
+            "열 수 없습니다."
+        )
+
+    return paths, gap_ms
+
+
+def _build_canonical_flow(
+    macro_paths: list[Path],
+    gap_ms: int,
+    save_path: Path,
+    *,
+    created_at: str,
+) -> MacroFlow:
+    """시퀀서가 무손실로 다시 저장할 수 있는 정규 플로우를 생성한다."""
+    base = save_path.parent
+    nodes: dict[str, Any] = {}
+    count = len(macro_paths)
+    effective_gap_ms = gap_ms if count > 1 else 0
+
+    for index, path in enumerate(macro_paths):
+        node_id = f"macro_{index:03d}"
+        if effective_gap_ms > 0 and index < count - 1:
+            next_node_id = f"wait_{index:03d}"
+        else:
+            next_node_id = (
+                f"macro_{index + 1:03d}" if index < count - 1 else "end_success"
+            )
+
+        try:
+            macro_path = str(path.relative_to(base)).replace("\\", "/")
+        except ValueError:
+            macro_path = str(path).replace("\\", "/")
+
+        nodes[node_id] = MacroNode(
+            id=node_id,
+            label=path.name,
+            macro_path=macro_path,
+            next_on_success=next_node_id,
+            next_on_failure="end_error",
+            position={
+                "x": 100,
+                "y": 100 + index * (200 if effective_gap_ms > 0 else 150),
+            },
+        )
+        if effective_gap_ms > 0 and index < count - 1:
+            wait_node_id = f"wait_{index:03d}"
+            nodes[wait_node_id] = WaitFixedNode(
+                id=wait_node_id,
+                label=f"{effective_gap_ms}ms 대기",
+                duration_ms=effective_gap_ms,
+                next=f"macro_{index + 1:03d}",
+                position={"x": 100, "y": 100 + index * 200 + 100},
+            )
+
+    row_count = count * (2 if effective_gap_ms > 0 else 1)
+    nodes["end_success"] = EndNode(
+        id="end_success",
+        label="완료",
+        status="success",
+        position={"x": 100, "y": 100 + row_count * 100},
+    )
+    nodes["end_error"] = EndNode(
+        id="end_error",
+        label="오류 종료",
+        status="error",
+        position={"x": 350, "y": 250},
+    )
+    return MacroFlow(
+        version="1.0",
+        name="sequence",
+        created_at=created_at,
+        start_node_id="macro_000" if macro_paths else "end_success",
+        nodes=nodes,
+    )
 
 
 class _MacroItem:
@@ -220,6 +303,7 @@ class MacroSequencerWidget(QWidget):
         self._run_generation = 0
         self._active_generation: int | None = None
         self._current_flow_path: Path | None = None
+        self._document_created_at: str | None = None
         self._is_dirty = False
         self._suppress_dirty = False
         self._setup_ui()
@@ -599,6 +683,7 @@ class MacroSequencerWidget(QWidget):
             self._suppress_dirty = False
 
         self._current_flow_path = path
+        self._document_created_at = flow.created_at
         self._refresh_all()
         self._update_buttons()
         self._set_dirty(False)
@@ -645,73 +730,21 @@ class MacroSequencerWidget(QWidget):
             QMessageBox.critical(self, "플로우 저장 오류", str(exc))
             return False
         self._current_flow_path = path
+        self._document_created_at = flow.created_at
         self._set_dirty(False)
         self._log_message(f"플로우 저장: {path.name}")
         return True
 
     def _build_flow(self, save_path: Path) -> MacroFlow:
-        """현재 목록에서 선형 MacroFlow를 생성한다.
-
-        gap_ms > 0 이면 매크로 노드 사이에 WaitFixedNode를 삽입한다.
-        매크로 파일이 flow 기준 폴더와 다른 위치에 있으면 절대 경로를 사용한다.
-        """
-        from macroflow.script_engine import WaitFixedNode as _WaitFixedNode
-
-        base = save_path.parent
-        nodes: dict[str, Any] = {}
-        gap_ms = self._gap_spin.value()
-        n = len(self._items)
-
-        for i, item in enumerate(self._items):
-            nid = f"macro_{i:03d}"
-            # 다음 노드: gap이 있으면 wait 노드를 거친다
-            if gap_ms > 0 and i < n - 1:
-                next_nid = f"wait_{i:03d}"
-            else:
-                next_nid = f"macro_{i + 1:03d}" if i < n - 1 else "end_success"
-
-            # 경로: 같은 기준 폴더면 상대경로, 다른 곳이면 절대경로 사용
-            try:
-                macro_path_str = str(item.path.relative_to(base)).replace("\\", "/")
-            except ValueError:
-                macro_path_str = str(item.path).replace("\\", "/")
-
-            nodes[nid] = MacroNode(
-                id=nid,
-                label=item.path.name,
-                macro_path=macro_path_str,
-                next_on_success=next_nid,
-                next_on_failure="end_error",
-                position={"x": 100, "y": 100 + i * (200 if gap_ms > 0 else 150)},
-            )
-
-            # 딜레이 노드 삽입
-            if gap_ms > 0 and i < n - 1:
-                wait_nid = f"wait_{i:03d}"
-                nodes[wait_nid] = _WaitFixedNode(
-                    id=wait_nid,
-                    label=f"{gap_ms}ms 대기",
-                    duration_ms=gap_ms,
-                    next=f"macro_{i + 1:03d}",
-                    position={"x": 100, "y": 100 + i * 200 + 100},
-                )
-
-        row_count = n * (2 if gap_ms > 0 else 1)
-        nodes["end_success"] = EndNode(
-            id="end_success", label="완료", status="success",
-            position={"x": 100, "y": 100 + row_count * 100},
+        """현재 목록에서 정규 선형 MacroFlow를 생성한다."""
+        created_at = self._document_created_at or datetime.now().isoformat(
+            timespec="seconds"
         )
-        nodes["end_error"] = EndNode(
-            id="end_error", label="오류 종료", status="error",
-            position={"x": 350, "y": 250},
-        )
-
-        return MacroFlow(
-            version="1.0",
-            name="sequence",
-            created_at=datetime.now().isoformat(timespec="seconds"),
-            start_node_id="macro_000" if self._items else "end_success",
-            nodes=nodes,
+        return _build_canonical_flow(
+            [item.path for item in self._items],
+            self._gap_spin.value(),
+            save_path,
+            created_at=created_at,
         )
 
     # ── 시퀀스 실행 ───────────────────────────────────────────────────────────
