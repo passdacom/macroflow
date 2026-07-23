@@ -136,7 +136,9 @@ jobs:
                 }
               } while ($added)
               $window = Get-Process -Id @($ownedIds) -ErrorAction SilentlyContinue |
-                Where-Object { $_.MainWindowHandle -ne 0 } |
+                Where-Object {
+                  $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like 'MacroFlow*'
+                } |
                 Select-Object -First 1
               if ($window) { break }
               Start-Sleep -Milliseconds 500

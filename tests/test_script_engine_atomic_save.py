@@ -7,7 +7,14 @@ from typing import Any, TextIO
 import pytest
 
 import macroflow.script_engine as script_engine
-from macroflow.script_engine import EndNode, MacroFlow, WaitFixedNode, load_flow, save_flow
+from macroflow.script_engine import (
+    ColorCheckNode,
+    EndNode,
+    MacroFlow,
+    WaitFixedNode,
+    load_flow,
+    save_flow,
+)
 
 
 def _flow() -> MacroFlow:
@@ -126,6 +133,38 @@ def test_strict_load_distinguishes_json_boolean_from_integer(tmp_path: Path) -> 
     save_flow(flow, str(target))
     raw = json.loads(target.read_text(encoding="utf-8"))
     raw["nodes"]["wait_000"]["duration_ms"] = True
+    target.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        load_flow(str(target), strict=True)
+
+
+@pytest.mark.parametrize("ratio", [float("inf"), float("-inf")])
+def test_strict_load_rejects_non_finite_color_ratios(
+    tmp_path: Path, ratio: float
+) -> None:
+    target = tmp_path / "non-finite-ratio.macroflow"
+    flow = MacroFlow(
+        version="1.0",
+        name="ratio",
+        created_at="2026-07-23T00:00:00",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="#000000",
+                on_match="end_success",
+                on_timeout="end_success",
+            ),
+            "end_success": EndNode(id="end_success", label="done"),
+        },
+    )
+    save_flow(flow, str(target))
+    raw = json.loads(target.read_text(encoding="utf-8"))
+    raw["nodes"]["color"]["x_ratio"] = ratio
     target.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
 
     with pytest.raises(ValueError, match="정규 형식"):

@@ -47,6 +47,7 @@ def test_windows_job_runs_tests_before_build_and_owns_smoke_process_tree() -> No
     smoke = _steps(_workflow()["jobs"]["build-exe"])["Smoke packaged EXE"]["run"]
     assert "Get-CimInstance Win32_Process" in smoke
     assert "Get-Process -Id @($ownedIds)" in smoke
+    assert "$_.MainWindowTitle -like 'MacroFlow*'" in smoke
     assert "taskkill.exe /PID $process.Id /T /F" in smoke
     assert "Get-Process | Where-Object" not in smoke
 

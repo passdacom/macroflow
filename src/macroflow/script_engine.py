@@ -18,6 +18,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import math
 import os
 import random as _random_module
 import tempfile
@@ -294,7 +295,12 @@ def _strict_flow_types_valid(flow: MacroFlow) -> bool:
             ):
                 return False
         elif isinstance(node, ColorCheckNode):
-            if type(node.x_ratio) is not float or type(node.y_ratio) is not float:
+            if (
+                type(node.x_ratio) is not float
+                or type(node.y_ratio) is not float
+                or not math.isfinite(node.x_ratio)
+                or not math.isfinite(node.y_ratio)
+            ):
                 return False
             if any(
                 type(value) is not int
