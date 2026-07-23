@@ -1,8 +1,8 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/favorites.py"
+source_file: "./src/macroflow/ui/favorites.py"
 type: "rationale"
 community: "FavoritesWidget refresh tree save"
-location: "L209"
+location: "L215"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED

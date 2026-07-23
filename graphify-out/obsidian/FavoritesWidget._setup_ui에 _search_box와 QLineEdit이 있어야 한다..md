@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_favorites_search.py"
+source_file: "./tests/test_favorites_search.py"
 type: "rationale"
 community: "test favorites search.py get"
 location: "L35"

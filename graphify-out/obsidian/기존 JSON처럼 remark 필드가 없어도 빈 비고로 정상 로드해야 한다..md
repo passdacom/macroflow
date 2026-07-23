@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "./tests/test_macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L160"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L214"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 기존 JSON처럼 remark 필드가 없어도 빈 비고로 정상 로드해야 한다.
@@ -26,4 +26,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_legacy_event_without_remark_loads_with_empty_remark()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

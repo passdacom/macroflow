@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py"
+source_file: "./src/macroflow/ui/editor.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L426"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L445"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 표시 행 범위를 원본 events 인덱스 범위(start, end exclusive)로 변환한다.          Args:
@@ -20,4 +20,4 @@ tags:
 - [[MouseWheelEvent]] - `uses` [INFERRED]
 - [[TextInputEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

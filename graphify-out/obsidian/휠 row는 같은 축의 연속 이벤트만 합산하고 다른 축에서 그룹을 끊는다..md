@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_rows.py"
+source_file: "./tests/test_editor_rows.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L299"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 휠 row는 같은 축의 연속 이벤트만 합산하고 다른 축에서 그룹을 끊는다.
@@ -24,4 +24,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[test_wheel_rows_group_contiguous_same_axis_events_only()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

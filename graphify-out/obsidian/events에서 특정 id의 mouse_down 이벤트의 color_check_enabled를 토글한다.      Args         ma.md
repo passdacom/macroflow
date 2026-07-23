@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
+source_file: "./src/macroflow/macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L493"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L561"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # events에서 특정 id의 mouse_down 이벤트의 color_check_enabled를 토글한다.      Args:         ma
@@ -27,4 +27,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[toggle_color_check()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

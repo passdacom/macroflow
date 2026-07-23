@@ -10,14 +10,14 @@ members: 8
 **Members:** 8 nodes
 
 ## Members
-- [[Event editor summary text helper regression tests.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_editor_summary.py
-- [[Pure summary text helpers for the MacroFlow event editor.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_summary.py
-- [[Return the event editor footer summary text.]] - rationale - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_summary.py
-- [[_summary_text()]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_summary.py
-- [[editor_summary.py]] - code - /root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_summary.py
-- [[test_editor_summary.py]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_summary.py
-- [[test_summary_text_appends_edited_tag_when_macro_is_edited()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_summary.py
-- [[test_summary_text_matches_current_refresh_format_without_edited_tag()]] - code - /root/.openclaw/workspace/macroflow/tests/test_editor_summary.py
+- [[Event editor summary text helper regression tests.]] - rationale - ./tests/test_editor_summary.py
+- [[Pure summary text helpers for the MacroFlow event editor.]] - rationale - ./src/macroflow/ui/editor_summary.py
+- [[Return the event editor footer summary text.]] - rationale - ./src/macroflow/ui/editor_summary.py
+- [[_summary_text()]] - code - ./src/macroflow/ui/editor_summary.py
+- [[editor_summary.py]] - code - ./src/macroflow/ui/editor_summary.py
+- [[test_editor_summary.py]] - code - ./tests/test_editor_summary.py
+- [[test_summary_text_appends_edited_tag_when_macro_is_edited()]] - code - ./tests/test_editor_summary.py
+- [[test_summary_text_matches_current_refresh_format_without_edited_tag()]] - code - ./tests/test_editor_summary.py
 
 ## Live Query (requires Dataview plugin)
 

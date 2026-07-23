@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_remark.py"
+source_file: "./tests/test_editor_remark.py"
 type: "code"
-community: "test editor remark.py FakeTableForWidth"
-location: "L185"
+community: "EventEditorWidget add single row"
+location: "L193"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/test_editor_remark.py_FakeTableForWidth
+  - community/EventEditorWidget_add_single_row
 ---
 
 # test_edit_remark_updates_macro_event_and_marks_edited()
@@ -18,4 +18,4 @@ tags:
 - [[_make_widget()]] - `calls` [EXTRACTED]
 - [[test_editor_remark.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/test_editor_remark.py_FakeTableForWidth
+#graphify/code #graphify/EXTRACTED #community/EventEditorWidget_add_single_row

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
+source_file: "./tests/test_player.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L362"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L438"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # skip 모드는 설정 시간 동안 기다린 뒤에도 안 맞을 때만 클릭을 건너뛴다.
@@ -24,4 +24,4 @@ tags:
 - [[TextInputEvent]] - `uses` [INFERRED]
 - [[WaitEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

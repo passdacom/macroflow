@@ -1,5 +1,19 @@
 # 변경 내역
 
+## v1.3.1 — 2026-07-23
+
+### 수정
+
+- 시퀀서가 표현할 수 없는 메타데이터·노드 속성을 가진 플로우를 거부해 덮어쓰기 손실 방지
+- 정규 시퀀서 문서의 생성 시각을 저장·로드 후에도 보존
+- `FlowEngine` 중복 시작을 원자적으로 차단하고 stop timeout 동안 worker handle 유지
+
+### 배포 검증
+
+- Linux와 Windows에서 잠금된 의존성으로 전체 테스트 실행
+- PyInstaller EXE 빌드 후 실제 메인 창 startup smoke 추가
+- GitHub Release는 수동 `workflow_dispatch`에서만 생성
+
 ## v1.3.0 — 2026-07-14
 
 ### 추가

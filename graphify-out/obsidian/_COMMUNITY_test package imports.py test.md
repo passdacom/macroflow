@@ -10,10 +10,10 @@ members: 4
 **Members:** 4 nodes
 
 ## Members
-- [[UI package import boundaries.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_ui_package_imports.py
-- [[test_editor_rows_import_does_not_eagerly_import_pyqt_widgets()]] - code - /root/.openclaw/workspace/macroflow/tests/test_ui_package_imports.py
-- [[test_ui_package_imports.py]] - code - /root/.openclaw/workspace/macroflow/tests/test_ui_package_imports.py
-- [[순수 표시 row 모듈은 PyQt 런타임 의존성 없이 import 가능해야 한다.]] - rationale - /root/.openclaw/workspace/macroflow/tests/test_ui_package_imports.py
+- [[UI package import boundaries.]] - rationale - ./tests/test_ui_package_imports.py
+- [[test_editor_rows_import_does_not_eagerly_import_pyqt_widgets()]] - code - ./tests/test_ui_package_imports.py
+- [[test_ui_package_imports.py]] - code - ./tests/test_ui_package_imports.py
+- [[순수 표시 row 모듈은 PyQt 런타임 의존성 없이 import 가능해야 한다.]] - rationale - ./tests/test_ui_package_imports.py
 
 ## Live Query (requires Dataview plugin)
 

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/types.py"
+source_file: "./src/macroflow/types.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L185"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # LoopEvent
@@ -15,8 +15,10 @@ tags:
 - [[RRGGBB 문자열을 (R, G, B) 튜플로 변환한다.]] - `uses` [INFERRED]
 - [[RRGGBB 문자열을 (R, G, B) 튜플로 변환한다._1]] - `uses` [INFERRED]
 - [[ColorCheckNode]] - `uses` [INFERRED]
+- [[ConditionLoop 내부 이벤트를 top-level과 같은 시간 규칙으로 실행한다.]] - `uses` [INFERRED]
 - [[ConditionEvent를 샌드박스 내에서 평가하고 분기를 실행한다.      DSL 표현식에서 허용하는 함수         pixel_co]] - `uses` [INFERRED]
 - [[CounterNode]] - `uses` [INFERRED]
+- [[End-to-end regressions discovered by the 2026-07 functional audit.]] - `uses` [INFERRED]
 - [[EndNode]] - `uses` [INFERRED]
 - [[Event editor display row construction.  This module intentionally stays free of]] - `uses` [INFERRED]
 - [[FlowEngine]] - `uses` [INFERRED]
@@ -41,6 +43,8 @@ tags:
 - [[MouseWheelEvent가 저장 후 동일 값으로 복원되어야 한다.]] - `uses` [INFERRED]
 - [[PlaybackError]] - `uses` [INFERRED]
 - [[TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - `uses` [INFERRED]
+- [[UI 일괄 설정은 숨겨진 mouse-upmovekey-up까지 늦추지 않는다.]] - `uses` [INFERRED]
+- [[UI 입력을 저장값으로 변환한다 -1=녹화 타이밍, 0 이상=재생 전 대기.]] - `uses` [INFERRED]
 - [[WaitFixedNode]] - `uses` [INFERRED]
 - [[_DisplayRow]] - `uses` [INFERRED]
 - [[_PlayState]] - `uses` [INFERRED]
@@ -51,7 +55,6 @@ tags:
 - [[delete_mouse_moves는 events에서 mouse_move만 제거하고 raw_events는 유지한다.]] - `uses` [INFERRED]
 - [[edit_wheel_delta는 지정 이벤트의 delta만 변경하고 나머지는 유지한다.]] - `uses` [INFERRED]
 - [[events 리스트를 표시용 _DisplayRow 리스트로 변환한다.      연속된 mouse_down+up → 클릭드래그 한 행으로 그룹화]] - `uses` [INFERRED]
-- [[events 전체의 delay_override_ms를 동일 값으로 설정한다.      Args         macro 원본 MacroDat]] - `uses` [INFERRED]
 - [[events를 raw_events 전체 복사본으로 되돌린다 (is_edited=False).      Args         macro 원본]] - `uses` [INFERRED]
 - [[events에서 mouse_move 이벤트를 모두 제거한다. raw_events는 유지.      Args         macro 원본 M]] - `uses` [INFERRED]
 - [[events에서 특정 id의 KeyEvent key·vk_code를 수정한다.      Args         macro 원본 MacroDa]] - `uses` [INFERRED]
@@ -65,21 +68,26 @@ tags:
 - [[reset_to_raw는 events를 raw_events 복사본으로 되돌리고 is_edited=False로 설정한다.]] - `uses` [INFERRED]
 - [[set_delay_all은 events 전체의 delay_override_ms를 동일값으로 설정한다.]] - `uses` [INFERRED]
 - [[set_delay_single은 특정 id의 delay_override_ms만 수정한다.]] - `uses` [INFERRED]
+- [[test_loop_nested_delay_override_uses_scheduler_and_speed()]] - `calls` [INFERRED]
 - [[test_nested_event_remark_roundtrip()]] - `calls` [INFERRED]
 - [[test_simple_event_rows_keep_labels_details_and_truncation_contract()]] - `calls` [INFERRED]
 - [[timeout_ms가 없는 기존 색 트리거는 무제한 대기(0)로 로드하고, 명시값은 보존한다.]] - `uses` [INFERRED]
 - [[types.py]] - `contains` [EXTRACTED]
 - [[그룹 행 비고는 primary event(mouse_downkey_down 등)의 remark를 표시한다.]] - `uses` [INFERRED]
+- [[기존 JSON의 단일 클릭 색 체크 timeout은 세 action timeout 기본값으로 승계된다.]] - `uses` [INFERRED]
 - [[기존 JSON처럼 remark 필드가 없어도 빈 비고로 정상 로드해야 한다.]] - `uses` [INFERRED]
 - [[기존 파일이 있을 때 저장하면 .bak 파일이 생성되어야 한다.]] - `uses` [INFERRED]
 - [[노드를 실행하고 다음 노드 ID를 반환한다.          Returns             다음 노드 ID. None이면 플로우 종료.]] - `uses` [INFERRED]
+- [[다음 매크로의 선행 timestamp를 경계 간격에 이중 가산하지 않는다.]] - `uses` [INFERRED]
 - [[단일 이벤트를 실행한다.      Args         event 실행할 이벤트.         settings clickdrag 판별]] - `uses` [INFERRED]
+- [[대상 events의 재생 대기를 동일 값 또는 녹화 타이밍(None)으로 설정한다.      Args         macro 원본 Macr]] - `uses` [INFERRED]
 - [[딕셔너리를 AnyEvent 서브클래스 인스턴스로 변환한다.      Args         d JSON에서 파싱된 이벤트 딕셔너리.]] - `uses` [INFERRED]
 - [[딕셔너리를 FlowNode 인스턴스로 변환한다.]] - `uses` [INFERRED]
 - [[매크로 JSON 파일을 동기적으로 재생하고 다음 노드 ID를 반환한다.]] - `uses` [INFERRED]
 - [[모든 이벤트 타입이 저장 후 동일 타입으로 복원되어야 한다.]] - `uses` [INFERRED]
 - [[목표 픽셀 색이 나타날 때까지 폴링한다.      마우스를 해당 위치로 먼저 이동한다. hover로 색이 변하는 UI 요소     (버튼 활성화]] - `uses` [INFERRED]
 - [[비고가 있어도 내용detail과 색상 swatch 메타데이터는 별도로 유지한다.]] - `uses` [INFERRED]
+- [[새 action별 timeout이 저장되어 있으면 legacy 단일 timeout으로 덮지 않는다.]] - `uses` [INFERRED]
 - [[색 대기 중 hover 갱신을 위해 1px 이동 후 원위치하고 다음 시각을 반환한다.]] - `uses` [INFERRED]
 - [[색 체크 wait 모드 지정 픽셀 색이 일치할 때까지 폴링한다.      타임아웃 시 경고 로그만 남기고 클릭을 계속 진행한다 (skip과 달]] - `uses` [INFERRED]
 - [[색 체크 불일치 동작은 순환이 아니라 원하는 모드를 바로 저장할 수 있어야 한다.]] - `uses` [INFERRED]
@@ -88,33 +96,38 @@ tags:
 - [[색 체크가 켜진 드래그 row도 refresh 중 emoji 초기화 오류 없이 표시되어야 한다.]] - `uses` [INFERRED]
 - [[색 트리거 row는 target_color 표시와 timeout_ms=0 무제한 대기 의미를 보존한다.]] - `uses` [INFERRED]
 - [[색 트리거 이벤트의 명시 timeout_ms는 저장 후 로드해도 0으로 덮이면 안 된다.]] - `uses` [INFERRED]
+- [[선택된 재생 구간에서 실행 완료된 이벤트 비율을 반환한다 (0.0~1.0).]] - `uses` [INFERRED]
 - [[선형 MacroFlow에서 매크로 경로를 실행 순서대로 추출한다.      MacroSequencerWidget이 저장하는 단순 시퀀스는 Mac]] - `uses` [INFERRED]
 - [[숨겨진 mouse_move는 row 목록에서 빠지지만 다음 row의 상대시간 기준을 흐리면 안 된다.]] - `uses` [INFERRED]
 - [[실제 색과 목표 색의 각 채널 차이가 tolerance 이내인지 확인한다.]] - `uses` [INFERRED]
 - [[실제 재생을 수행하는 스레드 함수.      core-beliefs.md 원칙 3 절대 타임스탬프 기준 + 드리프트 보정.      Args]] - `uses` [INFERRED]
 - [[없는 id를 사용하면 KeyError가 발생해야 한다.]] - `uses` [INFERRED]
 - [[여러 MacroData를 타임스탬프 오프셋을 적용하여 하나로 병합한다.      각 매크로 사이에 gap_ms 간격을 두고, source_fil]] - `uses` [INFERRED]
+- [[외부 JSON 숫자를 안전한 runtime 범위로 정규화한다.]] - `uses` [INFERRED]
 - [[위치 편집 대상 kind 정책은 드래그고아 클릭표시된 이동을 포함하고 대기 행은 제외한다.]] - `uses` [INFERRED]
 - [[이벤트 비고는 저장 JSON에 기록되고 다시 로드되어야 한다.]] - `uses` [INFERRED]
 - [[이벤트 에디터 표시 row 순수 로직 회귀 테스트.]] - `uses` [INFERRED]
+- [[이벤트 자체 대기 시간 때문에 이후 timestamp가 따라잡혀 버리지 않도록 보정값을 반환한다.]] - `uses` [INFERRED]
 - [[재생 중 클릭드래그 판별에 사용하는 상태.]] - `uses` [INFERRED]
-- [[재생을 중단한다. 현재 이벤트 완료 후 루프를 종료한다.]] - `uses` [INFERRED]
+- [[재생 중단을 요청하고 내부 대기를 깨운 뒤 worker 종료를 기다린다.]] - `uses` [INFERRED]
 - [[저장 후 로드하면 동일한 MacroData가 반환되어야 한다.]] - `uses` [INFERRED]
+- [[저장값을 UI 입력으로 변환한다. legacy 음수 override는 즉시(0)로 표시한다.]] - `uses` [INFERRED]
+- [[저장된 settings 딕셔너리를 MacroSettings로 변환한다.      기존 파일에는 클릭 색 체크 timeout이 `color_che]] - `uses` [INFERRED]
 - [[존재하지 않는 파일을 로드하면 FileNotFoundError가 발생해야 한다.]] - `uses` [INFERRED]
 - [[지정 제목을 포함한 창이 나타날 때까지 폴링한다.      Raises         PlaybackError on_timeout==err]] - `uses` [INFERRED]
 - [[카운터를 증가시키고 max 도달 여부에 따라 다음 노드 ID를 반환한다.]] - `uses` [INFERRED]
-- [[클릭 색 체크 설정 시간 동안 목표 색이 나타나는지 폴링한다.      Returns         목표 색이 timeout 전에 감지되면]] - `uses` [INFERRED]
+- [[클릭 색 체크 mismatch action에 대응하는 timeout(ms)을 반환한다.]] - `uses` [INFERRED]
+- [[클릭 색 체크 action별 설정 시간 동안 목표 색이 나타나는지 폴링한다.      Returns         목표 색이 timeout]] - `uses` [INFERRED]
 - [[클릭 색 체크와 독립 색 트리거 timeout 설정은 별도로 저장·로드되어야 한다.]] - `uses` [INFERRED]
 - [[클릭 색 체크와 독립 색 트리거 기본 timeout은 서로 별도 설정이다.]] - `uses` [INFERRED]
 - [[키 downup pairing과 미소비 key_up row 표시는 handler 분리 후에도 보존한다.]] - `uses` [INFERRED]
 - [[테스트용 최소 MacroData를 생성한다.]] - `uses` [INFERRED]
 - [[텍스트대기창조건반복 row의 labeldetail 계약을 고정한다.]] - `uses` [INFERRED]
-- [[표현식이 허용된 AST 노드만 포함하는지 검증한다.      Args         expr 검증할 표현식 문자열.      Raises]] - `uses` [INFERRED]
 - [[플로우를 별도 스레드에서 실행 시작한다.]] - `uses` [INFERRED]
 - [[필요 시 스키마 버전을 현재 버전으로 마이그레이션한다.]] - `uses` [INFERRED]
 - [[한글 TextInputEvent가 저장 후 동일하게 로드되어야 한다.]] - `uses` [INFERRED]
+- [[현재 runtime wait 상한으로 expression sandbox 규칙을 검증한다.]] - `uses` [INFERRED]
 - [[현재 재생 중인 이벤트의 원본 인덱스를 반환한다.]] - `uses` [INFERRED]
-- [[현재 재생 진행률 (0.0~1.0)을 반환한다.]] - `uses` [INFERRED]
 - [[휠 row는 같은 축의 연속 이벤트만 합산하고 다른 축에서 그룹을 끊는다.]] - `uses` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "./tests/test_macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L372"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L426"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # set_delay_all은 events 전체의 delay_override_ms를 동일값으로 설정한다.
@@ -26,4 +26,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_set_delay_all()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

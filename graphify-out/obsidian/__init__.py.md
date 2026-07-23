@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/__init__.py"
+source_file: "./src/macroflow/__init__.py"
 type: "code"
-community: "execute event PlayState player.py"
+community: "mock.py hooks.py get logical"
 location: "L1"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/execute_event_PlayState_player.py
+  - community/mock.py_hooks.py_get_logical
 ---
 
 # __init__.py
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[Win32 API 레이어.  Windows에서는 실제 ctypes 구현을 사용. Linux개발 환경(openclaw 등)에서는 Mock을 자동]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/EXTRACTED #community/mock.py_hooks.py_get_logical

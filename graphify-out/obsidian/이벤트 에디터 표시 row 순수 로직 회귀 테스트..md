@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_rows.py"
+source_file: "./tests/test_editor_rows.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 이벤트 에디터 표시 row 순수 로직 회귀 테스트.
@@ -24,4 +24,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[test_editor_rows.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

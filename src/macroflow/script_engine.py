@@ -18,7 +18,10 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import math
+import os
 import random as _random_module
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -237,11 +240,97 @@ def _node_to_dict(node: AnyFlowNode) -> dict[str, Any]:
     return d
 
 
-def load_flow(path: str) -> MacroFlow:
+def _flow_to_dict(flow: MacroFlow) -> dict[str, Any]:
+    """MacroFlow를 정규 JSON 문서 구조로 변환한다."""
+    return {
+        "meta": {
+            "version": flow.version,
+            "name": flow.name,
+            "created_at": flow.created_at,
+        },
+        "start_node_id": flow.start_node_id,
+        "nodes": {nid: _node_to_dict(node) for nid, node in flow.nodes.items()},
+    }
+
+
+def _json_values_equal(left: Any, right: Any) -> bool:
+    """JSON 값을 Python의 bool/int 동등성에 기대지 않고 타입까지 비교한다."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _json_values_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _json_values_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    return bool(left == right)
+
+
+def _strict_flow_types_valid(flow: MacroFlow) -> bool:
+    """역직렬화가 허용한 bool/int 혼동 등 JSON schema 타입 손실을 차단한다."""
+    if any(
+        type(value) is not str
+        for value in (flow.version, flow.name, flow.created_at, flow.start_node_id)
+    ):
+        return False
+
+    def nullable_string(value: Any) -> bool:
+        return value is None or type(value) is str
+
+    for node_id, node in flow.nodes.items():
+        if type(node_id) is not str or type(node.id) is not str or type(node.label) is not str:
+            return False
+        if type(node.position) is not dict or any(
+            type(key) is not str or type(value) is not int
+            for key, value in node.position.items()
+        ):
+            return False
+        if isinstance(node, MacroNode):
+            if type(node.macro_path) is not str or not all(
+                nullable_string(value)
+                for value in (node.next_on_success, node.next_on_failure)
+            ):
+                return False
+        elif isinstance(node, ColorCheckNode):
+            if (
+                type(node.x_ratio) is not float
+                or type(node.y_ratio) is not float
+                or not math.isfinite(node.x_ratio)
+                or not math.isfinite(node.y_ratio)
+            ):
+                return False
+            if any(
+                type(value) is not int
+                for value in (node.tolerance, node.timeout_ms, node.check_interval_ms)
+            ) or not all(nullable_string(value) for value in (node.on_match, node.on_timeout)):
+                return False
+            if type(node.target_color) is not str:
+                return False
+        elif isinstance(node, CounterNode):
+            if type(node.name) is not str or any(
+                type(value) is not int for value in (node.initial, node.increment, node.max)
+            ) or not all(
+                nullable_string(value) for value in (node.on_continue, node.on_max_reached)
+            ):
+                return False
+        elif isinstance(node, WaitFixedNode):
+            if type(node.duration_ms) is not int or not nullable_string(node.next):
+                return False
+        elif isinstance(node, EndNode):
+            if type(node.status) is not str:
+                return False
+    return True
+
+
+def load_flow(path: str, *, strict: bool = False) -> MacroFlow:
     """JSON .macroflow 파일을 MacroFlow로 로드한다.
 
     Args:
         path: .macroflow 파일 경로.
+        strict: 정규 형식으로 다시 저장할 때 손실되는 필드가 있으면 거부한다.
 
     Returns:
         로드된 MacroFlow.
@@ -263,13 +352,19 @@ def load_flow(path: str) -> MacroFlow:
         for nid, ndata in raw["nodes"].items()
     }
 
-    return MacroFlow(
+    flow = MacroFlow(
         version=meta.get("version", "1.0"),
         name=meta.get("name", "unnamed"),
         created_at=meta.get("created_at", ""),
         start_node_id=raw["start_node_id"],
         nodes=nodes,
     )
+    if strict and (
+        not _strict_flow_types_valid(flow)
+        or not _json_values_equal(raw, _flow_to_dict(flow))
+    ):
+        raise ValueError("정규 형식이 아닌 필드가 있어 손실 방지를 위해 로드를 거부했습니다.")
+    return flow
 
 
 def save_flow(flow: MacroFlow, path: str) -> None:
@@ -282,18 +377,28 @@ def save_flow(flow: MacroFlow, path: str) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
 
-    data: dict[str, Any] = {
-        "meta": {
-            "version": flow.version,
-            "name": flow.name,
-            "created_at": flow.created_at,
-        },
-        "start_node_id": flow.start_node_id,
-        "nodes": {nid: _node_to_dict(node) for nid, node in flow.nodes.items()},
-    }
+    data = _flow_to_dict(flow)
 
-    with p.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            prefix=f".{p.name}.",
+            suffix=".tmp",
+            dir=p.parent,
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            json.dump(data, temp_file, ensure_ascii=False, indent=2)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_path, p)
+    except Exception:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        raise
 
     logger.debug(f"Flow saved to {path}")
 
@@ -348,25 +453,53 @@ class FlowEngine:
         self._speed = speed
         self._stop_flag = threading.Event()
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.Lock()
+        self._stopping = False
+        self._stop_calls_in_progress = 0
 
     def start(self, flow: MacroFlow) -> None:
         """플로우를 별도 스레드에서 실행 시작한다."""
-        self._stop_flag.clear()
-        self._thread = threading.Thread(
-            target=self._run, args=(flow,), daemon=True, name="FlowEngine"
-        )
-        self._thread.start()
+        with self._lifecycle_lock:
+            worker_alive = self._thread is not None and self._thread.is_alive()
+            if self._stopping and not worker_alive and not self._stop_calls_in_progress:
+                self._stopping = False
+            if self._stop_calls_in_progress or self._stopping or worker_alive:
+                raise RuntimeError("FlowEngine is already running")
+            self._stop_flag.clear()
+            worker = threading.Thread(
+                target=self._run, args=(flow,), daemon=True, name="FlowEngine"
+            )
+            self._thread = worker
+            try:
+                worker.start()
+            except Exception:
+                self._thread = None
+                raise
 
     def stop(self) -> None:
         """실행을 중단한다."""
-        self._stop_flag.set()
+        with self._lifecycle_lock:
+            self._stop_flag.set()
+            self._stopping = True
+            self._stop_calls_in_progress += 1
+            worker = self._thread
         from macroflow import player
-        player.stop()
-        if self._thread is not None:
-            self._thread.join(timeout=5.0)
+
+        try:
+            player.stop()
+            if worker is not None:
+                worker.join(timeout=5.0)
+        finally:
+            with self._lifecycle_lock:
+                self._stop_calls_in_progress -= 1
+                if not self._stop_calls_in_progress and worker is self._thread and (
+                    worker is None or not worker.is_alive()
+                ):
+                    self._stopping = False
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        with self._lifecycle_lock:
+            return self._thread is not None and self._thread.is_alive()
 
     def _run(self, flow: MacroFlow) -> None:
         """플로우 실행 메인 루프."""

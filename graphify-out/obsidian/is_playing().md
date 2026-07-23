@@ -1,18 +1,21 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
+source_file: "./src/macroflow/player.py"
 type: "code"
-community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L521"
+community: "rdp runtime safety smoke.py"
+location: "L732"
 tags:
   - graphify/code
-  - graphify/EXTRACTED
-  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+  - graphify/INFERRED
+  - community/rdp_runtime_safety_smoke.py
 ---
 
 # is_playing()
 
 ## Connections
 - [[._poll_state()]] - `calls` [INFERRED]
+- [[._stop_playback()]] - `calls` [INFERRED]
+- [[_run_hotkey_smoke()]] - `calls` [INFERRED]
 - [[player.py]] - `contains` [EXTRACTED]
+- [[test_stop_interrupts_wait_event_without_post_stop_callback()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/EXTRACTED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
+#graphify/code #graphify/INFERRED #community/rdp_runtime_safety_smoke.py

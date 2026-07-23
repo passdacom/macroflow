@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
+source_file: "./src/macroflow/recorder.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L109"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # VK 코드를 사람이 읽을 수 있는 키 이름으로 변환한다.
@@ -22,4 +22,4 @@ tags:
 - [[MouseWheelEvent]] - `uses` [INFERRED]
 - [[_vk_to_key()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

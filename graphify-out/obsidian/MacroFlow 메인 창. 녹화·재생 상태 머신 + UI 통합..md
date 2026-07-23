@@ -1,8 +1,8 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
+source_file: "./src/macroflow/ui/main_window.py"
 type: "rationale"
 community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L66"
+location: "L69"
 tags:
   - graphify/rationale
   - graphify/INFERRED

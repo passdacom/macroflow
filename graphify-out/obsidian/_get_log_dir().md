@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/main.py"
+source_file: "./src/macroflow/main.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "main main.py setup logging"
 location: "L22"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/main_main.py_setup_logging
 ---
 
 # _get_log_dir()
@@ -15,4 +15,4 @@ tags:
 - [[_setup_logging()]] - `calls` [EXTRACTED]
 - [[main.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/EXTRACTED #community/main_main.py_setup_logging

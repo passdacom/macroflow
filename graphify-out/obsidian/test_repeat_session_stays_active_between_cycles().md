@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_playback_repeat.py"
+source_file: "./tests/test_playback_repeat.py"
 type: "code"
 community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 location: "L23"

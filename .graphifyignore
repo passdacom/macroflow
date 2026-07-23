@@ -9,9 +9,8 @@ build/
 dist/
 coverage/
 
-# Generated graph outputs
-graphify-out/cache/
-graphify-out/converted/
+# Generated graph outputs — never re-ingest Graphify's own artifacts.
+graphify-out/
 
 # Data, archives, and binary assets
 *.log

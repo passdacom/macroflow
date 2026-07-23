@@ -20,6 +20,7 @@ from typing import Any
 from PyQt6.QtCore import QByteArray, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -59,6 +60,7 @@ _VK_F7 = 0x76
 _WM_HOTKEY = 0x0312
 
 _MAX_RECENT_SAVES = 10
+_CLOSE_WORKER_TIMEOUT_S = 3.0
 
 
 # ── 메인 창 ───────────────────────────────────────────────────────────────────
@@ -83,6 +85,7 @@ class MainWindow(QMainWindow):
         self._macro: MacroData | None = None
         self._current_file: Path | None = None
         self._hotkeys_registered: bool = False
+        self._recording_stop_thread: threading.Thread | None = None
 
         # ESC×3 감지 (앱 포커스 상태에서만)
         self._esc_times: deque[float] = deque(maxlen=3)
@@ -133,6 +136,7 @@ class MainWindow(QMainWindow):
         self._sequencer.open_in_editor.connect(self._load_file_and_switch_tab)
         # 시퀀서 병합 → 에디터 탭으로 전달
         self._sequencer.merge_to_editor.connect(self._on_merge_to_editor)
+        self._sequencer.dirty_changed.connect(self._update_sequencer_tab_title)
         # 시퀀서 실행 완료/오류 시 emergency hook 해제 + 툴바 갱신
         self._sequencer.sequence_complete.connect(self._on_sequence_done)
         self._sequencer.sequence_error.connect(self._on_sequence_done)
@@ -378,11 +382,39 @@ class MainWindow(QMainWindow):
             self._register_hotkeys()
 
     def closeEvent(self, event: QCloseEvent | None) -> None:  # noqa: N802
-        if self._state == "recording":
-            self._do_stop_recording()
+        if self._state in {"recording", "stopping"}:
+            if not self._stop_recording_before_close():
+                QMessageBox.warning(
+                    self,
+                    "녹화 종료 대기",
+                    "녹화 저장 작업이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.",
+                )
+                if event is not None:
+                    event.ignore()
+                return
         elif self._state == "playing":
-            from macroflow import player
-            player.stop()
+            if not self._stop_playback():
+                QMessageBox.warning(
+                    self,
+                    "재생 종료 대기",
+                    "재생 worker가 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.",
+                )
+                if event is not None:
+                    event.ignore()
+                return
+        if self._sequencer.is_running() and not self._stop_sequencer():
+            QMessageBox.warning(
+                self,
+                "시퀀서 종료 대기",
+                "시퀀서 실행이 아직 종료되지 않았습니다. 잠시 후 다시 시도하세요.",
+            )
+            if event is not None:
+                event.ignore()
+            return
+        if not self._sequencer.confirm_discard_changes():
+            if event is not None:
+                event.ignore()
+            return
         if sys.platform == "win32" and self._hotkeys_registered:
             self._unregister_hotkeys()
         self._save_settings()
@@ -582,6 +614,12 @@ class MainWindow(QMainWindow):
         """현재 활성 탭이 즐겨찾기인지 반환한다."""
         return self._tabs.currentWidget() is self._favorites
 
+    def _update_sequencer_tab_title(self, dirty: bool) -> None:
+        """시퀀서 탭에 미저장 변경 표시를 반영한다."""
+        index = self._tabs.indexOf(self._sequencer)
+        if index >= 0:
+            self._tabs.setTabText(index, "시퀀서 *" if dirty else "시퀀서")
+
     def _on_tab_changed(self, _index: int) -> None:
         """탭 전환 시 툴바 버튼 상태와 상태바 힌트를 갱신한다."""
         self._update_toolbar()
@@ -644,13 +682,34 @@ class MainWindow(QMainWindow):
         self._sb_count.setText("이벤트: 0")
 
     def _do_stop_recording(self) -> None:
+        if (
+            self._recording_stop_thread is not None
+            and self._recording_stop_thread.is_alive()
+        ):
+            return
         self._state = "stopping"
         self._poll_timer.stop()
         self._update_toolbar()
         self._sb_state.setText("녹화 저장 중...")
-        threading.Thread(
-            target=self._stop_recording_worker, daemon=True, name="RecStopWorker"
-        ).start()
+        self._recording_stop_thread = threading.Thread(
+            target=self._stop_recording_worker,
+            daemon=True,
+            name="RecStopWorker",
+        )
+        self._recording_stop_thread.start()
+
+    def _stop_recording_before_close(self) -> bool:
+        """녹화 저장 worker 완료를 기다리고 완료 signal까지 UI에 반영한다."""
+        if self._state == "recording":
+            self._do_stop_recording()
+        worker = self._recording_stop_thread
+        if worker is None:
+            return self._state == "idle"
+        worker.join(timeout=_CLOSE_WORKER_TIMEOUT_S)
+        if worker.is_alive():
+            return False
+        QApplication.processEvents()
+        return self._state == "idle"
 
     def _stop_recording_worker(self) -> None:
         from macroflow import recorder
@@ -663,6 +722,7 @@ class MainWindow(QMainWindow):
             self._sig_play_error.emit(f"녹화 중지 오류: {exc}")
 
     def _on_recording_done(self, macro: object) -> None:
+        self._recording_stop_thread = None
         assert isinstance(macro, MacroData)
         macro = self._apply_persisted_color_settings(macro)
         if self._append_recording_mode and self._append_base_macro is not None:
@@ -700,18 +760,23 @@ class MainWindow(QMainWindow):
         self._refresh_recent_menu()
         logger.info(f"녹화 완료: {count}개 이벤트")
 
+    def _stop_sequencer(self) -> bool:
+        """시퀀서 worker와 관련 overlay/hook/UI 상태를 함께 정리한다."""
+        stopped = self._sequencer.stop_sequence()
+        self._overlay.stop()
+        if sys.platform == "win32":
+            from macroflow.win32 import stop_emergency_hook
+            stop_emergency_hook()
+        self._update_toolbar()
+        self._sb_state.setText(
+            "시퀀스 중지" if stopped else "시퀀스 중지 요청됨 — worker 종료 대기 중"
+        )
+        return stopped
+
     def _toggle_sequencer(self) -> None:
         """시퀀서 탭에서 F7: 시퀀스 실행 중이면 중지, 아니면 실행."""
         if self._sequencer.is_running():
-            stopped = self._sequencer.stop_sequence()
-            self._overlay.stop()
-            if sys.platform == "win32":
-                from macroflow.win32 import stop_emergency_hook
-                stop_emergency_hook()
-            self._update_toolbar()
-            self._sb_state.setText(
-                "시퀀스 중지" if stopped else "시퀀스 중지 요청됨 — worker 종료 대기 중"
-            )
+            self._stop_sequencer()
         elif self._state != "idle":
             self._sb_state.setText("녹화/재생 중에는 시퀀스를 시작할 수 없습니다")
         elif self._sequencer.has_items():
@@ -920,22 +985,28 @@ class MainWindow(QMainWindow):
         effective_end = end_row if end_row > 0 else total
         return self._editor.get_event_range_for_rows(effective_start, effective_end)
 
-    def _stop_playback(self) -> None:
+    def _stop_playback(self) -> bool:
         from macroflow import player
         from macroflow.win32 import stop_emergency_hook
         if self._repeat_session is not None:
             self._repeat_session.request_stop()
         player.stop()
         stop_emergency_hook()
+        stopped = not player.is_playing()
+        self._overlay.stop()
+        if not stopped:
+            self._sb_state.setText("재생 중지 요청됨 — worker 종료 대기 중")
+            self._update_toolbar()
+            return False
         if self._repeat_session is not None:
             self._repeat_session.mark_finished()
         self._repeat_session = None
         self._state = "idle"
-        self._overlay.stop()
         self._poll_timer.stop()
         self._update_toolbar()
         self._sb_state.setText("재생 중지")
         logger.info("재생 중지")
+        return True
 
     def _on_play_complete(self) -> None:
         from macroflow.win32 import stop_emergency_hook
@@ -951,6 +1022,8 @@ class MainWindow(QMainWindow):
         logger.info("재생 완료")
 
     def _on_play_error(self, msg: str) -> None:
+        if self._state == "stopping":
+            self._recording_stop_thread = None
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
         if self._repeat_session is not None:

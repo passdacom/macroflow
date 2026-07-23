@@ -1,8 +1,8 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/main_window.py"
+source_file: "./src/macroflow/ui/main_window.py"
 type: "code"
 community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
-location: "L65"
+location: "L68"
 tags:
   - graphify/code
   - graphify/EXTRACTED
@@ -14,6 +14,7 @@ tags:
 ## Connections
 - [[.__init__()_4]] - `method` [EXTRACTED]
 - [[._add_favorite_to_sequencer()]] - `method` [EXTRACTED]
+- [[._apply_persisted_color_settings()]] - `method` [EXTRACTED]
 - [[._auto_save_prev_recording()]] - `method` [EXTRACTED]
 - [[._auto_save_temp()]] - `method` [EXTRACTED]
 - [[._calc_event_range()]] - `method` [EXTRACTED]
@@ -41,7 +42,9 @@ tags:
 - [[._on_speed_combo_changed()]] - `method` [EXTRACTED]
 - [[._on_tab_changed()]] - `method` [EXTRACTED]
 - [[._open_file()]] - `method` [EXTRACTED]
+- [[._persist_color_settings()]] - `method` [EXTRACTED]
 - [[._poll_state()]] - `method` [EXTRACTED]
+- [[._qsettings_int()]] - `method` [EXTRACTED]
 - [[._refresh_recent_menu()]] - `method` [EXTRACTED]
 - [[._register_hotkeys()]] - `method` [EXTRACTED]
 - [[._register_shortcut_fallback()]] - `method` [EXTRACTED]
@@ -63,19 +66,24 @@ tags:
 - [[._start_range_playback()]] - `method` [EXTRACTED]
 - [[._start_recording()]] - `method` [EXTRACTED]
 - [[._stop_playback()]] - `method` [EXTRACTED]
+- [[._stop_recording_before_close()]] - `method` [EXTRACTED]
 - [[._stop_recording_worker()]] - `method` [EXTRACTED]
+- [[._stop_sequencer()]] - `method` [EXTRACTED]
 - [[._toggle_playback()]] - `method` [EXTRACTED]
 - [[._toggle_recording()]] - `method` [EXTRACTED]
 - [[._toggle_sequencer()]] - `method` [EXTRACTED]
 - [[._unregister_hotkeys()]] - `method` [EXTRACTED]
 - [[._update_range_spinboxes()]] - `method` [EXTRACTED]
+- [[._update_sequencer_tab_title()]] - `method` [EXTRACTED]
 - [[._update_toolbar()]] - `method` [EXTRACTED]
 - [[.closeEvent()]] - `method` [EXTRACTED]
 - [[.keyPressEvent()]] - `method` [EXTRACTED]
 - [[.nativeEvent()]] - `method` [EXTRACTED]
 - [[.showEvent()]] - `method` [EXTRACTED]
+- [[Build a long-wait macro whose post-wait click must never run after F7.]] - `uses` [INFERRED]
 - [[EventEditorWidget]] - `uses` [INFERRED]
 - [[FavoritesWidget]] - `uses` [INFERRED]
+- [[Format a status line that remains printable on Windows cp949 consoles.]] - `uses` [INFERRED]
 - [[MacroData]] - `uses` [INFERRED]
 - [[MacroFlow 메인 창. 녹화·재생 상태 머신 + UI 통합.]] - `rationale_for` [EXTRACTED]
 - [[MacroSequencerWidget]] - `uses` [INFERRED]
@@ -83,7 +91,12 @@ tags:
 - [[PlaybackStartOptions]] - `uses` [INFERRED]
 - [[QMainWindow]] - `inherits` [EXTRACTED]
 - [[RepeatPlaybackSession]] - `uses` [INFERRED]
+- [[Return the observable contract for live worker-to-Qt handoff.]] - `uses` [INFERRED]
+- [[Return the observable contract for the live global-hotkey smoke.]] - `uses` [INFERRED]
+- [[Run both live Windows scenarios and write structured evidence.]] - `uses` [INFERRED]
 - [[Win32 API 레이어.  Windows에서는 실제 ctypes 구현을 사용. Linux개발 환경(openclaw 등)에서는 Mock을 자동]] - `uses` [INFERRED]
+- [[Windows RDP runtime-safety smoke for MacroFlow hotkeys and Sequencer.  Run this]] - `uses` [INFERRED]
+- [[_run_hotkey_smoke()]] - `calls` [INFERRED]
 - [[main()]] - `calls` [INFERRED]
 - [[main_window.py]] - `contains` [EXTRACTED]
 

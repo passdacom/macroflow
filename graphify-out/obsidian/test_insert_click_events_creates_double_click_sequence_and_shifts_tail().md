@@ -1,8 +1,8 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_insertions.py"
+source_file: "./tests/test_editor_insertions.py"
 type: "code"
 community: "test editor insertions.py insert"
-location: "L90"
+location: "L109"
 tags:
   - graphify/code
   - graphify/EXTRACTED

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "./tests/test_macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L455"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L525"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 한글 TextInputEvent가 저장 후 동일하게 로드되어야 한다.
@@ -26,4 +26,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_text_input_korean_roundtrip()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

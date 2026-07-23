@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
+source_file: "./src/macroflow/player.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L1"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # MacroFlow 재생 엔진.  절대 타임스탬프 기준 재생과 드리프트 보정을 구현한다. click/drag 판별은 settings 임계값으로 재
@@ -26,4 +26,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[player.py]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

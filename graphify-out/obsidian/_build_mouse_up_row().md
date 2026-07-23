@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py"
+source_file: "./src/macroflow/ui/editor_rows.py"
 type: "code"
-community: "build rows DisplayRow editor"
-location: "L206"
+community: "build rows editor rows.py"
+location: "L218"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # _build_mouse_up_row()
@@ -20,4 +20,4 @@ tags:
 - [[_time_ms()]] - `calls` [EXTRACTED]
 - [[editor_rows.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/EXTRACTED #community/build_rows_editor_rows.py

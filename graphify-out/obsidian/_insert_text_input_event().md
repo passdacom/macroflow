@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_insertions.py"
+source_file: "./src/macroflow/ui/editor_insertions.py"
 type: "code"
 community: "test editor insertions.py insert"
 location: "L72"
@@ -19,6 +19,6 @@ tags:
 - [[_insert_and_shift_events()]] - `calls` [EXTRACTED]
 - [[editor_insertions.py]] - `contains` [EXTRACTED]
 - [[test_insert_text_input_event_places_text_after_group_and_shifts_following_events()]] - `calls` [INFERRED]
-- [[test_insert_text_input_event_uses_minimum_one_ms_budget_for_zero_delay()]] - `calls` [INFERRED]
+- [[test_insert_text_input_event_preserves_explicit_zero_delay()]] - `calls` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/test_editor_insertions.py_insert

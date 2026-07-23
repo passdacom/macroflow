@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/win32/hooks.py"
+source_file: "./src/macroflow/win32/hooks.py"
 type: "rationale"
-community: "execute event PlayState player.py"
+community: "execute event PlayState test"
 location: "L399"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # title_contains를 제목에 포함하는 창 핸들(HWND)을 반환한다.      Args:         title_contains: 검색
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[find_window()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/execute_event_PlayState_player.py
+#graphify/rationale #graphify/EXTRACTED #community/execute_event_PlayState_test

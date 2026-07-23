@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
+source_file: "./tests/test_player.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L385"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L461"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # stop 모드는 설정 시간 이후에도 색이 안 맞으면 재생을 중단한다.
@@ -24,4 +24,4 @@ tags:
 - [[TextInputEvent]] - `uses` [INFERRED]
 - [[WaitEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

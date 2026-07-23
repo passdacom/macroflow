@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
+source_file: "./src/macroflow/macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L255"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L311"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # events에서 mouse_move 이벤트를 모두 제거한다. raw_events는 유지.      Args:         macro: 원본 M
@@ -27,4 +27,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[delete_mouse_moves()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

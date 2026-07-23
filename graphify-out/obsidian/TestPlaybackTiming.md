@@ -1,20 +1,23 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
+source_file: "./tests/test_player.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L145"
+community: "execute event PlayState test"
+location: "L146"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/execute_event_PlayState_test
 ---
 
 # TestPlaybackTiming
 
 ## Connections
+- [[.test_delay_override_is_scaled_by_playback_speed()]] - `method` [EXTRACTED]
 - [[.test_delay_override_respected()]] - `method` [EXTRACTED]
 - [[.test_play_completes()]] - `method` [EXTRACTED]
 - [[.test_stop_interrupts_playback()]] - `method` [EXTRACTED]
+- [[.test_wait_event_compensates_following_timeline()]] - `method` [EXTRACTED]
+- [[.test_wait_event_duration_is_scaled_by_playback_speed()]] - `method` [EXTRACTED]
 - [[ColorTriggerEvent]] - `uses` [INFERRED]
 - [[KeyEvent]] - `uses` [INFERRED]
 - [[MacroData]] - `uses` [INFERRED]
@@ -28,4 +31,4 @@ tags:
 - [[test_player.py]] - `contains` [EXTRACTED]
 - [[절대 타임스탬프 기준 재생 및 드리프트 보정 테스트.      core-beliefs.md 원칙 3 검증.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

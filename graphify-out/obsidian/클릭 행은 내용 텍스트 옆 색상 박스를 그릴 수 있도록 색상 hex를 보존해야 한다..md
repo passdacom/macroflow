@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_relative_time.py"
+source_file: "./tests/test_editor_relative_time.py"
 type: "rationale"
-community: "build rows DisplayRow editor"
-location: "L81"
+community: "build rows editor rows.py"
+location: "L82"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # 클릭 행은 내용 텍스트 옆 색상 박스를 그릴 수 있도록 색상 hex를 보존해야 한다.
@@ -16,4 +16,4 @@ tags:
 - [[ColorTriggerEvent]] - `uses` [INFERRED]
 - [[MouseButtonEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/build_rows_DisplayRow_editor
+#graphify/rationale #graphify/INFERRED #community/build_rows_editor_rows.py

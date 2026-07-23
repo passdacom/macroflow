@@ -17,5 +17,6 @@ tags:
 - [[MacroSequencerWidget]] - `inherits` [EXTRACTED]
 - [[OverlayWindow]] - `inherits` [EXTRACTED]
 - [[_color_detail_widget()]] - `calls` [INFERRED]
+- [[_run_hotkey_smoke()]] - `calls` [INFERRED]
 
 #graphify/code #graphify/EXTRACTED #community/EventEditorWidget_add_single_row

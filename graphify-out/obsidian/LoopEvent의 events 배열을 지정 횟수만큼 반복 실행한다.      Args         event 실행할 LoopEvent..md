@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "rationale"
-community: "execute event PlayState player.py"
-location: "L659"
+community: "execute event PlayState test"
+location: "L669"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # LoopEvent의 events 배열을 지정 횟수만큼 반복 실행한다.      Args:         event: 실행할 LoopEvent.
@@ -16,4 +16,4 @@ tags:
 - [[LoopEvent]] - `uses` [INFERRED]
 - [[execute_loop()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/execute_event_PlayState_player.py
+#graphify/rationale #graphify/INFERRED #community/execute_event_PlayState_test

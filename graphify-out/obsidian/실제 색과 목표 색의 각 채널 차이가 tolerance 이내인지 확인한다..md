@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
+source_file: "./src/macroflow/player.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L282"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L444"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 실제 색과 목표 색의 각 채널 차이가 tolerance 이내인지 확인한다.
@@ -26,4 +26,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[_color_matches()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

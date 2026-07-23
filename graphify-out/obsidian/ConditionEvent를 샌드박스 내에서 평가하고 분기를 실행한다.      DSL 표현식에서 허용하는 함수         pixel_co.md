@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "rationale"
-community: "MacroSequencerWidget FlowEngine EndNode MacroFlow"
+community: "test expression sandbox module.py"
 location: "L605"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+  - community/test_expression_sandbox_module.py
 ---
 
 # ConditionEvent를 샌드박스 내에서 평가하고 분기를 실행한다.      DSL 표현식에서 허용하는 함수:         pixel_co
@@ -16,4 +16,4 @@ tags:
 - [[LoopEvent]] - `uses` [INFERRED]
 - [[execute_condition()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+#graphify/rationale #graphify/INFERRED #community/test_expression_sandbox_module.py

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
+source_file: "./src/macroflow/player.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L272"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L434"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # #RRGGBB 문자열을 (R, G, B) 튜플로 변환한다.
@@ -26,4 +26,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[_hex_to_rgb()_1]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

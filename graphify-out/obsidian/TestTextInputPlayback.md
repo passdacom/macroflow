@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_player.py"
+source_file: "./tests/test_player.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L237"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L313"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # TestTextInputPlayback
@@ -26,4 +26,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_player.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/playback_repeat.py"
+source_file: "./src/macroflow/ui/playback_repeat.py"
 type: "rationale"
 community: "Return whether complete repeat"
 location: "L85"

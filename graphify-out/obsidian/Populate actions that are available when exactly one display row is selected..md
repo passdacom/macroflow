@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py"
+source_file: "./src/macroflow/ui/editor.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L553"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L572"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # Populate actions that are available when exactly one display row is selected.
@@ -20,4 +20,4 @@ tags:
 - [[MouseWheelEvent]] - `uses` [INFERRED]
 - [[TextInputEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

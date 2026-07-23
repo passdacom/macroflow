@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
+source_file: "./src/macroflow/recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions"
 location: "L294"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions
 ---
 
 # stop_recording()
@@ -24,4 +24,4 @@ tags:
 - [[stop_hook()_1]] - `calls` [INFERRED]
 - [[녹화를 중지하고 캡처된 전체 이벤트를 MacroData로 반환한다.      Returns         raw_events == events]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/INFERRED #community/MainWindow_OverlayWindow_RepeatPlaybackSession_PlaybackStartOptions

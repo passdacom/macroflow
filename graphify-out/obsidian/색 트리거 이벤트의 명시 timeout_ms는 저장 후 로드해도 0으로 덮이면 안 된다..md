@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "./tests/test_macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L114"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L168"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # 색 트리거 이벤트의 명시 timeout_ms는 저장 후 로드해도 0으로 덮이면 안 된다.
@@ -26,4 +26,4 @@ tags:
 - [[WaitEvent]] - `uses` [INFERRED]
 - [[test_color_trigger_timeout_roundtrip_preserves_explicit_value()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_macro_file.py"
+source_file: "./tests/test_macro_file.py"
 type: "code"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L209"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L263"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # test_nested_event_remark_roundtrip()
@@ -24,4 +24,4 @@ tags:
 - [[save()]] - `calls` [INFERRED]
 - [[test_macro_file.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/code #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

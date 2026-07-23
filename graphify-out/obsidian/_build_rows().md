@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_rows.py"
+source_file: "./src/macroflow/ui/editor_rows.py"
 type: "code"
-community: "build rows DisplayRow editor"
-location: "L355"
+community: "build rows editor rows.py"
+location: "L365"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/build_rows_DisplayRow_editor
+  - community/build_rows_editor_rows.py
 ---
 
 # _build_rows()
@@ -15,7 +15,7 @@ tags:
 - [[._refresh()]] - `calls` [INFERRED]
 - [[.test_click_with_recorded_color_exposes_color_hex_for_swatch()]] - `calls` [INFERRED]
 - [[.test_color_trigger_exposes_target_color_for_swatch()]] - `calls` [INFERRED]
-- [[.test_delay_override_takes_precedence()]] - `calls` [INFERRED]
+- [[.test_delay_override_does_not_replace_recorded_interval()]] - `calls` [INFERRED]
 - [[.test_first_row_equals_absolute()]] - `calls` [INFERRED]
 - [[.test_second_row_is_delta()]] - `calls` [INFERRED]
 - [[_apply_row_metadata()]] - `calls` [EXTRACTED]
@@ -44,7 +44,8 @@ tags:
 - [[test_key_down_up_pair_is_grouped_and_unpaired_key_up_remains_visible()]] - `calls` [INFERRED]
 - [[test_position_edit_policy_covers_drag_orphan_and_visible_moves_only()]] - `calls` [INFERRED]
 - [[test_recorded_color_without_color_check_remains_passive_swatch_metadata()]] - `calls` [INFERRED]
+- [[test_recorded_relative_time_does_not_mix_in_playback_override()]] - `calls` [INFERRED]
 - [[test_simple_event_rows_keep_labels_details_and_truncation_contract()]] - `calls` [INFERRED]
 - [[test_wheel_rows_group_contiguous_same_axis_events_only()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/build_rows_DisplayRow_editor
+#graphify/code #graphify/INFERRED #community/build_rows_editor_rows.py

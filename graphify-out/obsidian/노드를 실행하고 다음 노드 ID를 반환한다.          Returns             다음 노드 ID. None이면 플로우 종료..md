@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "rationale"
-community: "MacroSequencerWidget FlowEngine EndNode MacroFlow"
-location: "L405"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L433"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # 노드를 실행하고 다음 노드 ID를 반환한다.          Returns:             다음 노드 ID. None이면 플로우 종료.
@@ -16,4 +16,4 @@ tags:
 - [[ConditionEvent]] - `uses` [INFERRED]
 - [[LoopEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/script_engine.py"
+source_file: "./src/macroflow/script_engine.py"
 type: "rationale"
-community: "MacroSequencerWidget FlowEngine EndNode MacroFlow"
-location: "L531"
+community: "MacroSequencerWidget EndNode MacroFlow FlowEngine"
+location: "L569"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+  - community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine
 ---
 
 # 카운터를 증가시키고 max 도달 여부에 따라 다음 노드 ID를 반환한다.
@@ -16,4 +16,4 @@ tags:
 - [[ConditionEvent]] - `uses` [INFERRED]
 - [[LoopEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_FlowEngine_EndNode_MacroFlow
+#graphify/rationale #graphify/INFERRED #community/MacroSequencerWidget_EndNode_MacroFlow_FlowEngine

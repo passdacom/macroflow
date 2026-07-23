@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
+source_file: "./src/macroflow/player.py"
 type: "code"
-community: "execute event PlayState player.py"
+community: "execute event PlayState test"
 location: "L57"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # _PlayState
@@ -36,6 +36,8 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[_play_loop()]] - `calls` [EXTRACTED]
 - [[player.py]] - `contains` [EXTRACTED]
+- [[test_loop_nested_delay_override_uses_scheduler_and_speed()]] - `calls` [INFERRED]
+- [[test_stop_during_color_read_prevents_mouse_down()]] - `calls` [INFERRED]
 - [[재생 중 클릭드래그 판별에 사용하는 상태.]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/INFERRED #community/execute_event_PlayState_test

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
+source_file: "./src/macroflow/recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "convert raw TestConvertRaw recorder.py"
 location: "L133"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/convert_raw_TestConvertRaw_recorder.py
 ---
 
 # _convert_raw()
@@ -37,4 +37,4 @@ tags:
 - [[recorder.py]] - `contains` [EXTRACTED]
 - [[원시 Hook 이벤트를 MacroEvent 객체로 변환한다.      Args         raw hooks.py에서 push한 (kind]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_recorder.py

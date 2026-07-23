@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_summary.py"
+source_file: "./tests/test_editor_summary.py"
 type: "code"
 community: "summary text test editor"
 location: "L10"

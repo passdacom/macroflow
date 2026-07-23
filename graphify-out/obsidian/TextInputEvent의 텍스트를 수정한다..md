@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor.py"
+source_file: "./src/macroflow/ui/editor.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L1253"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L1312"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # TextInputEvent의 텍스트를 수정한다.
@@ -20,4 +20,4 @@ tags:
 - [[MouseWheelEvent]] - `uses` [INFERRED]
 - [[TextInputEvent]] - `uses` [INFERRED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

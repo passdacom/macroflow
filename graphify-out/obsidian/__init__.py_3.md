@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/__init__.py"
+source_file: "./tests/__init__.py"
 type: "code"
 community: "init .py"
 location: "L1"

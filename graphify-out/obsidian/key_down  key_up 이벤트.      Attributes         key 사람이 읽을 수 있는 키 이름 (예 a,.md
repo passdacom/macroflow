@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/types.py"
+source_file: "./src/macroflow/types.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
 location: "L71"
 tags:
   - graphify/rationale
   - graphify/EXTRACTED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # key_down / key_up 이벤트.      Attributes:         key: 사람이 읽을 수 있는 키 이름 (예: "a", "
@@ -14,4 +14,4 @@ tags:
 ## Connections
 - [[KeyEvent]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/EXTRACTED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/recorder.py"
+source_file: "./src/macroflow/recorder.py"
 type: "code"
-community: "convert raw TestConvertRaw hooks.py"
+community: "convert raw TestConvertRaw recorder.py"
 location: "L108"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/convert_raw_TestConvertRaw_hooks.py
+  - community/convert_raw_TestConvertRaw_recorder.py
 ---
 
 # _vk_to_key()
@@ -20,4 +20,4 @@ tags:
 - [[_convert_raw()]] - `calls` [EXTRACTED]
 - [[recorder.py]] - `contains` [EXTRACTED]
 
-#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_hooks.py
+#graphify/code #graphify/INFERRED #community/convert_raw_TestConvertRaw_recorder.py

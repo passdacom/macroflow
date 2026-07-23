@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_history.py"
+source_file: "./tests/test_editor_history.py"
 type: "code"
 community: "EventEditorWidget add single row"
 location: "L60"
@@ -13,7 +13,7 @@ tags:
 
 ## Connections
 - [[_event()]] - `calls` [EXTRACTED]
-- [[_macro()]] - `calls` [EXTRACTED]
+- [[_macro()_1]] - `calls` [EXTRACTED]
 - [[macro_with_events()]] - `calls` [INFERRED]
 - [[test_editor_history.py]] - `contains` [EXTRACTED]
 

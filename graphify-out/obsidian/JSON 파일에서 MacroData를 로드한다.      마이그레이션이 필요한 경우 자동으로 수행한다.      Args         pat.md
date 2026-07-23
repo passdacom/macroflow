@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
+source_file: "./src/macroflow/macro_file.py"
 type: "rationale"
-community: "MacroData MouseButtonEvent KeyEvent MouseMoveEvent"
-location: "L172"
+community: "MacroData MouseButtonEvent KeyEvent MacroSettings"
+location: "L228"
 tags:
   - graphify/rationale
   - graphify/INFERRED
-  - community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+  - community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings
 ---
 
 # JSON 파일에서 MacroData를 로드한다.      마이그레이션이 필요한 경우 자동으로 수행한다.      Args:         pat
@@ -27,4 +27,4 @@ tags:
 - [[WindowTriggerEvent]] - `uses` [INFERRED]
 - [[load()]] - `rationale_for` [EXTRACTED]
 
-#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MouseMoveEvent
+#graphify/rationale #graphify/INFERRED #community/MacroData_MouseButtonEvent_KeyEvent_MacroSettings

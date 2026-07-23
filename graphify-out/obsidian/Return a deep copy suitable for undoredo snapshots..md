@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/ui/editor_history.py"
+source_file: "./src/macroflow/ui/editor_history.py"
 type: "rationale"
 community: "EventEditorWidget add single row"
 location: "L15"

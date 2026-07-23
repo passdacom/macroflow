@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/macro_file.py"
+source_file: "./src/macroflow/macro_file.py"
 type: "code"
-community: "load test macro file.py"
-location: "L323"
+community: "test macro file.py load"
+location: "L386"
 tags:
   - graphify/code
   - graphify/INFERRED
-  - community/load_test_macro_file.py
+  - community/test_macro_file.py_load
 ---
 
 # reset_to_raw()
@@ -18,4 +18,4 @@ tags:
 - [[macro_file.py]] - `contains` [EXTRACTED]
 - [[test_reset_to_raw()]] - `calls` [INFERRED]
 
-#graphify/code #graphify/INFERRED #community/load_test_macro_file.py
+#graphify/code #graphify/INFERRED #community/test_macro_file.py_load

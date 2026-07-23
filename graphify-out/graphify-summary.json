@@ -1,132 +1,145 @@
 {
   "name": "macroflow",
-  "path": "/root/.openclaw/workspace/macroflow",
-  "generated_at": "2026-05-29T15:10:41.321908+00:00",
+  "path": ".",
+  "generated_at": "2026-07-16T04:57:28.583830+00:00",
   "mode": "code-ast-only",
-  "nodes": 1074,
-  "edges": 4077,
-  "communities": 24,
-  "detected_files": 783,
-  "detected_words": 254195,
-  "code_files": 50,
-  "document_files": 733,
+  "nodes": 1395,
+  "edges": 5170,
+  "communities": 37,
+  "detected_files": 104,
+  "detected_words": 85789,
+  "code_files": 77,
+  "document_files": 27,
   "paper_files": 0,
   "image_files": 0,
   "video_files": 0,
   "skipped_sensitive": 0,
   "labels": {
-    "0": "MacroData MouseButtonEvent KeyEvent MouseMoveEvent",
+    "0": "MacroData MouseButtonEvent KeyEvent MacroSettings",
     "1": "MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions",
-    "2": "EventEditorWidget add single row",
-    "3": "MacroSequencerWidget FlowEngine EndNode MacroFlow",
-    "4": "FavoritesWidget refresh tree save",
-    "5": "execute event PlayState player.py",
-    "6": "convert raw TestConvertRaw hooks.py",
-    "7": "build rows DisplayRow editor",
-    "8": "test editor table.py table",
-    "9": "load test macro file.py",
-    "10": "mock.py find window get",
-    "11": "test editor insertions.py insert",
-    "12": "test editor remark.py FakeTableForWidth",
-    "13": "test editor capture.py start",
-    "14": "append recording recording done",
-    "15": "key name test editor",
-    "16": "test favorites search.py get",
-    "17": "summary text test editor",
-    "18": "conftest.py mock hook mock",
-    "19": "test version.py test package",
-    "20": "test package imports.py test",
-    "21": "Return whether complete repeat",
-    "22": "Return user facing repeat",
-    "23": "init .py"
+    "2": "MacroSequencerWidget EndNode MacroFlow FlowEngine",
+    "3": "execute event PlayState test",
+    "4": "EventEditorWidget add single row",
+    "5": "FavoritesWidget refresh tree save",
+    "6": "mock.py hooks.py get logical",
+    "7": "TestTargetApp test target app.py",
+    "8": "build rows editor rows.py",
+    "9": "test editor table.py table",
+    "10": "test macro file.py load",
+    "11": "convert raw TestConvertRaw recorder.py",
+    "12": "test expression sandbox module.py",
+    "13": "rdp runtime safety smoke.py",
+    "14": "test editor insertions.py insert",
+    "15": "append recording test append",
+    "16": "test editor context menu.py",
+    "17": "key name test editor",
+    "18": "main main.py setup logging",
+    "19": "summary text test editor",
+    "20": "test favorites search.py get",
+    "21": "test sequencer dirty state.py",
+    "22": "conftest.py mock hook mock",
+    "23": "test health contract.py test",
+    "24": "test runtime safety.py run",
+    "25": "test docs command contract.py",
+    "26": "test sequencer add item",
+    "27": "test main window append",
+    "28": "test version.py test package",
+    "29": "test package imports.py test",
+    "30": "test rdp gui smoke",
+    "31": "test rdp gui smoke",
+    "32": "Return whether complete repeat",
+    "33": "Return user facing repeat",
+    "34": "init .py",
+    "35": "run rdp runtime safety",
+    "36": "run rdp gui smoke.ps1"
   },
   "god_nodes": [
     {
       "id": "types_macrodata",
       "label": "MacroData",
-      "degree": 214
+      "degree": 258
     },
     {
       "id": "types_mousebuttonevent",
       "label": "MouseButtonEvent",
-      "degree": 196
+      "degree": 241
     },
     {
       "id": "types_keyevent",
       "label": "KeyEvent",
-      "degree": 161
-    },
-    {
-      "id": "types_mousemoveevent",
-      "label": "MouseMoveEvent",
-      "degree": 153
-    },
-    {
-      "id": "types_colortriggerevent",
-      "label": "ColorTriggerEvent",
-      "degree": 149
-    },
-    {
-      "id": "types_textinputevent",
-      "label": "TextInputEvent",
-      "degree": 146
-    },
-    {
-      "id": "types_mousewheelevent",
-      "label": "MouseWheelEvent",
-      "degree": 136
+      "degree": 180
     },
     {
       "id": "types_macrosettings",
       "label": "MacroSettings",
-      "degree": 131
+      "degree": 179
+    },
+    {
+      "id": "types_mousemoveevent",
+      "label": "MouseMoveEvent",
+      "degree": 173
+    },
+    {
+      "id": "types_colortriggerevent",
+      "label": "ColorTriggerEvent",
+      "degree": 170
+    },
+    {
+      "id": "types_textinputevent",
+      "label": "TextInputEvent",
+      "degree": 165
+    },
+    {
+      "id": "types_mousewheelevent",
+      "label": "MouseWheelEvent",
+      "degree": 151
     },
     {
       "id": "types_waitevent",
       "label": "WaitEvent",
-      "degree": 105
+      "degree": 142
     },
     {
-      "id": "types_conditionevent",
-      "label": "ConditionEvent",
-      "degree": 104
+      "id": "types_macrometa",
+      "label": "MacroMeta",
+      "degree": 127
     }
   ],
   "suggested_questions": [
     {
       "type": "bridge_node",
-      "question": "Why does `MacroData` connect `MacroData MouseButtonEvent KeyEvent MouseMoveEvent` to `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions`, `EventEditorWidget add single row`, `MacroSequencerWidget FlowEngine EndNode MacroFlow`, `FavoritesWidget refresh tree save`, `execute event PlayState player.py`, `convert raw TestConvertRaw hooks.py`, `build rows DisplayRow editor`, `load test macro file.py`, `test editor remark.py FakeTableForWidth`, `append recording recording done`?",
-      "why": "High betweenness centrality (0.290) - this node is a cross-community bridge."
+      "question": "Why does `MacroData` connect `MacroData MouseButtonEvent KeyEvent MacroSettings` to `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions`, `MacroSequencerWidget EndNode MacroFlow FlowEngine`, `execute event PlayState test`, `EventEditorWidget add single row`, `test macro file.py load`, `rdp runtime safety smoke.py`, `append recording test append`, `test editor context menu.py`?",
+      "why": "High betweenness centrality (0.240) - this node is a cross-community bridge."
     },
     {
       "type": "bridge_node",
-      "question": "Why does `EventEditorWidget` connect `EventEditorWidget add single row` to `MacroData MouseButtonEvent KeyEvent MouseMoveEvent`, `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions`, `FavoritesWidget refresh tree save`, `test editor table.py table`, `test editor remark.py FakeTableForWidth`, `test editor capture.py start`?",
-      "why": "High betweenness centrality (0.167) - this node is a cross-community bridge."
+      "question": "Why does `MainWindow` connect `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions` to `MacroData MouseButtonEvent KeyEvent MacroSettings`, `MacroSequencerWidget EndNode MacroFlow FlowEngine`, `EventEditorWidget add single row`, `FavoritesWidget refresh tree save`, `mock.py hooks.py get logical`, `rdp runtime safety smoke.py`, `main main.py setup logging`?",
+      "why": "High betweenness centrality (0.136) - this node is a cross-community bridge."
     },
     {
       "type": "bridge_node",
-      "question": "Why does `MainWindow` connect `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions` to `MacroData MouseButtonEvent KeyEvent MouseMoveEvent`, `EventEditorWidget add single row`, `MacroSequencerWidget FlowEngine EndNode MacroFlow`, `FavoritesWidget refresh tree save`, `execute event PlayState player.py`, `convert raw TestConvertRaw hooks.py`, `append recording recording done`?",
-      "why": "High betweenness centrality (0.145) - this node is a cross-community bridge."
+      "question": "Why does `EventEditorWidget` connect `EventEditorWidget add single row` to `MacroData MouseButtonEvent KeyEvent MacroSettings`, `MainWindow OverlayWindow RepeatPlaybackSession PlaybackStartOptions`, `test editor table.py table`?",
+      "why": "High betweenness centrality (0.118) - this node is a cross-community bridge."
     },
     {
       "type": "verify_inferred",
-      "question": "Are the 212 inferred relationships involving `MacroData` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
-      "why": "`MacroData` has 212 INFERRED edges - model-reasoned connections that need verification."
+      "question": "Are the 256 inferred relationships involving `MacroData` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`MacroData` has 256 INFERRED edges - model-reasoned connections that need verification."
     },
     {
       "type": "verify_inferred",
-      "question": "Are the 193 inferred relationships involving `MouseButtonEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
-      "why": "`MouseButtonEvent` has 193 INFERRED edges - model-reasoned connections that need verification."
+      "question": "Are the 238 inferred relationships involving `MouseButtonEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`MouseButtonEvent` has 238 INFERRED edges - model-reasoned connections that need verification."
     },
     {
       "type": "verify_inferred",
-      "question": "Are the 158 inferred relationships involving `KeyEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
-      "why": "`KeyEvent` has 158 INFERRED edges - model-reasoned connections that need verification."
+      "question": "Are the 177 inferred relationships involving `KeyEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`KeyEvent` has 177 INFERRED edges - model-reasoned connections that need verification."
     },
     {
       "type": "verify_inferred",
-      "question": "Are the 150 inferred relationships involving `MouseMoveEvent` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
-      "why": "`MouseMoveEvent` has 150 INFERRED edges - model-reasoned connections that need verification."
+      "question": "Are the 177 inferred relationships involving `MacroSettings` (e.g. with `PlaybackError` and `_PlayState`) actually correct?",
+      "why": "`MacroSettings` has 177 INFERRED edges - model-reasoned connections that need verification."
     }
   ]
 }

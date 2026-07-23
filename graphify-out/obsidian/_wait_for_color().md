@@ -1,12 +1,12 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/src/macroflow/player.py"
+source_file: "./src/macroflow/player.py"
 type: "code"
-community: "execute event PlayState player.py"
-location: "L286"
+community: "execute event PlayState test"
+location: "L448"
 tags:
   - graphify/code
   - graphify/EXTRACTED
-  - community/execute_event_PlayState_player.py
+  - community/execute_event_PlayState_test
 ---
 
 # _wait_for_color()
@@ -23,6 +23,7 @@ tags:
 - [[player.py]] - `contains` [EXTRACTED]
 - [[ratio_to_pixel()_1]] - `calls` [INFERRED]
 - [[send_mouse_move()_1]] - `calls` [INFERRED]
+- [[test_macro_color_trigger_clamps_non_positive_poll_interval()]] - `calls` [INFERRED]
 - [[목표 픽셀 색이 나타날 때까지 폴링한다.      마우스를 해당 위치로 먼저 이동한다. hover로 색이 변하는 UI 요소     (버튼 활성화]] - `rationale_for` [EXTRACTED]
 
-#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_player.py
+#graphify/code #graphify/EXTRACTED #community/execute_event_PlayState_test

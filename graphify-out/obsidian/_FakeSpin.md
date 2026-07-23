@@ -1,5 +1,5 @@
 ---
-source_file: "/root/.openclaw/workspace/macroflow/tests/test_editor_dialogs.py"
+source_file: "./tests/test_editor_dialogs.py"
 type: "code"
 community: "EventEditorWidget add single row"
 location: "L20"
