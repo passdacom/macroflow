@@ -1,5 +1,6 @@
 """MacroFlow 저장의 원자성 회귀 테스트."""
 
+import json
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -77,3 +78,29 @@ def test_successful_save_replaces_target_and_leaves_no_temp_file(tmp_path: Path)
 
     assert load_flow(str(target)) == _flow()
     assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+@pytest.mark.parametrize(
+    "variant",
+    ["unknown_top_level", "unknown_meta", "unknown_node_field", "embedded_id_mismatch"],
+)
+def test_strict_load_rejects_document_fields_that_would_be_lost(
+    tmp_path: Path,
+    variant: str,
+) -> None:
+    target = tmp_path / "sequence.macroflow"
+    save_flow(_flow(), str(target))
+    raw = json.loads(target.read_text(encoding="utf-8"))
+
+    if variant == "unknown_top_level":
+        raw["document_metadata"] = {"owner": "operator"}
+    elif variant == "unknown_meta":
+        raw["meta"]["owner"] = "operator"
+    elif variant == "unknown_node_field":
+        raw["nodes"]["end_success"]["operator_note"] = "keep me"
+    else:
+        raw["nodes"]["end_success"]["id"] = "embedded-custom-id"
+    target.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        load_flow(str(target), strict=True)

@@ -211,3 +211,47 @@ def test_stop_timeout_keeps_worker_handle_and_blocks_restart(
     assert restarted_worker is not worker
     restarted_worker.join(timeout=0.5)
     assert not restarted_worker.is_alive()
+
+
+def test_restart_is_rejected_until_concurrent_stop_returns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from macroflow import player
+
+    flow = MacroFlow(
+        version="1.0",
+        name="concurrent stop",
+        created_at="2026-07-23T00:00:00",
+        start_node_id="end_success",
+        nodes={"end_success": EndNode(id="end_success", label="done")},
+    )
+    engine = FlowEngine(str(tmp_path / "sequence.macroflow"))
+    engine.start(flow)
+    assert engine._thread is not None
+    engine._thread.join(timeout=0.5)
+    assert not engine._thread.is_alive()
+
+    stop_entered = threading.Event()
+    release_stop = threading.Event()
+
+    def blocking_stop() -> None:
+        stop_entered.set()
+        release_stop.wait(timeout=1.0)
+
+    monkeypatch.setattr(player, "stop", blocking_stop)
+    stopper = threading.Thread(target=engine.stop)
+    stopper.start()
+    assert stop_entered.wait(timeout=0.5)
+
+    with pytest.raises(RuntimeError, match="already running"):
+        engine.start(flow)
+
+    release_stop.set()
+    stopper.join(timeout=0.5)
+    assert not stopper.is_alive()
+
+    engine.start(flow)
+    assert engine._thread is not None
+    engine._thread.join(timeout=0.5)
+    assert not engine._thread.is_alive()

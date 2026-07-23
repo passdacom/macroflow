@@ -239,11 +239,25 @@ def _node_to_dict(node: AnyFlowNode) -> dict[str, Any]:
     return d
 
 
-def load_flow(path: str) -> MacroFlow:
+def _flow_to_dict(flow: MacroFlow) -> dict[str, Any]:
+    """MacroFlow를 정규 JSON 문서 구조로 변환한다."""
+    return {
+        "meta": {
+            "version": flow.version,
+            "name": flow.name,
+            "created_at": flow.created_at,
+        },
+        "start_node_id": flow.start_node_id,
+        "nodes": {nid: _node_to_dict(node) for nid, node in flow.nodes.items()},
+    }
+
+
+def load_flow(path: str, *, strict: bool = False) -> MacroFlow:
     """JSON .macroflow 파일을 MacroFlow로 로드한다.
 
     Args:
         path: .macroflow 파일 경로.
+        strict: 정규 형식으로 다시 저장할 때 손실되는 필드가 있으면 거부한다.
 
     Returns:
         로드된 MacroFlow.
@@ -265,13 +279,16 @@ def load_flow(path: str) -> MacroFlow:
         for nid, ndata in raw["nodes"].items()
     }
 
-    return MacroFlow(
+    flow = MacroFlow(
         version=meta.get("version", "1.0"),
         name=meta.get("name", "unnamed"),
         created_at=meta.get("created_at", ""),
         start_node_id=raw["start_node_id"],
         nodes=nodes,
     )
+    if strict and raw != _flow_to_dict(flow):
+        raise ValueError("정규 형식이 아닌 필드가 있어 손실 방지를 위해 로드를 거부했습니다.")
+    return flow
 
 
 def save_flow(flow: MacroFlow, path: str) -> None:
@@ -284,15 +301,7 @@ def save_flow(flow: MacroFlow, path: str) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
 
-    data: dict[str, Any] = {
-        "meta": {
-            "version": flow.version,
-            "name": flow.name,
-            "created_at": flow.created_at,
-        },
-        "start_node_id": flow.start_node_id,
-        "nodes": {nid: _node_to_dict(node) for nid, node in flow.nodes.items()},
-    }
+    data = _flow_to_dict(flow)
 
     temp_path: Path | None = None
     try:
@@ -370,14 +379,15 @@ class FlowEngine:
         self._thread: threading.Thread | None = None
         self._lifecycle_lock = threading.Lock()
         self._stopping = False
+        self._stop_calls_in_progress = 0
 
     def start(self, flow: MacroFlow) -> None:
         """플로우를 별도 스레드에서 실행 시작한다."""
         with self._lifecycle_lock:
             worker_alive = self._thread is not None and self._thread.is_alive()
-            if self._stopping and not worker_alive:
+            if self._stopping and not worker_alive and not self._stop_calls_in_progress:
                 self._stopping = False
-            if self._stopping or worker_alive:
+            if self._stop_calls_in_progress or self._stopping or worker_alive:
                 raise RuntimeError("FlowEngine is already running")
             self._stop_flag.clear()
             worker = threading.Thread(
@@ -395,17 +405,21 @@ class FlowEngine:
         with self._lifecycle_lock:
             self._stop_flag.set()
             self._stopping = True
+            self._stop_calls_in_progress += 1
             worker = self._thread
         from macroflow import player
 
-        player.stop()
-        if worker is not None:
-            worker.join(timeout=5.0)
-        with self._lifecycle_lock:
-            if worker is self._thread and (
-                worker is None or not worker.is_alive()
-            ):
-                self._stopping = False
+        try:
+            player.stop()
+            if worker is not None:
+                worker.join(timeout=5.0)
+        finally:
+            with self._lifecycle_lock:
+                self._stop_calls_in_progress -= 1
+                if not self._stop_calls_in_progress and worker is self._thread and (
+                    worker is None or not worker.is_alive()
+                ):
+                    self._stopping = False
 
     def is_running(self) -> bool:
         with self._lifecycle_lock:

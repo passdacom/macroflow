@@ -666,7 +666,7 @@ class MacroSequencerWidget(QWidget):
         if not self.confirm_discard_changes():
             return False
         try:
-            flow = load_flow(str(path))
+            flow = load_flow(str(path), strict=True)
             macro_paths, gap_ms = _project_linear_flow(flow, path)
             if not self._gap_spin.minimum() <= gap_ms <= self._gap_spin.maximum():
                 raise ValueError("현재 시퀀서 UI에서 표현할 수 없는 간격입니다.")
