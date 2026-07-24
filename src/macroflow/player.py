@@ -148,7 +148,6 @@ class _PlayState:
     pending_down: MouseButtonEvent | None = None
     pending_down_real_x: int = 0
     pending_down_real_y: int = 0
-    pending_down_time_ns: int = 0
     has_moves_since_down: bool = False
     # 색 체크 불일치로 down을 스킵한 경우, 대응하는 up도 스킵하기 위한 버튼명
     color_check_skip_button: str | None = None
@@ -172,6 +171,8 @@ _current_event_position: int = 0
 _total_events: int = 0
 _COLOR_WAIT_NUDGE_AFTER_NS = 1_000_000_000
 _COLOR_WAIT_NUDGE_INTERVAL_NS = 1_000_000_000
+_COLOR_WAIT_NUDGE_DISTANCE_PX = 8
+_COLOR_WAIT_NUDGE_DWELL_S = 0.05
 
 
 def _active_now_ns() -> int:
@@ -278,7 +279,6 @@ def _execute_event(
                 state.pending_down = event
                 state.pending_down_real_x = x
                 state.pending_down_real_y = y
-                state.pending_down_time_ns = _active_now_ns()
                 state.has_moves_since_down = False
 
         else:  # mouse_up
@@ -291,15 +291,15 @@ def _execute_event(
                     x - state.pending_down_real_x,
                     y - state.pending_down_real_y,
                 )
-                elapsed_ms = (
-                    (_active_now_ns() - state.pending_down_time_ns)
-                    / 1_000_000
+                elapsed_ms = max(
+                    0.0,
+                    (event.timestamp_ns - state.pending_down.timestamp_ns) / 1_000_000,
                 )
                 if (
                     dist >= settings.click_dist_threshold_px
                     or elapsed_ms >= settings.click_time_threshold_ms
                 ):
-                    # 이동 없이 거리/시간 초과 → 드래그로 판별
+                    # RAW down/up의 기록 거리 또는 기록 시간 초과 → 드래그로 판별
                     if _stop_flag.is_set():
                         return
                     send_mouse_drag(
@@ -555,7 +555,14 @@ def _wait_for_click_color_check(
             return False
         if _color_matches(actual, target, settings.color_check_click_tolerance):
             return True
+        previous_nudge_ns = next_nudge_ns
         next_nudge_ns = _nudge_cursor_if_due(x, y, checked_ns, next_nudge_ns)
+        if next_nudge_ns != previous_nudge_ns:
+            checked_ns = _active_now_ns()
+            if _stop_flag.is_set():
+                return False
+            if deadline_ns is not None and checked_ns >= deadline_ns:
+                return False
         wait_s = interval_s
         if deadline_ns is not None:
             remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
@@ -567,11 +574,16 @@ def _wait_for_click_color_check(
 
 
 def _nudge_cursor_if_due(x: int, y: int, now_ns: int, next_nudge_ns: int) -> int:
-    """색 대기 중 hover 갱신을 위해 1px 이동 후 원위치하고 다음 시각을 반환한다."""
+    """색 대기 중 hover 영역 밖으로 잠시 이동 후 원위치한다."""
     if now_ns < next_nudge_ns:
         return next_nudge_ns
-    adjacent_x = x - 1 if x > 0 else x + 1
+    adjacent_x = (
+        x - _COLOR_WAIT_NUDGE_DISTANCE_PX
+        if x >= _COLOR_WAIT_NUDGE_DISTANCE_PX
+        else x + _COLOR_WAIT_NUDGE_DISTANCE_PX
+    )
     send_mouse_move(adjacent_x, y)
+    _stop_flag.wait(_COLOR_WAIT_NUDGE_DWELL_S)
     send_mouse_move(x, y)
     return now_ns + _COLOR_WAIT_NUDGE_INTERVAL_NS
 
@@ -628,7 +640,14 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
             break
         if _color_matches(actual, target, event.tolerance):
             return
+        previous_nudge_ns = next_nudge_ns
         next_nudge_ns = _nudge_cursor_if_due(x, y, checked_ns, next_nudge_ns)
+        if next_nudge_ns != previous_nudge_ns:
+            checked_ns = _active_now_ns()
+            if _stop_flag.is_set():
+                return
+            if deadline_ns is not None and checked_ns >= deadline_ns:
+                break
         wait_s = interval_s
         if deadline_ns is not None:
             remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
