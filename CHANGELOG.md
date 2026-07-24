@@ -26,6 +26,11 @@
 - native/QShortcut F6을 단일 router로 통합하고 녹화 중 중지 동작 우선
 - packaged codec smoke에 30초 timeout·process tree 정리·SHA256 출력 추가
 
+### 수정
+
+- 색 대기 hover 갱신을 8px 이동·50ms 유지·원위치 복귀로 강화하고 pause·stop·timeout 경계 보장
+- 클릭/드래그 판정을 재생 지연이 아닌 RAW 녹화 시간으로 고정해 색 일치 후 체크박스 클릭이 간헐적으로 drag로 변형되던 문제 수정
+
 ## v1.3.1 — 2026-07-23
 
 ### 수정

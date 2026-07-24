@@ -704,6 +704,62 @@ class TestColorCheckWait:
         assert calls >= 3
         player.send_mouse_button.assert_called_once_with(960, 540, "left", down=True)  # type: ignore[attr-defined]
 
+    @pytest.mark.parametrize(
+        ("recorded_up_ns", "runtime_up_ns", "expects_drag"),
+        [
+            (1_100_000_000, 400_000_000, False),
+            (1_400_000_000, 100_000_000, True),
+        ],
+    )
+    def test_color_matched_gesture_uses_recorded_duration_not_runtime_delay(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        recorded_up_ns: int,
+        runtime_up_ns: int,
+        expects_drag: bool,
+    ) -> None:
+        down = MouseButtonEvent(
+            id="aabbccdd",
+            type="mouse_down",
+            timestamp_ns=1_000_000_000,
+            x_ratio=0.5,
+            y_ratio=0.5,
+            button="left",
+            recorded_color="#FFFFFF",
+            color_check_enabled=True,
+            color_check_on_mismatch="skip",
+        )
+        up = MouseButtonEvent(
+            id="bbccddee",
+            type="mouse_up",
+            timestamp_ns=recorded_up_ns,
+            x_ratio=0.5,
+            y_ratio=0.5,
+            button="left",
+        )
+        state = _PlayState()
+        buttons = MagicMock()
+        drag = MagicMock()
+        active_times = iter([0, 0, 0, 0, runtime_up_ns])
+        monkeypatch.setattr(player, "_wait_active", lambda _seconds: True)
+        monkeypatch.setattr(player, "_active_now_ns", lambda: next(active_times))
+        monkeypatch.setattr(player, "get_pixel_color", lambda _x, _y: (255, 255, 255))
+        monkeypatch.setattr(player, "send_mouse_button", buttons)
+        monkeypatch.setattr(player, "send_mouse_drag", drag)
+
+        _execute_event(down, MacroSettings(), state)
+        _execute_event(up, MacroSettings(), state)
+
+        if expects_drag:
+            buttons.assert_called_once_with(960, 540, "left", down=True)
+            drag.assert_called_once_with(960, 540, 960, 540, "left")
+        else:
+            assert buttons.call_args_list == [
+                call(960, 540, "left", down=True),
+                call(960, 540, "left", down=False),
+            ]
+            drag.assert_not_called()
+
     def test_skip_mode_waits_then_skips_when_color_never_matches(self, mock_win32: object, monkeypatch: pytest.MonkeyPatch) -> None:
         """skip 모드는 설정 시간 동안 기다린 뒤에도 안 맞을 때만 클릭을 건너뛴다."""
         event = MouseButtonEvent(

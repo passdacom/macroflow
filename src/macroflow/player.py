@@ -148,7 +148,6 @@ class _PlayState:
     pending_down: MouseButtonEvent | None = None
     pending_down_real_x: int = 0
     pending_down_real_y: int = 0
-    pending_down_time_ns: int = 0
     has_moves_since_down: bool = False
     # 색 체크 불일치로 down을 스킵한 경우, 대응하는 up도 스킵하기 위한 버튼명
     color_check_skip_button: str | None = None
@@ -280,7 +279,6 @@ def _execute_event(
                 state.pending_down = event
                 state.pending_down_real_x = x
                 state.pending_down_real_y = y
-                state.pending_down_time_ns = _active_now_ns()
                 state.has_moves_since_down = False
 
         else:  # mouse_up
@@ -293,15 +291,15 @@ def _execute_event(
                     x - state.pending_down_real_x,
                     y - state.pending_down_real_y,
                 )
-                elapsed_ms = (
-                    (_active_now_ns() - state.pending_down_time_ns)
-                    / 1_000_000
+                elapsed_ms = max(
+                    0.0,
+                    (event.timestamp_ns - state.pending_down.timestamp_ns) / 1_000_000,
                 )
                 if (
                     dist >= settings.click_dist_threshold_px
                     or elapsed_ms >= settings.click_time_threshold_ms
                 ):
-                    # 이동 없이 거리/시간 초과 → 드래그로 판별
+                    # RAW down/up의 기록 거리 또는 기록 시간 초과 → 드래그로 판별
                     if _stop_flag.is_set():
                         return
                     send_mouse_drag(
