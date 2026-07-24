@@ -325,6 +325,11 @@ def test_macro_color_trigger_clamps_non_positive_poll_interval(
         return (0, 255, 0) if calls >= 2 else (0, 0, 0)
 
     monkeypatch.setattr(player, "_stop_flag", StopFlag())
+    monkeypatch.setattr(
+        player,
+        "_wait_active",
+        lambda seconds: waits.append(seconds) or True,
+    )
     monkeypatch.setattr(player, "ratio_to_pixel", lambda _x, _y: (0, 0))
     monkeypatch.setattr(player, "send_mouse_move", lambda _x, _y: None)
     monkeypatch.setattr(player, "get_pixel_color", get_pixel)
@@ -686,12 +691,12 @@ def test_condition_elapsed_time_preserves_following_recorded_gap(
 ) -> None:
     from macroflow.types import ConditionEvent, KeyEvent, WaitEvent
 
-    key_times: list[float] = []
+    key_calls: list[tuple[float, bool]] = []
     player._stop_flag.clear()
     monkeypatch.setattr(
         player,
         "send_key",
-        lambda _vk, *, is_down: key_times.append(time.perf_counter()),
+        lambda _vk, *, is_down: key_calls.append((time.perf_counter(), is_down)),
     )
     condition = ConditionEvent(
         id="condition",
@@ -718,8 +723,9 @@ def test_condition_elapsed_time_preserves_following_recorded_gap(
 
     player._play_loop(_macro([condition, key]), 2.0, None, None, None, None)
 
-    assert len(key_times) == 1
-    assert 0.17 <= key_times[0] - started <= 0.35
+    key_down_times = [called_at for called_at, is_down in key_calls if is_down]
+    assert len(key_down_times) == 1
+    assert 0.17 <= key_down_times[0] - started <= 0.35
 
 
 def test_emergency_hook_failure_keeps_playback_idle() -> None:

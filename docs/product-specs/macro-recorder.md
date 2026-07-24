@@ -13,6 +13,7 @@
 
 [녹화 중]
   → 미니 오버레이: 빨간 점 깜빡임 + 경과 시간 + 이벤트 수 표시
+  → F8 → 녹화 일시중지/재개 (pause 구간 이벤트와 시간은 저장하지 않음)
   → 토글 단축키 다시 누름 → 녹화 중지
   → 자동 임시 저장 (~/.macroflow/temp/recording_YYYYMMDD_HHMMSS.json)
   → 메인 창 에디터 탭으로 포커스 이동 (임시 파일 자동 로드)
@@ -33,12 +34,13 @@
 |---|---|---|
 | 녹화 시작/중지 토글 | F6 | 설정에서 변경 가능 |
 | 재생 시작/중지 토글 | F7 | 설정에서 변경 가능 |
+| 녹화/재생 일시중지·재개 | F8 | 현재 실행 세션에만 적용 |
 | 긴급 전체 중지 | ESC × 3회 (500ms 이내) | 변경 불가 고정 |
 
 ### 단축키 충돌 방지 전략
-- F6/F7은 대부분의 업무용 앱에서 사용 빈도가 낮아 기본값으로 채택
+- F6/F7/F8은 대부분의 업무용 앱에서 사용 빈도가 낮아 기본값으로 채택
 - 단축키 변경 UI에서 다른 앱과 충돌 여부를 실시간으로 감지해 경고 표시
-- 단축키 자체(F6 key_down/key_up)는 raw_events에 기록하지 않음
+- 단축키 자체(F6/F7/F8 key_down/key_up)는 raw_events에 기록하지 않음
   → Win32 LL Hook 콜백에서 단축키 감지 즉시 `CallNextHookEx` 체인 차단
 
 ### ESC 3회 연속 감지 로직
@@ -113,7 +115,8 @@ def on_key_down(vk_code: int, timestamp_ns: int) -> bool:
 - mouse_move 필터링 금지 (core-beliefs.md 원칙 8)
 
 ### 기록하지 않는 것
-- 토글 단축키(F6, F7) key_down / key_up
+- 토글 단축키(F6, F7, F8) key_down / key_up
+- F8 일시중지부터 재개 사이에 캡처된 이벤트와 pause 경과시간
 - ESC 3회 연속 시퀀스의 ESC 이벤트
 - 미니 오버레이 창(HWND 매칭)에서 발생한 이벤트
 - 카운트다운(3초) 중 발생한 이벤트
@@ -121,6 +124,14 @@ def on_key_down(vk_code: int, timestamp_ns: int) -> bool:
 ### 좌표 처리
 - dpi.py의 `pixel_to_ratio()` 로 모든 좌표를 비율(0.0~1.0)로 변환
 - 녹화 시작 시 `get_logical_screen_size()` 를 meta에 기록
+
+### 일시중지 타임라인
+- Hook은 유지하여 재등록 지연과 재개 직후 입력 누락을 방지
+- pause 구간 판정은 consumer 처리 시각이 아니라 Hook의 `perf_counter_ns()` 캡처 시각 사용
+- 재개 후 이벤트 timestamp에서 이전 pause 구간의 누적 시간을 차감
+- pause 직전 queue 이벤트는 보존하고 pause 구간 이벤트만 폐기
+- pause 전에 열린 key/button의 release가 pause 안에서 발생하면 pause 경계 시각에 보존해 입력 쌍 정합성 유지
+- pause 안에서 새로 시작된 key/button 입력과 그 대응 release는 모두 제외
 
 ---
 

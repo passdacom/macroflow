@@ -51,6 +51,87 @@ class PlaybackError(Exception):
     """재생 중 복구 불가 오류."""
 
 
+class _PlaybackClock:
+    """일시중지 시간을 제외한 재생 active-time 시계와 interruptible wait."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._paused = False
+        self._pause_started_ns: int | None = None
+        self._total_paused_ns = 0
+
+    def reset(self) -> None:
+        with self._condition:
+            self._paused = False
+            self._pause_started_ns = None
+            self._total_paused_ns = 0
+            self._condition.notify_all()
+
+    def pause(self) -> bool:
+        with self._condition:
+            if self._paused:
+                return False
+            self._paused = True
+            self._pause_started_ns = time.perf_counter_ns()
+            self._condition.notify_all()
+            return True
+
+    def resume(self) -> bool:
+        with self._condition:
+            if not self._paused or self._pause_started_ns is None:
+                return False
+            self._total_paused_ns += time.perf_counter_ns() - self._pause_started_ns
+            self._pause_started_ns = None
+            self._paused = False
+            self._condition.notify_all()
+            return True
+
+    def is_paused(self) -> bool:
+        with self._condition:
+            return self._paused
+
+    def _active_now_locked(self, wall_now_ns: int) -> int:
+        current_pause_ns = 0
+        if self._paused and self._pause_started_ns is not None:
+            current_pause_ns = wall_now_ns - self._pause_started_ns
+        return wall_now_ns - self._total_paused_ns - current_pause_ns
+
+    def active_now_ns(self) -> int:
+        with self._condition:
+            return self._active_now_locked(time.perf_counter_ns())
+
+    def wait_until_resumed(self) -> bool:
+        """resume까지 기다린다. stop이면 False를 반환한다."""
+        with self._condition:
+            while self._paused and not _stop_flag.is_set():
+                self._condition.wait()
+            return not _stop_flag.is_set()
+
+    def wait_until(self, active_deadline_ns: int) -> bool:
+        """active-time deadline까지 기다린다. stop이면 False를 반환한다."""
+        with self._condition:
+            while not _stop_flag.is_set():
+                if self._paused:
+                    self._condition.wait()
+                    continue
+                remaining_ns = active_deadline_ns - self._active_now_locked(
+                    time.perf_counter_ns()
+                )
+                if remaining_ns <= 0:
+                    return True
+                self._condition.wait(timeout=remaining_ns / 1_000_000_000)
+            return False
+
+    def wait_for(self, active_seconds: float) -> bool:
+        """지정 active 시간만큼 기다린다. stop이면 False를 반환한다."""
+        deadline_ns = self.active_now_ns() + max(0, int(active_seconds * 1_000_000_000))
+        return self.wait_until(deadline_ns)
+
+    def notify_stop(self) -> None:
+        with self._condition:
+            self._condition.notify_all()
+
+
 # ── 재생 상태 추적 ────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass
@@ -65,17 +146,55 @@ class _PlayState:
     # 색 체크 불일치로 down을 스킵한 경우, 대응하는 up도 스킵하기 위한 버튼명
     color_check_skip_button: str | None = None
     speed: float = 1.0
+    pressed_keys: set[int] = dataclasses.field(default_factory=set)
+    pressed_mouse: dict[str, tuple[int, int]] = dataclasses.field(default_factory=dict)
 
 
 # ── 모듈 레벨 상태 ────────────────────────────────────────────────────────────
 _playback_thread: threading.Thread | None = None
 _stop_flag: threading.Event = threading.Event()
-_pause_flag: threading.Event = threading.Event()
+_playback_clock = _PlaybackClock()
+_input_state_lock = threading.RLock()
+_active_play_state: _PlayState | None = None
+_pause_pending = False
 _current_event_idx: int = 0
 _current_event_position: int = 0
 _total_events: int = 0
 _COLOR_WAIT_NUDGE_AFTER_NS = 1_000_000_000
 _COLOR_WAIT_NUDGE_INTERVAL_NS = 1_000_000_000
+
+
+def _active_now_ns() -> int:
+    return _playback_clock.active_now_ns()
+
+
+def _wait_active(seconds: float) -> bool:
+    """active 시간 대기 후 True, stop으로 중단되면 False를 반환한다."""
+    return _playback_clock.wait_for(seconds)
+
+
+def _release_active_inputs() -> None:
+    """stop/error/종료 시 열린 SendInput key/button을 정확히 한 번 release한다."""
+    state = _active_play_state
+    if state is None:
+        return
+    with _input_state_lock:
+        for vk_code in tuple(state.pressed_keys):
+            send_key(vk_code, is_down=False)
+        state.pressed_keys.clear()
+        for button, (x, y) in tuple(state.pressed_mouse.items()):
+            send_mouse_button(x, y, button, down=False)
+        state.pressed_mouse.clear()
+        state.pending_down = None
+
+
+def _apply_pending_pause_if_safe(state: _PlayState) -> None:
+    """열린 입력 gesture가 모두 닫힌 경계에서 pending pause를 활성화한다."""
+    global _pause_pending
+    with _input_state_lock:
+        if _pause_pending and not state.pressed_keys and not state.pressed_mouse:
+            _pause_pending = False
+            _playback_clock.pause()
 
 
 # ── 이벤트 실행 ───────────────────────────────────────────────────────────────
@@ -103,7 +222,7 @@ def _execute_event(
                 if _stop_flag.is_set():
                     return
                 send_mouse_move(x, y)
-                if _stop_flag.wait(0.05):  # hover 효과 대기
+                if not _wait_active(0.05):  # hover 효과 대기
                     return
                 target = _hex_to_rgb(event.recorded_color)
 
@@ -141,12 +260,16 @@ def _execute_event(
             send_mouse_move(x, y)
             if _stop_flag.is_set():
                 return
-            send_mouse_button(x, y, event.button, down=True)
-            state.pending_down = event
-            state.pending_down_real_x = x
-            state.pending_down_real_y = y
-            state.pending_down_time_ns = time.perf_counter_ns()
-            state.has_moves_since_down = False
+            with _input_state_lock:
+                if _playback_clock.is_paused():
+                    return
+                send_mouse_button(x, y, event.button, down=True)
+                state.pressed_mouse[event.button] = (x, y)
+                state.pending_down = event
+                state.pending_down_real_x = x
+                state.pending_down_real_y = y
+                state.pending_down_time_ns = _active_now_ns()
+                state.has_moves_since_down = False
 
         else:  # mouse_up
             # 색 체크 불일치로 down이 스킵된 경우 up도 스킵
@@ -159,7 +282,7 @@ def _execute_event(
                     y - state.pending_down_real_y,
                 )
                 elapsed_ms = (
-                    (time.perf_counter_ns() - state.pending_down_time_ns)
+                    (_active_now_ns() - state.pending_down_time_ns)
                     / 1_000_000
                 )
                 if (
@@ -175,7 +298,9 @@ def _execute_event(
                         x, y,
                         event.button,
                     )
-                    state.pending_down = None
+                    with _input_state_lock:
+                        state.pressed_mouse.pop(event.button, None)
+                        state.pending_down = None
                     return
 
             if _stop_flag.is_set():
@@ -183,8 +308,10 @@ def _execute_event(
             send_mouse_move(x, y)
             if _stop_flag.is_set():
                 return
-            send_mouse_button(x, y, event.button, down=False)
-            state.pending_down = None
+            with _input_state_lock:
+                send_mouse_button(x, y, event.button, down=False)
+                state.pressed_mouse.pop(event.button, None)
+                state.pending_down = None
 
     elif isinstance(event, MouseMoveEvent):
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
@@ -202,14 +329,22 @@ def _execute_event(
     elif isinstance(event, KeyEvent):
         if _stop_flag.is_set():
             return
-        send_key(event.vk_code, is_down=(event.type == "key_down"))
+        with _input_state_lock:
+            if _playback_clock.is_paused():
+                return
+            is_down = event.type == "key_down"
+            send_key(event.vk_code, is_down=is_down)
+            if is_down:
+                state.pressed_keys.add(event.vk_code)
+            else:
+                state.pressed_keys.discard(event.vk_code)
 
     elif isinstance(event, TextInputEvent):
         if event.text and not _stop_flag.is_set():
             send_text(event.text)
 
     elif isinstance(event, WaitEvent):
-        _stop_flag.wait(event.duration_ms / state.speed / 1000.0)
+        _wait_active(event.duration_ms / state.speed / 1000.0)
 
     elif isinstance(event, ColorTriggerEvent):
         _wait_for_color(event)
@@ -224,6 +359,7 @@ def _execute_event(
             _stop_flag,
             lambda e: _execute_event(e, settings, state),
             lambda events: _execute_event_sequence(events, settings, state),
+            wait_fn=_wait_active,
         )
 
     elif isinstance(event, LoopEvent):
@@ -245,16 +381,14 @@ def _execute_event_sequence(
     if not events:
         return
 
-    sequence_start_ns = time.perf_counter_ns()
+    sequence_start_ns = _active_now_ns()
     timeline_shift_ns = 0
     last_event_end_ns = sequence_start_ns
     last_significant_event_end_ns = sequence_start_ns
     base_ts_ns = events[0].timestamp_ns
 
     for event in events:
-        while _pause_flag.is_set() and not _stop_flag.is_set():
-            _stop_flag.wait(0.05)
-        if _stop_flag.is_set():
+        if not _playback_clock.wait_until_resumed():
             return
 
         recorded_target_ns = (
@@ -271,16 +405,17 @@ def _execute_event_sequence(
         else:
             target_ns = recorded_target_ns
 
-        sleep_ns = target_ns - time.perf_counter_ns()
-        if sleep_ns > 1_000_000 and _stop_flag.wait(sleep_ns / 1_000_000_000):
+        sleep_ns = target_ns - _active_now_ns()
+        if sleep_ns > 1_000_000 and not _playback_clock.wait_until(target_ns):
             return
 
-        execute_start_ns = time.perf_counter_ns()
+        execute_start_ns = _active_now_ns()
         _execute_event(event, settings, state)
+        _apply_pending_pause_if_safe(state)
         if _stop_flag.is_set():
             return
 
-        last_event_end_ns = time.perf_counter_ns()
+        last_event_end_ns = _active_now_ns()
         if not isinstance(event, MouseMoveEvent):
             last_significant_event_end_ns = last_event_end_ns
 
@@ -359,18 +494,19 @@ def _wait_for_color_check(
         settings: color_trigger_check_interval_ms, color_trigger_default_timeout_ms 사용.
     """
     deadline_ns = (
-        time.perf_counter_ns()
+        _active_now_ns()
         + settings.color_trigger_default_timeout_ms * 1_000_000
     )
     interval_s = max(1, int(settings.color_trigger_check_interval_ms)) / 1000.0
 
-    while time.perf_counter_ns() < deadline_ns:
+    while _active_now_ns() < deadline_ns:
         if _stop_flag.is_set():
             return
         actual = get_pixel_color(x, y)
         if _color_matches(actual, target, settings.color_check_click_tolerance):
             return
-        _stop_flag.wait(interval_s)
+        if not _wait_active(interval_s):
+            return
 
     logger.warning(
         f"[color_check wait] timeout at ({x},{y}), proceeding with click anyway"
@@ -390,7 +526,7 @@ def _wait_for_click_color_check(
         목표 색이 timeout 전에 감지되면 True, timeout 또는 stop이면 False.
     """
     timeout_ms = max(0, _color_check_timeout_ms_for_action(settings, action))
-    start_ns = time.perf_counter_ns()
+    start_ns = _active_now_ns()
     deadline_ns = start_ns + timeout_ms * 1_000_000 if timeout_ms > 0 else None
     next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
     interval_s = max(1, settings.color_check_click_interval_ms) / 1000.0
@@ -398,11 +534,11 @@ def _wait_for_click_color_check(
     while True:
         if _stop_flag.is_set():
             return False
-        now_ns = time.perf_counter_ns()
+        now_ns = _active_now_ns()
         if deadline_ns is not None and now_ns >= deadline_ns:
             return False
         actual = get_pixel_color(x, y)
-        checked_ns = time.perf_counter_ns()
+        checked_ns = _active_now_ns()
         if _stop_flag.is_set():
             return False
         if deadline_ns is not None and checked_ns >= deadline_ns:
@@ -416,7 +552,7 @@ def _wait_for_click_color_check(
             if remaining_s <= 0:
                 return False
             wait_s = min(wait_s, remaining_s)
-        if _stop_flag.wait(wait_s):
+        if not _wait_active(wait_s):
             return False
 
 
@@ -457,10 +593,10 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
     x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
     # hover 효과 트리거: 색 체크 전 마우스를 해당 위치로 이동
     send_mouse_move(x, y)
-    if _stop_flag.wait(0.05):
+    if not _wait_active(0.05):
         return
     target = _hex_to_rgb(event.target_color)
-    start_ns = time.perf_counter_ns()
+    start_ns = _active_now_ns()
     deadline_ns = (
         None if event.timeout_ms <= 0
         else start_ns + event.timeout_ms * 1_000_000
@@ -471,11 +607,11 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
     while True:
         if _stop_flag.is_set():
             return
-        now_ns = time.perf_counter_ns()
+        now_ns = _active_now_ns()
         if deadline_ns is not None and now_ns >= deadline_ns:
             break
         actual = get_pixel_color(x, y)
-        checked_ns = time.perf_counter_ns()
+        checked_ns = _active_now_ns()
         if _stop_flag.is_set():
             return
         if deadline_ns is not None and checked_ns >= deadline_ns:
@@ -489,7 +625,7 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
             if remaining_s <= 0:
                 break
             wait_s = min(wait_s, remaining_s)
-        if _stop_flag.wait(wait_s):
+        if not _wait_active(wait_s):
             return
 
     # 타임아웃
@@ -509,15 +645,16 @@ def _wait_for_window(event: WindowTriggerEvent) -> None:
     Raises:
         PlaybackError: on_timeout=="error"이고 타임아웃 발생 시.
     """
-    deadline_ns = time.perf_counter_ns() + event.timeout_ms * 1_000_000
+    deadline_ns = _active_now_ns() + event.timeout_ms * 1_000_000
     interval_s = 0.1
 
-    while time.perf_counter_ns() < deadline_ns:
+    while _active_now_ns() < deadline_ns:
         if _stop_flag.is_set():
             return
         if find_window(event.window_title_contains) is not None:
             return
-        _stop_flag.wait(interval_s)
+        if not _wait_active(interval_s):
+            return
 
     msg = f"window_trigger timeout waiting for '{event.window_title_contains}'"
     if event.on_timeout == "error":
@@ -536,6 +673,7 @@ def _play_loop(
     on_error: Callable[[Exception], None] | None,
     event_range: tuple[int, int] | None,
     on_event_start: Callable[[int, AnyEvent], None] | None = None,
+    start_pause_requested: Callable[[], bool] | None = None,
 ) -> None:
     """실제 재생을 수행하는 스레드 함수.
 
@@ -551,14 +689,17 @@ def _play_loop(
             end_idx는 exclusive (Python slice 규칙).
         on_event_start: 각 이벤트 실행 직전에 호출되는 콜백 (idx, event).
     """
-    global _current_event_idx, _current_event_position, _total_events
-    play_start_ns = time.perf_counter_ns()
+    global _current_event_idx, _current_event_position, _total_events, _active_play_state
+    state = _PlayState(speed=speed)
+    _active_play_state = state
+    if start_pause_requested is not None and start_pause_requested():
+        _playback_clock.pause()
+    play_start_ns = _active_now_ns()
     timeline_shift_ns = 0
     last_event_end_ns = play_start_ns
     # 음수 딜레이 플로어: 마우스 이동을 제외한 마지막 이벤트 종료 시각.
     # 음수 delay_override_ms 로 target_ns 가 이 시각보다 앞서면 이 시각으로 클램프한다.
     last_significant_event_end_ns = play_start_ns
-    state = _PlayState(speed=speed)
 
     # 구간 재생 범위 결정
     all_events = macro.events
@@ -579,11 +720,8 @@ def _play_loop(
     for play_idx, (orig_idx, event) in enumerate(events_to_play):
         _current_event_idx = orig_idx
 
-        # 일시정지 대기
-        while _pause_flag.is_set() and not _stop_flag.is_set():
-            _stop_flag.wait(0.05)
-
-        if _stop_flag.is_set():
+        # 일시중지 시간은 active clock에서 제외되므로 resume 뒤 catch-up하지 않는다.
+        if not _playback_clock.wait_until_resumed():
             logger.debug("Playback stopped by flag")
             return
 
@@ -606,10 +744,10 @@ def _play_loop(
             target_ns = recorded_target_ns
 
         # 대기 (1ms 이상일 때만 sleep — 오버슛 보정은 다음 이벤트가 처리)
-        now_ns = time.perf_counter_ns()
+        now_ns = _active_now_ns()
         sleep_ns = target_ns - now_ns
         if sleep_ns > 1_000_000:
-            if _stop_flag.wait(sleep_ns / 1_000_000_000):
+            if not _playback_clock.wait_until(target_ns):
                 return
 
         # UI에는 이벤트 완료가 아니라 실제 실행 시작 시점을 알린다. 색 체크·대기처럼
@@ -619,34 +757,45 @@ def _play_loop(
                 on_event_start(orig_idx, event)
         except Exception as e:
             logger.exception(f"Playback start callback error: {e}")
+            _release_active_inputs()
             if on_error:
                 on_error(e)
             return
         if _stop_flag.is_set():
             return
 
-        execute_start_ns = time.perf_counter_ns()
+        execute_start_ns = _active_now_ns()
         try:
             _execute_event(event, macro.settings, state)
         except PlaybackError as e:
             logger.error(f"Playback error: {e}")
+            _release_active_inputs()
             if on_error:
                 on_error(e)
             return
         except Exception as e:
             logger.exception(f"Unexpected error during playback: {e}")
+            _release_active_inputs()
             if on_error:
                 on_error(e)
             return
 
+        _apply_pending_pause_if_safe(state)
         if _stop_flag.is_set():
             return
 
         _current_event_position = play_idx + 1
         if on_event:
-            on_event(orig_idx, event)
+            try:
+                on_event(orig_idx, event)
+            except Exception as e:
+                logger.exception(f"Playback completion callback error: {e}")
+                _release_active_inputs()
+                if on_error:
+                    on_error(e)
+                return
 
-        last_event_end_ns = time.perf_counter_ns()
+        last_event_end_ns = _active_now_ns()
 
         # 마우스 이동이 아닌 이벤트만 유의미한 이벤트 종료 시각 갱신
         if not isinstance(event, MouseMoveEvent):
@@ -674,8 +823,10 @@ def _play_loop(
                     f"Event timer compensated: +{timing_compensation_ns / 1_000_000:.1f}ms"
                 )
 
-    if not _stop_flag.is_set() and on_complete:
-        on_complete()
+    if not _stop_flag.is_set():
+        _release_active_inputs()
+        if on_complete:
+            on_complete()
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -688,6 +839,7 @@ def play(
     on_error: Callable[[Exception], None] | None = None,
     event_range: tuple[int, int] | None = None,
     on_event_start: Callable[[int, AnyEvent], None] | None = None,
+    start_pause_requested: Callable[[], bool] | None = None,
 ) -> None:
     """MacroData를 별도 스레드에서 재생 시작한다.
 
@@ -699,11 +851,12 @@ def play(
         on_error: 오류 발생 시 UI에 알릴 콜백.
         event_range: (start_idx, end_idx) 구간 재생. None이면 전체 재생.
         on_event_start: 각 이벤트 실행 직전에 UI에 알릴 콜백 (idx, event).
+        start_pause_requested: worker 첫 이벤트 전에 pause할지 확인하는 콜백.
 
     Raises:
         PlaybackError: 기존 재생 worker가 아직 실행 중일 때.
     """
-    global _playback_thread
+    global _playback_thread, _pause_pending
 
     previous_thread = _playback_thread
     if previous_thread is not None and previous_thread.is_alive():
@@ -713,11 +866,22 @@ def play(
             raise PlaybackError("이미 재생 중입니다")
 
     _stop_flag.clear()
-    _pause_flag.clear()
+    _playback_clock.reset()
+    with _input_state_lock:
+        _pause_pending = False
 
     _playback_thread = threading.Thread(
         target=_play_loop,
-        args=(macro, speed, on_event, on_complete, on_error, event_range, on_event_start),
+        args=(
+            macro,
+            speed,
+            on_event,
+            on_complete,
+            on_error,
+            event_range,
+            on_event_start,
+            start_pause_requested,
+        ),
         daemon=True,
         name="PlaybackThread",
     )
@@ -726,29 +890,58 @@ def play(
 
 def stop() -> None:
     """재생 중단을 요청하고 내부 대기를 깨운 뒤 worker 종료를 기다린다."""
+    global _pause_pending
     _stop_flag.set()
-    _pause_flag.clear()
+    _playback_clock.notify_stop()
+    with _input_state_lock:
+        _pause_pending = False
+    _release_active_inputs()
     if _playback_thread is not None and _playback_thread is not threading.current_thread():
         _playback_thread.join(timeout=3.0)
     # 종료되지 않은 worker의 stop 신호는 유지한다. 다음 play()가 살아 있는
     # worker를 거부하므로 old worker가 stop clear 후 재개되는 race를 막는다.
     if _playback_thread is None or not _playback_thread.is_alive():
         _stop_flag.clear()
+        _playback_clock.reset()
 
 
-def pause() -> None:
-    """재생을 일시정지한다."""
-    _pause_flag.set()
+def pause() -> bool:
+    """안전한 입력 경계에서 재생을 일시정지하도록 요청한다."""
+    global _pause_pending
+    if not is_playing():
+        return False
+    with _input_state_lock:
+        if _pause_pending or _playback_clock.is_paused():
+            return False
+        state = _active_play_state
+        if state is not None and (state.pressed_keys or state.pressed_mouse):
+            _pause_pending = True
+            return True
+        return _playback_clock.pause()
 
 
-def resume() -> None:
-    """일시정지된 재생을 재개한다."""
-    _pause_flag.clear()
+def resume() -> bool:
+    """일시정지된 재생을 재개한다. 상태가 바뀌면 True를 반환한다."""
+    global _pause_pending
+    if not is_playing():
+        return False
+    with _input_state_lock:
+        if _pause_pending:
+            _pause_pending = False
+            return True
+        return _playback_clock.resume()
 
 
 def is_playing() -> bool:
     """현재 재생 중인지 여부를 반환한다."""
     return _playback_thread is not None and _playback_thread.is_alive()
+
+
+def is_paused() -> bool:
+    """재생 worker가 살아 있고 pause 요청 또는 실제 pause 상태인지 반환한다."""
+    with _input_state_lock:
+        paused = _pause_pending or _playback_clock.is_paused()
+    return is_playing() and paused
 
 
 def get_progress() -> float:

@@ -714,6 +714,7 @@ def execute_condition(
     stop_flag: threading.Event,
     execute_fn: Callable[[AnyEvent], None],
     execute_sequence_fn: Callable[[list[AnyEvent]], None] | None = None,
+    wait_fn: Callable[[float], bool] | None = None,
 ) -> None:
     """ConditionEvent를 샌드박스 내에서 평가하고 분기를 실행한다.
 
@@ -739,7 +740,10 @@ def execute_condition(
         nonlocal remaining_wait_ms
         wait_ms = _validated_wait_ms(ms, maximum=remaining_wait_ms)
         remaining_wait_ms -= wait_ms
-        stop_flag.wait(wait_ms / 1000.0)
+        if wait_fn is None:
+            stop_flag.wait(wait_ms / 1000.0)
+        else:
+            wait_fn(wait_ms / 1000.0)
 
     def _random() -> float:
         return _random_module.random()

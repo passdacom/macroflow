@@ -15,6 +15,7 @@
   → 미니 오버레이 창 표시 (녹화와 동일 위치)
   → 초록 화살표 + 진행률(%) + 속도 배율 표시
   → 단축키로 실시간 제어 가능 (아래 참조)
+  → F8 일시중지 동안 진행률·active timeout·재생 타임라인 정지
   → 완료 → 반복 설정에 따라 처리
 
 [긴급 중단]
@@ -43,10 +44,10 @@
 
 | 단축키 | 동작 | 비고 |
 |---|---|---|
-| F7 | 재생/일시정지 토글 | |
+| F7 | 재생 완전 중지 | 현재 반복 세션도 함께 종료 |
+| F8 | 재생 일시중지 / 재개 | 녹화와 공용 글로벌 단축키 |
 | ESC × 3회 | 즉시 전체 중지 | 고정 |
 | → (오른쪽 화살표) | 다음 이벤트로 즉시 건너뜀 | 느린 구간 빠르게 통과 |
-| Space | 일시정지 / 재개 | |
 | ↑ / ↓ | 속도 배율 한 단계 올리기/내리기 | 재생 중 실시간 적용 |
 
 > 단축키는 설정에서 변경 가능. 단, ESC 3회는 고정.
@@ -81,6 +82,14 @@ def play_event(event: MacroEvent, wait_ns: int) -> None:
     # sleep이 늦게 깨어나도 다음 이벤트의 절대값 계산이 자동 보정
     _execute_event(event)
 ```
+
+### 일시중지 active-time 규칙
+- 모든 목표 시각은 wall clock이 아니라 누적 pause 시간을 제외한 active clock으로 계산
+- 재개 후 pause 동안 지난 절대시각을 따라잡기 위해 이벤트를 몰아 실행하지 않음
+- 고정 대기, 색/창 trigger timeout, Condition 내부 `wait()`, 반복 간 interval도 pause 동안 감소하지 않음
+- pause 요청 시 열린 SendInput key/button gesture는 원래 release까지 실행한 뒤 안전 경계에서 pause
+- stop/error/ESC 종료 시에만 남아 있는 key/button을 정확히 한 번 release
+- F7/중지 버튼/ESC×3은 pause 상태에서도 즉시 전체 중지
 
 ---
 
