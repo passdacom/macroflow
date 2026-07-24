@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -773,8 +773,115 @@ class TestColorCheckWait:
         matched = player._wait_for_click_color_check(960, 540, (255, 0, 0), settings)
 
         assert matched is False
-        move.assert_any_call(959, 540)
+        move.assert_any_call(952, 540)
         move.assert_any_call(960, 540)
+
+    def test_color_wait_nudge_leaves_hover_rectangle_and_dwells(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        move = MagicMock()
+        dwell = MagicMock(return_value=False)
+        monkeypatch.setattr(player, "send_mouse_move", move)
+        monkeypatch.setattr(player._stop_flag, "wait", dwell)
+
+        next_nudge_ns = player._nudge_cursor_if_due(
+            960,
+            540,
+            now_ns=1_100_000_000,
+            next_nudge_ns=1_000_000_000,
+        )
+
+        assert move.call_args_list == [call(952, 540), call(960, 540)]
+        dwell.assert_called_once_with(0.05)
+        assert next_nudge_ns == 2_100_000_000
+
+    def test_color_wait_nudge_returns_to_target_even_if_paused_mid_dwell(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        moves: list[tuple[int, int]] = []
+        player._stop_flag.clear()
+        player._playback_clock.reset()
+
+        def pause_after_excursion(x: int, y: int) -> None:
+            moves.append((x, y))
+            if len(moves) == 1:
+                player._playback_clock.pause()
+
+        monkeypatch.setattr(player, "send_mouse_move", pause_after_excursion)
+        worker = threading.Thread(
+            target=player._nudge_cursor_if_due,
+            args=(960, 540, 1_100_000_000, 1_000_000_000),
+        )
+        worker.start()
+        worker.join(timeout=0.2)
+        try:
+            assert not worker.is_alive()
+            assert moves == [(952, 540), (960, 540)]
+        finally:
+            player._playback_clock.resume()
+            worker.join(timeout=0.2)
+            player._playback_clock.reset()
+
+    def test_color_wait_nudge_stop_interrupts_dwell_and_restores_target(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        moves: list[tuple[int, int]] = []
+        player._stop_flag.clear()
+
+        def stop_after_excursion(x: int, y: int) -> None:
+            moves.append((x, y))
+            if len(moves) == 1:
+                player._stop_flag.set()
+
+        monkeypatch.setattr(player, "send_mouse_move", stop_after_excursion)
+        real_wait = player._stop_flag.wait
+        observed_waits: list[float] = []
+
+        def observe_stopped_wait(timeout: float) -> bool:
+            assert player._stop_flag.is_set()
+            observed_waits.append(timeout)
+            return real_wait(timeout)
+
+        monkeypatch.setattr(player._stop_flag, "wait", observe_stopped_wait)
+        try:
+            player._nudge_cursor_if_due(960, 540, 1_100_000_000, 1_000_000_000)
+            assert observed_waits == [0.05]
+            assert moves == [(952, 540), (960, 540)]
+        finally:
+            player._stop_flag.clear()
+
+    def test_color_wait_nudge_rechecks_deadline_after_dwell(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        settings = MacroSettings(
+            color_check_click_tolerance=0,
+            color_check_click_timeout_ms=1150,
+            color_check_click_interval_ms=50,
+        )
+        times = iter([0, 0, 0, 1_100_000_000, 1_100_000_000, 1_150_000_000])
+        waits: list[float] = []
+        monkeypatch.setattr(player.time, "perf_counter_ns", lambda: next(times))
+        monkeypatch.setattr(player, "get_pixel_color", lambda _x, _y: (0, 0, 0))
+        monkeypatch.setattr(player, "send_mouse_move", lambda _x, _y: None)
+        monkeypatch.setattr(
+            player,
+            "_wait_active",
+            lambda seconds: waits.append(seconds) or True,
+        )
+
+        matched = player._wait_for_click_color_check(
+            960,
+            540,
+            (255, 255, 255),
+            settings,
+        )
+
+        assert matched is False
+        assert waits == [0.05]
 
     def test_click_color_check_timeout_zero_waits_until_match(
         self,
@@ -850,7 +957,7 @@ class TestColorTriggerInfiniteWait:
 
         player._wait_for_color(event)
 
-        move.assert_any_call(959, 540)
+        move.assert_any_call(952, 540)
         move.assert_any_call(960, 540)
 
 
