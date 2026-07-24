@@ -205,6 +205,210 @@ class TestPlaybackTiming:
         # 모든 이벤트가 실행되지 않았어야 한다
         assert len(executed) < len(events)
 
+    def test_pause_preserves_remaining_scheduled_delay_without_catch_up(self) -> None:
+        executed_at: list[float] = []
+        first_done = threading.Event()
+        second_done = threading.Event()
+        events: list[AnyEvent] = [
+            MouseMoveEvent(
+                id="first", type="mouse_move", timestamp_ns=0, x_ratio=0.1, y_ratio=0.1
+            ),
+            MouseMoveEvent(
+                id="second",
+                type="mouse_move",
+                timestamp_ns=250_000_000,
+                x_ratio=0.2,
+                y_ratio=0.2,
+            ),
+        ]
+
+        def _on_event(_idx: int, event: AnyEvent) -> None:
+            executed_at.append(time.perf_counter())
+            if event.id == "first":
+                first_done.set()
+            else:
+                second_done.set()
+
+        player.play(_make_macro(events), on_event=_on_event)
+        assert first_done.wait(timeout=1.0)
+        time.sleep(0.04)
+        assert player.pause()
+        time.sleep(0.30)
+        resumed_at = time.perf_counter()
+        assert player.resume()
+        assert second_done.wait(timeout=1.0)
+
+        remaining_ms = (executed_at[1] - resumed_at) * 1000
+        assert 140 <= remaining_ms <= 260
+
+    def test_pause_freezes_wait_event_active_duration(self) -> None:
+        started = threading.Event()
+        completed_at: list[float] = []
+        event = WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=220)
+
+        player.play(
+            _make_macro([event]),
+            on_event_start=lambda _idx, _event: started.set(),
+            on_complete=lambda: completed_at.append(time.perf_counter()),
+        )
+        assert started.wait(timeout=1.0)
+        time.sleep(0.04)
+        assert player.pause()
+        time.sleep(0.25)
+        resumed_at = time.perf_counter()
+        assert player.resume()
+        deadline = time.monotonic() + 1.0
+        while not completed_at and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+        assert completed_at
+        remaining_ms = (completed_at[0] - resumed_at) * 1000
+        assert 110 <= remaining_ms <= 240
+
+    def test_stop_terminates_promptly_while_paused(self) -> None:
+        started = threading.Event()
+        player.play(
+            _make_macro([WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=5000)]),
+            on_event_start=lambda _idx, _event: started.set(),
+        )
+        assert started.wait(timeout=1.0)
+        assert player.pause()
+
+        stop_started = time.perf_counter()
+        player.stop()
+
+        assert time.perf_counter() - stop_started < 0.5
+        assert not player.is_playing()
+        assert not player.is_paused()
+
+    def test_pause_defers_until_interrupted_key_gesture_is_complete(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sent: list[tuple[int, bool]] = []
+        first_done = threading.Event()
+        completed = threading.Event()
+        monkeypatch.setattr(player, "send_key", lambda vk, is_down: sent.append((vk, is_down)))
+        events: list[AnyEvent] = [
+            KeyEvent(id="ctrl-down", type="key_down", timestamp_ns=0, key="ctrl", vk_code=0x11),
+            KeyEvent(id="c-down", type="key_down", timestamp_ns=40_000_000, key="c", vk_code=0x43),
+            KeyEvent(id="c-up", type="key_up", timestamp_ns=50_000_000, key="c", vk_code=0x43),
+            KeyEvent(id="ctrl-up", type="key_up", timestamp_ns=60_000_000, key="ctrl", vk_code=0x11),
+            KeyEvent(id="a-down", type="key_down", timestamp_ns=200_000_000, key="a", vk_code=0x41),
+            KeyEvent(id="a-up", type="key_up", timestamp_ns=210_000_000, key="a", vk_code=0x41),
+        ]
+
+        player.play(
+            _make_macro(events),
+            on_event=lambda idx, _event: first_done.set() if idx == 0 else None,
+            on_complete=completed.set,
+        )
+        assert first_done.wait(timeout=1.0)
+        assert player.pause()
+        deadline = time.monotonic() + 1.0
+        while len(sent) < 4 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert sent == [(0x11, True), (0x43, True), (0x43, False), (0x11, False)]
+        time.sleep(0.05)
+        assert len(sent) == 4
+        assert player.resume()
+        assert completed.wait(timeout=1.0)
+
+        assert sent == [
+            (0x11, True),
+            (0x43, True),
+            (0x43, False),
+            (0x11, False),
+            (0x41, True),
+            (0x41, False),
+        ]
+
+    def test_start_pause_gate_blocks_first_event_until_resume(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sent = threading.Event()
+        gate = threading.Event()
+        gate.set()
+        monkeypatch.setattr(player, "send_key", lambda _vk, is_down: sent.set())
+
+        player.play(
+            _make_macro(
+                [KeyEvent(id="key", type="key_down", timestamp_ns=0, key="a", vk_code=0x41)]
+            ),
+            start_pause_requested=gate.is_set,
+        )
+        time.sleep(0.05)
+        assert player.is_paused()
+        assert not sent.is_set()
+
+        gate.clear()
+        assert player.resume()
+        assert sent.wait(timeout=1.0)
+
+    def test_playback_error_releases_held_key_once(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from macroflow.types import WindowTriggerEvent
+
+        sent: list[tuple[int, bool]] = []
+        errors: list[Exception] = []
+        monkeypatch.setattr(player, "send_key", lambda vk, is_down: sent.append((vk, is_down)))
+        monkeypatch.setattr(player, "find_window", lambda _title: None)
+        player.play(
+            _make_macro(
+                [
+                    KeyEvent(
+                        id="ctrl-down", type="key_down", timestamp_ns=0, key="ctrl", vk_code=0x11
+                    ),
+                    WindowTriggerEvent(
+                        id="error",
+                        type="window_trigger",
+                        timestamp_ns=1_000_000,
+                        window_title_contains="never",
+                        timeout_ms=1,
+                        on_timeout="error",
+                    ),
+                    KeyEvent(
+                        id="ctrl-up", type="key_up", timestamp_ns=2_000_000, key="ctrl", vk_code=0x11
+                    ),
+                ]
+            ),
+            on_error=errors.append,
+        )
+        deadline = time.monotonic() + 1.0
+        while player.is_playing() and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+        assert errors
+        assert sent == [(0x11, True), (0x11, False)]
+
+    def test_on_event_error_releases_held_key_and_reports_terminal_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        sent: list[tuple[int, bool]] = []
+        errors: list[Exception] = []
+        monkeypatch.setattr(player, "send_key", lambda vk, is_down: sent.append((vk, is_down)))
+
+        player.play(
+            _make_macro(
+                [
+                    KeyEvent(id="down", type="key_down", timestamp_ns=0, key="a", vk_code=0x41),
+                    KeyEvent(id="up", type="key_up", timestamp_ns=50_000_000, key="a", vk_code=0x41),
+                ]
+            ),
+            on_event=lambda _idx, _event: (_ for _ in ()).throw(RuntimeError("ui failed")),
+            on_error=errors.append,
+        )
+        deadline = time.monotonic() + 1.0
+        while player.is_playing() and time.monotonic() < deadline:
+            time.sleep(0.005)
+
+        assert [str(error) for error in errors] == ["ui failed"]
+        assert sent == [(0x41, True), (0x41, False)]
+
     def test_on_event_reports_event_before_blocking_execution(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -562,6 +766,7 @@ class TestColorCheckWait:
 
         monkeypatch.setattr(player.time, "perf_counter_ns", lambda: next(times))
         monkeypatch.setattr(player.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(player, "_wait_active", lambda seconds: True)
         monkeypatch.setattr(player, "get_pixel_color", lambda x, y: (0, 0, 0))
         monkeypatch.setattr(player, "send_mouse_move", move)
 
@@ -641,6 +846,7 @@ class TestColorTriggerInfiniteWait:
         monkeypatch.setattr(player, "get_pixel_color", lambda x, y: (0, 0, 0))
         monkeypatch.setattr(player.time, "perf_counter_ns", lambda: next(times))
         monkeypatch.setattr(player.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(player, "_wait_active", lambda seconds: True)
 
         player._wait_for_color(event)
 

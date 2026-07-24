@@ -1,5 +1,19 @@
 # 변경 내역
 
+## Unreleased
+
+### 추가
+
+- F8 글로벌 단축키와 툴바 버튼으로 녹화·일반/구간/반복 재생 일시중지·재개
+- 우측 하단 오버레이의 `PAUSE · REC` / `PAUSE · PLAY` 상태 표시
+
+### 안정성
+
+- 녹화 pause 구간의 이벤트와 경과시간을 timestamp에서 제거하고 queue 경계 이벤트 보존
+- 재생 active-time clock으로 재개 후 catch-up 실행과 timeout 소진 방지
+- pause는 열린 key·mouse gesture의 원래 release 뒤 안전 경계에서 적용
+- stop/error 시 남아 있는 key·mouse 입력을 정확히 한 번 release
+
 ## v1.3.1 — 2026-07-23
 
 ### 수정

@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 import macroflow.recorder as rec
-from macroflow.recorder import _convert_raw, _vk_to_key
+from macroflow.recorder import _convert_raw, _process_raw, _vk_to_key
 from macroflow.types import (
     ColorTriggerEvent,
     KeyEvent,
@@ -27,6 +27,8 @@ class TestConvertRaw:
         rec._rec_start_ns = 0
         rec._screen_w = 1920
         rec._screen_h = 1080
+        rec._pause_intervals = []
+        rec._pause_started_ns = None
 
         # pixel_to_ratio mock
         self._orig_pixel_to_ratio = None
@@ -112,6 +114,44 @@ class TestConvertRaw:
         assert event is not None
         assert event.timestamp_ns == 500_000_000  # 상대 0.5초
 
+    def test_timestamp_excludes_closed_pause_interval(self) -> None:
+        rec._rec_start_ns = 1_000_000_000
+        rec._pause_intervals = [(1_500_000_000, 4_500_000_000)]
+
+        before = _convert_raw(("k", 1_400_000_000, 0x0100, (0x41, 0, 0)))
+        during = _convert_raw(("k", 2_000_000_000, 0x0100, (0x42, 0, 0)))
+        after = _convert_raw(("k", 4_600_000_000, 0x0100, (0x43, 0, 0)))
+
+        assert before is not None and before.timestamp_ns == 400_000_000
+        assert during is None
+        assert after is not None and after.timestamp_ns == 600_000_000
+
+    def test_timestamp_excludes_multiple_pause_intervals(self) -> None:
+        rec._rec_start_ns = 1_000_000_000
+        rec._pause_intervals = [
+            (1_500_000_000, 2_500_000_000),
+            (3_000_000_000, 5_000_000_000),
+        ]
+
+        event = _convert_raw(("k", 5_250_000_000, 0x0100, (0x41, 0, 0)))
+
+        assert event is not None
+        assert event.timestamp_ns == 1_250_000_000
+
+    def test_open_pause_discards_events_at_or_after_pause_boundary(self) -> None:
+        rec._rec_start_ns = 1_000_000_000
+        rec._pause_started_ns = 1_500_000_000
+
+        before = _convert_raw(("k", 1_499_999_999, 0x0100, (0x41, 0, 0)))
+        during = _convert_raw(("k", 1_500_000_000, 0x0100, (0x42, 0, 0)))
+
+        assert before is not None
+        assert during is None
+
+    def test_f8_hotkey_is_not_recorded(self) -> None:
+        assert _convert_raw(("k", 100_000_000, 0x0100, (0x77, 0, 0))) is None
+        assert _convert_raw(("k", 110_000_000, 0x0101, (0x77, 0, 0))) is None
+
     def test_event_id_is_8hex(self) -> None:
         """생성된 이벤트 id는 8자리 hex 문자열이어야 한다."""
         with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.0, 0.0)):
@@ -190,6 +230,38 @@ class TestVkToKey:
         assert result.startswith("vk_")
 
 
+def test_process_raw_closes_pre_pause_key_and_suppresses_pause_only_key() -> None:
+    rec._rec_start_ns = 0
+    rec._pause_intervals = [(500, 1000)]
+    rec._pause_started_ns = None
+    rec._recording_pressed_keys.clear()
+    rec._suppressed_pause_keys.clear()
+
+    ctrl_down = _process_raw(("k", 400, 0x0100, (0x11, 0, 0)))
+    ctrl_up = _process_raw(("k", 600, 0x0101, (0x11, 0, 0)))
+    assert _process_raw(("k", 700, 0x0100, (0x41, 0, 0))) is None
+    assert _process_raw(("k", 1100, 0x0101, (0x41, 0, 0))) is None
+
+    assert isinstance(ctrl_down, KeyEvent)
+    assert isinstance(ctrl_up, KeyEvent)
+    assert ctrl_down.type == "key_down"
+    assert ctrl_up.type == "key_up"
+    assert ctrl_up.timestamp_ns == 499
+
+
+def test_process_raw_suppresses_auto_repeat_until_pause_key_is_released() -> None:
+    rec._rec_start_ns = 0
+    rec._pause_intervals = [(500, 1000)]
+    rec._pause_started_ns = None
+    rec._recording_pressed_keys.clear()
+    rec._suppressed_pause_keys.clear()
+
+    assert _process_raw(("k", 700, 0x0100, (0x41, 0, 0))) is None
+    assert _process_raw(("k", 1100, 0x0100, (0x41, 0, 0))) is None
+    assert _process_raw(("k", 1200, 0x0101, (0x41, 0, 0))) is None
+    assert 0x41 not in rec._suppressed_pause_keys
+
+
 # ── start/stop 통합 테스트 ────────────────────────────────────────────────────
 
 class TestRecorderIntegration:
@@ -215,6 +287,34 @@ class TestRecorderIntegration:
         assert macro.meta.screen_width == 1920
         assert macro.meta.screen_height == 1080
         assert macro.is_edited is False
+
+    def test_pause_resume_state_and_stop_while_paused(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import macroflow.win32 as w32
+
+        monkeypatch.setattr(w32, "start_hook", lambda q: None)
+        monkeypatch.setattr(w32, "stop_hook", lambda: None)
+        monkeypatch.setattr(rec, "get_logical_screen_size", lambda: (1920, 1080))
+        clock = iter(
+            (1_000_000_000, 1_500_000_000, 4_500_000_000, 5_000_000_000, 5_500_000_000)
+        )
+        monkeypatch.setattr(rec.time, "perf_counter_ns", lambda: next(clock))
+
+        rec.start_recording()
+        assert rec.pause_recording()
+        assert rec.is_paused()
+        assert not rec.pause_recording()
+        assert rec.resume_recording()
+        assert not rec.is_paused()
+        assert not rec.resume_recording()
+        assert rec.pause_recording()
+
+        macro = rec.stop_recording()
+
+        assert not rec.is_paused()
+        assert macro.events == []
 
     def test_events_injected_to_queue(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """큐에 주입한 이벤트가 MacroData에 포함되어야 한다."""

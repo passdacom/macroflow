@@ -16,7 +16,16 @@ def test_play_toolbar_uses_stop_copy_while_playing() -> None:
     method_src = _SOURCE[start:end]
 
     assert '"⏹ 중지 (F7)" if is_play else "▶ 재생 (F7)"' in method_src
-    assert "일시정지" not in method_src
+    assert '"▶ 계속 (F8)" if self._paused else "⏸ 일시중지 (F8)"' in method_src
+
+
+def test_main_window_registers_f8_pause_hotkey_and_routes_it() -> None:
+    assert "_HOTKEY_PAUSE = 3" in _SOURCE
+    assert "_VK_F8 = 0x77" in _SOURCE
+    assert "RegisterHotKey(hwnd, _HOTKEY_PAUSE, 0, _VK_F8)" in _SOURCE
+    assert "UnregisterHotKey(hwnd, _HOTKEY_PAUSE)" in _SOURCE
+    assert "if msg.wParam == _HOTKEY_PAUSE:" in _SOURCE
+    assert "self._toggle_pause()" in _SOURCE
 
 
 def test_delete_mouse_moves_requires_confirmation_dialog() -> None:

@@ -49,6 +49,9 @@ class OverlayWindow(QWidget):
         self._repeat_total: int = 1
         self._flow_current: int = 1
         self._flow_total: int = 1
+        self._paused: bool = False
+        self._pause_started: float | None = None
+        self._paused_total: float = 0.0
         self._blink_on: bool = True
         self._drag_offset: QPoint = QPoint(0, 0)
         self._dragging: bool = False
@@ -101,16 +104,18 @@ class OverlayWindow(QWidget):
     def _recording_text(self, elapsed: float) -> str:
         mm = int(elapsed) // 60
         ss = int(elapsed) % 60
-        return f"REC  {mm:02d}:{ss:02d}  #{self._event_count}"
+        prefix = "PAUSE · REC" if self._paused else "REC"
+        return f"{prefix}  {mm:02d}:{ss:02d}  #{self._event_count}"
 
     def _playing_text(self) -> str:
         pct = int(self._progress * 100)
+        prefix = "PAUSE · PLAY" if self._paused else "PLAY"
         if self._repeat_total > 1:
             return (
-                f"PLAY  {self._repeat_current}/{self._repeat_total}회  "
+                f"{prefix}  {self._repeat_current}/{self._repeat_total}회  "
                 f"{pct}%  {self._speed:.1f}x"
             )
-        return f"PLAY  {pct}%  {self._speed:.1f}x"
+        return f"{prefix}  {pct}%  {self._speed:.1f}x"
 
     def _flowing_text(self) -> str:
         return f"FLOW  {self._flow_current}/{self._flow_total}  {self._speed:.1f}x"
@@ -124,9 +129,21 @@ class OverlayWindow(QWidget):
         self.raise_()
         self.update()
 
+    def _reset_pause(self) -> None:
+        self._paused = False
+        self._pause_started = None
+        self._paused_total = 0.0
+
+    def _recording_elapsed(self) -> float:
+        """pause 구간을 제외한 녹화 active elapsed seconds를 반환한다."""
+        now = self._pause_started if self._paused else time.monotonic()
+        assert now is not None
+        return max(0.0, now - self._start_time - self._paused_total)
+
     def start_recording(self) -> None:
         """녹화 모드로 오버레이를 표시한다."""
         self._mode = "recording"
+        self._reset_pause()
         self._start_time = time.monotonic()
         self._event_count = 0
         self._blink_on = True
@@ -144,6 +161,7 @@ class OverlayWindow(QWidget):
     ) -> None:
         """재생 모드로 오버레이를 표시한다."""
         self._mode = "playing"
+        self._reset_pause()
         self._start_time = time.monotonic()
         self._progress = 0.0
         self._speed = speed
@@ -172,9 +190,34 @@ class OverlayWindow(QWidget):
         """녹화 중 이벤트 수를 갱신한다."""
         self._event_count = count
         self._sync_width_for_text(
-            self._recording_text(time.monotonic() - self._start_time),
+            self._recording_text(self._recording_elapsed()),
             text_x=34,
         )
+        self.update()
+
+    def set_paused(self, paused: bool) -> None:
+        """녹화/재생 pause 표시와 녹화 active elapsed clock을 전환한다."""
+        if paused == self._paused:
+            return
+        now = time.monotonic()
+        if paused:
+            self._paused = True
+            self._pause_started = now
+            self._blink_timer.stop()
+            self._blink_on = True
+        else:
+            assert self._pause_started is not None
+            self._paused_total += max(0.0, now - self._pause_started)
+            self._pause_started = None
+            self._paused = False
+            if self._mode == "recording":
+                self._blink_timer.start()
+        text = (
+            self._recording_text(self._recording_elapsed())
+            if self._mode == "recording"
+            else self._playing_text()
+        )
+        self._sync_width_for_text(text, text_x=34 if self._mode == "recording" else 36)
         self.update()
 
     def set_progress(self, progress: float) -> None:
@@ -222,7 +265,7 @@ class OverlayWindow(QWidget):
     def _tick(self) -> None:
         if self._mode == "recording":
             self._sync_width_for_text(
-                self._recording_text(time.monotonic() - self._start_time),
+                self._recording_text(self._recording_elapsed()),
                 text_x=34,
             )
         self.update()
@@ -241,7 +284,7 @@ class OverlayWindow(QWidget):
         painter.setPen(QColor(70, 70, 80, 180))
         painter.drawRoundedRect(1, 1, self.width() - 2, self.height() - 2, 10, 10)
 
-        elapsed = time.monotonic() - self._start_time
+        elapsed = self._recording_elapsed() if self._mode == "recording" else 0.0
         if self._mode == "recording":
             self._paint_recording(painter, elapsed)
         elif self._mode == "hint":

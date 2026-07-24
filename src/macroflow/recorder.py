@@ -42,8 +42,8 @@ from macroflow.win32 import (
 logger = logging.getLogger(__name__)
 
 # ── 핫키 VK 코드 — 이 키들은 raw_events에 기록하지 않는다 ─────────────────────
-# spec: 단축키 자체(F6 key_down/key_up)는 raw_events에 기록하지 않음
-_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76})  # F6, F7
+# spec: 단축키 자체(F6/F7/F8 key_down/key_up)는 raw_events에 기록하지 않음
+_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76, 0x77})  # F6, F7, F8
 
 # ── ESC×3 긴급 중지 상수 ─────────────────────────────────────────────────────
 _VK_ESCAPE: int = 0x1B
@@ -124,10 +124,52 @@ _stop_consumer: threading.Event = threading.Event()
 _event_buffer: list[AnyEvent] = []
 _event_buffer_lock: threading.Lock = threading.Lock()  # _event_buffer 동시 접근 보호
 _rec_start_ns: int = 0
+_pause_lock: threading.Lock = threading.Lock()
+_pause_intervals: list[tuple[int, int]] = []
+_pause_started_ns: int | None = None
+_recording_pressed_keys: set[int] = set()
+_recording_pressed_mouse: set[str] = set()
+_suppressed_pause_keys: set[int] = set()
+_suppressed_pause_mouse: set[str] = set()
 _screen_w: int = 1920
 _screen_h: int = 1080
 _esc_press_times: deque[float] = deque(maxlen=3)
 _on_emergency_stop: Callable[[], None] | None = None
+
+
+def _project_recording_timestamp_ns(captured_ns: int) -> int | None:
+    """캡처 시각을 pause 구간이 제거된 녹화 상대시각으로 변환한다.
+
+    consumer 처리 시각이 아니라 Hook이 기록한 ``captured_ns``를 사용하므로,
+    pause 직전 queue에 들어온 이벤트는 consumer가 늦게 처리해도 보존된다.
+    pause 구간 안에서 캡처된 이벤트는 ``None``을 반환한다.
+    """
+    paused_before_ns = 0
+    with _pause_lock:
+        intervals = tuple(_pause_intervals)
+        open_pause_start_ns = _pause_started_ns
+
+    for start_ns, end_ns in intervals:
+        if captured_ns < start_ns:
+            break
+        if captured_ns < end_ns:
+            return None
+        paused_before_ns += end_ns - start_ns
+
+    if open_pause_start_ns is not None and captured_ns >= open_pause_start_ns:
+        return None
+    return max(0, captured_ns - _rec_start_ns - paused_before_ns)
+
+
+def _pause_boundary_for(captured_ns: int) -> int | None:
+    """captured_ns가 속한 pause interval의 시작 시각을 반환한다."""
+    with _pause_lock:
+        for start_ns, end_ns in _pause_intervals:
+            if start_ns <= captured_ns < end_ns:
+                return start_ns
+        if _pause_started_ns is not None and captured_ns >= _pause_started_ns:
+            return _pause_started_ns
+    return None
 
 
 def _convert_raw(
@@ -142,7 +184,9 @@ def _convert_raw(
         변환된 이벤트. 알 수 없는 wParam이면 None.
     """
     kind, ts_ns, wParam, data = raw
-    rel_ts_ns = ts_ns - _rec_start_ns
+    rel_ts_ns = _project_recording_timestamp_ns(ts_ns)
+    if rel_ts_ns is None:
+        return None
     eid = secrets.token_hex(4)
 
     if kind == "m":
@@ -188,7 +232,7 @@ def _convert_raw(
 
     elif kind == "k":
         vk_code, _scan, _flags = data
-        # 핫키(F6, F7)는 기록하지 않는다
+        # 핫키(F6, F7, F8)는 기록하지 않는다
         if vk_code in _FILTERED_VK_CODES:
             return None
         if wParam in (_WM_KEYDOWN, _WM_SYSKEYDOWN):
@@ -236,7 +280,7 @@ def _consumer_loop() -> None:
                 if _on_emergency_stop is not None:
                     _on_emergency_stop()
                 continue
-            event = _convert_raw(raw)
+            event = _process_raw(raw)
             if event is not None:
                 with _event_buffer_lock:
                     _event_buffer.append(event)
@@ -246,10 +290,80 @@ def _consumer_loop() -> None:
     # 종료 신호 후 잔여 이벤트 처리
     while _raw_queue and len(_raw_queue) > 0:
         raw = _raw_queue.popleft()
-        event = _convert_raw(raw)
+        event = _process_raw(raw)
         if event is not None:
             with _event_buffer_lock:
                 _event_buffer.append(event)
+
+
+def _process_raw(
+    raw: tuple[str, int, int, tuple[int, int, int]],
+) -> AnyEvent | None:
+    """pause 경계의 열린 입력 쌍을 보존하면서 raw 이벤트를 변환한다."""
+    kind, captured_ns, w_param, data = raw
+    pause_boundary_ns = _pause_boundary_for(captured_ns)
+
+    if kind == "k":
+        vk_code = data[0]
+        is_down = w_param in (_WM_KEYDOWN, _WM_SYSKEYDOWN)
+        is_up = w_param in (_WM_KEYUP, _WM_SYSKEYUP)
+        if pause_boundary_ns is not None:
+            if is_down:
+                if vk_code not in _recording_pressed_keys:
+                    _suppressed_pause_keys.add(vk_code)
+                return None
+            if is_up:
+                if vk_code in _suppressed_pause_keys:
+                    _suppressed_pause_keys.discard(vk_code)
+                    return None
+                if vk_code in _recording_pressed_keys:
+                    forced = (kind, pause_boundary_ns - 1, w_param, data)
+                    _recording_pressed_keys.discard(vk_code)
+                    return _convert_raw(forced)
+                return None
+        if (is_down or is_up) and vk_code in _suppressed_pause_keys:
+            if is_up:
+                _suppressed_pause_keys.discard(vk_code)
+            return None
+        event = _convert_raw(raw)
+        if event is not None:
+            if is_down:
+                _recording_pressed_keys.add(vk_code)
+            elif is_up:
+                _recording_pressed_keys.discard(vk_code)
+        return event
+
+    if kind == "m":
+        button = _MOUSE_DOWN_MAP.get(w_param) or _MOUSE_UP_MAP.get(w_param)
+        is_down = w_param in _MOUSE_DOWN_MAP
+        is_up = w_param in _MOUSE_UP_MAP
+        if pause_boundary_ns is not None and button is not None:
+            if is_down:
+                if button not in _recording_pressed_mouse:
+                    _suppressed_pause_mouse.add(button)
+                return None
+            if is_up:
+                if button in _suppressed_pause_mouse:
+                    _suppressed_pause_mouse.discard(button)
+                    return None
+                if button in _recording_pressed_mouse:
+                    forced = (kind, pause_boundary_ns - 1, w_param, data)
+                    _recording_pressed_mouse.discard(button)
+                    return _convert_raw(forced)
+                return None
+        if button is not None and (is_down or is_up) and button in _suppressed_pause_mouse:
+            if is_up:
+                _suppressed_pause_mouse.discard(button)
+            return None
+        event = _convert_raw(raw)
+        if event is not None and button is not None:
+            if is_down:
+                _recording_pressed_mouse.add(button)
+            elif is_up:
+                _recording_pressed_mouse.discard(button)
+        return event
+
+    return _convert_raw(raw)
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -268,6 +382,7 @@ def start_recording(
     global _recording, _raw_queue, _consumer_thread
     global _stop_consumer, _event_buffer, _rec_start_ns
     global _screen_w, _screen_h, _on_emergency_stop
+    global _pause_intervals, _pause_started_ns
 
     if _recording:
         logger.warning("Already recording — start_recording() ignored")
@@ -280,6 +395,13 @@ def start_recording(
     _raw_queue = deque()
     _stop_consumer = threading.Event()
     _rec_start_ns = time.perf_counter_ns()
+    with _pause_lock:
+        _pause_intervals = []
+        _pause_started_ns = None
+    _recording_pressed_keys.clear()
+    _recording_pressed_mouse.clear()
+    _suppressed_pause_keys.clear()
+    _suppressed_pause_mouse.clear()
 
     start_hook(_raw_queue)
 
@@ -307,6 +429,10 @@ def stop_recording() -> MacroData:
 
     _on_emergency_stop = None
     stop_hook()
+    # Hook이 완전히 해제된 뒤 열린 pause를 닫아 stop 과정에서 캡처될 수 있는
+    # 마지막 이벤트까지 pause 구간으로 분류한다.
+    if is_paused():
+        resume_recording(now_ns=time.perf_counter_ns())
     _stop_consumer.set()
 
     if _consumer_thread is not None:
@@ -357,7 +483,9 @@ def inject_color_trigger(
     """
     if not _recording:
         return
-    ts_ns = time.perf_counter_ns() - _rec_start_ns
+    ts_ns = _project_recording_timestamp_ns(time.perf_counter_ns())
+    if ts_ns is None:
+        return
     event = ColorTriggerEvent(
         id=secrets.token_hex(4),
         type="color_trigger",
@@ -378,6 +506,44 @@ def inject_color_trigger(
 def is_recording() -> bool:
     """현재 녹화 중인지 여부를 반환한다."""
     return _recording
+
+
+def pause_recording(*, now_ns: int | None = None) -> bool:
+    """현재 녹화를 일시중지한다.
+
+    Hook은 유지하고 캡처 timestamp가 pause 구간에 속한 이벤트만 폐기한다.
+    이미 중지됐거나 pause 상태이면 ``False``를 반환한다.
+    """
+    global _pause_started_ns
+    if not _recording:
+        return False
+    with _pause_lock:
+        if _pause_started_ns is not None:
+            return False
+        boundary_ns = time.perf_counter_ns() if now_ns is None else now_ns
+        _pause_started_ns = boundary_ns
+    logger.debug("Recording paused")
+    return True
+
+
+def resume_recording(*, now_ns: int | None = None) -> bool:
+    """일시중지된 녹화를 재개하고 닫힌 pause interval을 기록한다."""
+    global _pause_started_ns
+    with _pause_lock:
+        if _pause_started_ns is None:
+            return False
+        boundary_ns = time.perf_counter_ns() if now_ns is None else now_ns
+        end_ns = max(boundary_ns, _pause_started_ns)
+        _pause_intervals.append((_pause_started_ns, end_ns))
+        _pause_started_ns = None
+    logger.debug("Recording resumed")
+    return True
+
+
+def is_paused() -> bool:
+    """녹화가 현재 일시중지 상태인지 반환한다."""
+    with _pause_lock:
+        return _recording and _pause_started_ns is not None
 
 
 def get_event_count() -> int:

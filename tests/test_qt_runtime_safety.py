@@ -37,9 +37,68 @@ def test_main_window_shortcut_fallback_uses_real_pyqt_shortcut() -> None:
             def _toggle_playback(self):
                 pass
 
+            def _toggle_pause(self):
+                pass
+
         host = ShortcutHost()
         MainWindow._register_shortcut_fallback(host)
-        assert len(host.findChildren(QShortcut)) == 2
+        MainWindow._register_shortcut_fallback(host)
+        shortcuts = host.findChildren(QShortcut)
+        assert len(shortcuts) == 3
+        assert {item.key().toString() for item in shortcuts} == {"F6", "F7", "F8"}
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_playing_state_takes_priority_over_current_tab_for_f7() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock
+
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "playing"
+        host._stop_playback = Mock()
+        host._is_sequencer_tab.return_value = True
+        host._is_favorites_tab.return_value = False
+        MainWindow._toggle_playback(host)
+
+        host._stop_playback.assert_called_once_with()
+        host._toggle_sequencer.assert_not_called()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_overlay_pause_freezes_recording_elapsed_and_preserves_playback_progress() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import patch
+
+        from PyQt6.QtWidgets import QApplication
+        from macroflow.ui.overlay import OverlayWindow
+
+        app = QApplication.instance() or QApplication([])
+        overlay = OverlayWindow()
+        with patch(
+            "macroflow.ui.overlay.time.monotonic",
+            side_effect=[10.0, 15.0, 15.0, 25.0, 28.0, 28.0],
+        ):
+            overlay.start_recording()
+            assert overlay._recording_text(overlay._recording_elapsed()) == "REC  00:05  #0"
+            overlay.set_paused(True)
+            assert overlay._recording_text(overlay._recording_elapsed()) == "PAUSE · REC  00:05  #0"
+            overlay.set_paused(False)
+            assert overlay._recording_text(overlay._recording_elapsed()) == "REC  00:08  #0"
+
+        overlay.start_playing(1.0, repeat_current=3, repeat_total=10)
+        overlay.set_progress(0.37)
+        overlay.set_paused(True)
+        assert overlay._playing_text() == "PAUSE · PLAY  3/10회  37%  1.0x"
         """
     )
 

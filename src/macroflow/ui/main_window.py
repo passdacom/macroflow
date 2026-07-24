@@ -1,7 +1,7 @@
 """MacroFlow 메인 창.
 
 전체 상태 머신(idle / recording / stopping / playing)을 관리한다.
-F6/F7 글로벌 핫키(RegisterHotKey), 미니 오버레이, 이벤트 에디터를 통합한다.
+F6/F7/F8 글로벌 핫키(RegisterHotKey), 미니 오버레이, 이벤트 에디터를 통합한다.
 """
 
 from __future__ import annotations
@@ -55,8 +55,10 @@ logger = logging.getLogger(__name__)
 # ── Win32 핫키 상수 ────────────────────────────────────────────────────────────
 _HOTKEY_RECORD = 1
 _HOTKEY_PLAY = 2
+_HOTKEY_PAUSE = 3
 _VK_F6 = 0x75
 _VK_F7 = 0x76
+_VK_F8 = 0x77
 _WM_HOTKEY = 0x0312
 
 _MAX_RECENT_SAVES = 10
@@ -85,6 +87,9 @@ class MainWindow(QMainWindow):
         self._macro: MacroData | None = None
         self._current_file: Path | None = None
         self._hotkeys_registered: bool = False
+        self._shortcut_fallback_registered: bool = False
+        self._paused: bool = False
+        self._playback_pause_event = threading.Event()
         self._recording_stop_thread: threading.Thread | None = None
 
         # ESC×3 감지 (앱 포커스 상태에서만)
@@ -247,6 +252,11 @@ class MainWindow(QMainWindow):
         self._act_play.triggered.connect(self._toggle_playback)
         tb1.addAction(self._act_play)
 
+        self._act_pause = QAction("⏸ 일시중지 (F8)", self)
+        self._act_pause.setToolTip("F8  —  녹화/재생 일시중지 또는 계속")
+        self._act_pause.triggered.connect(self._toggle_pause)
+        tb1.addAction(self._act_pause)
+
         self._act_stop = QAction("⏹ 중지", self)
         self._act_stop.setToolTip("녹화 또는 재생을 즉시 중지합니다")
         self._act_stop.triggered.connect(self._emergency_stop)
@@ -366,7 +376,9 @@ class MainWindow(QMainWindow):
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
         self._sb_count = QLabel("")
-        self._sb_hint = QLabel("F6: 녹화  |  F7: 재생/색트리거  |  ESC×3: 긴급 중지")
+        self._sb_hint = QLabel(
+            "F6: 녹화  |  F7: 재생/색트리거  |  F8: 일시중지/계속  |  ESC×3: 긴급 중지"
+        )
 
         sb = self.statusBar()
         sb.addWidget(self._sb_state)
@@ -548,26 +560,39 @@ class MainWindow(QMainWindow):
             hwnd = int(self.winId())
             ok1 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_RECORD, 0, _VK_F6))
             ok2 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_PLAY, 0, _VK_F7))
-            if ok1 and ok2:
+            ok3 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_PAUSE, 0, _VK_F8))
+            if ok1 and ok2 and ok3:
                 self._hotkeys_registered = True
-                logger.info("글로벌 핫키 등록 완료: F6 (녹화), F7 (재생)")
+                logger.info("글로벌 핫키 등록 완료: F6 (녹화), F7 (재생), F8 (일시중지)")
             else:
+                for hotkey_id, registered in (
+                    (_HOTKEY_RECORD, ok1),
+                    (_HOTKEY_PLAY, ok2),
+                    (_HOTKEY_PAUSE, ok3),
+                ):
+                    if registered:
+                        ctypes.windll.user32.UnregisterHotKey(hwnd, hotkey_id)
                 logger.warning("글로벌 핫키 등록 실패 — QShortcut 폴백 사용")
                 self._register_shortcut_fallback()
         else:
             self._register_shortcut_fallback()
 
     def _register_shortcut_fallback(self) -> None:
+        if getattr(self, "_shortcut_fallback_registered", False):
+            return
         from PyQt6.QtGui import QShortcut
         QShortcut(QKeySequence("F6"), self).activated.connect(self._toggle_recording)
         QShortcut(QKeySequence("F7"), self).activated.connect(self._toggle_playback)
-        logger.info("QShortcut 폴백 핫키 등록 (앱 포커스 상태에서만 작동)")
+        QShortcut(QKeySequence("F8"), self).activated.connect(self._toggle_pause)
+        self._shortcut_fallback_registered = True
+        logger.info("QShortcut 폴백 핫키 등록: F6/F7/F8 (앱 포커스 상태에서만 작동)")
 
     def _unregister_hotkeys(self) -> None:
         import ctypes
         hwnd = int(self.winId())
         ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_RECORD)
         ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_PLAY)
+        ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_PAUSE)
         self._hotkeys_registered = False
 
     def nativeEvent(  # type: ignore[override]
@@ -591,16 +616,21 @@ class MainWindow(QMainWindow):
                         self._toggle_recording()
                     return True, 0
                 if msg.wParam == _HOTKEY_PLAY:
-                    if self._is_sequencer_tab():
+                    if self._state == "recording":
+                        self._insert_color_trigger()
+                    elif self._state == "playing":
+                        self._stop_playback()
+                    elif self._is_sequencer_tab():
                         # 시퀀서 탭: F7 → 시퀀스 실행/중지
                         self._toggle_sequencer()
                     elif self._is_favorites_tab():
                         # 즐겨찾기 탭: 재생 대상이 없으므로 F7 무시
                         return True, 0
-                    elif self._state == "recording":
-                        self._insert_color_trigger()
                     else:
                         self._toggle_playback()
+                    return True, 0
+                if msg.wParam == _HOTKEY_PAUSE:
+                    self._toggle_pause()
                     return True, 0
         return False, 0
 
@@ -628,9 +658,51 @@ class MainWindow(QMainWindow):
         elif self._is_favorites_tab():
             self._sb_hint.setText("더블클릭: 매크로 로드  |  우클릭: 시퀀서 추가")
         else:
-            self._sb_hint.setText("F6: 녹화  |  F7: 재생/색트리거  |  ESC×3: 긴급 중지")
+            self._sb_hint.setText(
+                "F6: 녹화  |  F7: 재생/색트리거  |  F8: 일시중지/계속  |  ESC×3: 긴급 중지"
+            )
 
     # ── 상태 머신 ─────────────────────────────────────────────────────────────
+
+    def _toggle_pause(self) -> None:
+        """F8: 현재 녹화 또는 일반 재생을 일시중지/재개한다."""
+        if self._state == "recording":
+            from macroflow import recorder
+
+            changed = (
+                recorder.resume_recording()
+                if self._paused
+                else recorder.pause_recording()
+            )
+            if not changed:
+                return
+            self._paused = not self._paused
+            self._overlay.set_paused(self._paused)
+            self._sb_state.setText(
+                "Ⅱ 이어서 녹화 일시중지"
+                if self._paused and self._append_recording_mode
+                else "Ⅱ 녹화 일시중지"
+                if self._paused
+                else "● 이어서 녹화 중"
+                if self._append_recording_mode
+                else "● 녹화 중"
+            )
+        elif self._state == "playing":
+            from macroflow import player
+
+            if self._paused:
+                self._playback_pause_event.clear()
+                player.resume()
+                self._paused = False
+            else:
+                self._playback_pause_event.set()
+                player.pause()
+                self._paused = True
+            self._overlay.set_paused(self._paused)
+            self._sb_state.setText("Ⅱ 재생 일시중지" if self._paused else "▶ 재생 중")
+        else:
+            return
+        self._update_toolbar()
 
     def _toggle_recording(self) -> None:
         if self._sequencer.is_running():
@@ -669,6 +741,7 @@ class MainWindow(QMainWindow):
 
         from macroflow import recorder
         recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
+        self._paused = False
         self._state = "recording"
         self._overlay.start_recording()
         self._poll_timer.start()
@@ -687,6 +760,7 @@ class MainWindow(QMainWindow):
             and self._recording_stop_thread.is_alive()
         ):
             return
+        self._paused = False
         self._state = "stopping"
         self._poll_timer.stop()
         self._update_toolbar()
@@ -815,6 +889,9 @@ class MainWindow(QMainWindow):
             self._sb_state.setText(f"▶ 시퀀스 실행 중 ({speed:.1f}x)")
 
     def _toggle_playback(self) -> None:
+        if self._state == "playing":
+            self._stop_playback()
+            return
         # 시퀀서 탭에서는 단일 매크로 재생 대신 시퀀스 실행/중지로 위임
         # (RegisterHotKey 폴백 QShortcut 경로에서도 일관된 동작 보장)
         if self._is_sequencer_tab():
@@ -827,8 +904,6 @@ class MainWindow(QMainWindow):
             return
         if self._state == "idle" and self._macro:
             self._start_playback()
-        elif self._state == "playing":
-            self._stop_playback()
 
     def _bring_to_front_for_prompt(self) -> None:
         """사용자 확인창을 띄우기 전에 메인 창을 전면으로 복원한다."""
@@ -893,6 +968,8 @@ class MainWindow(QMainWindow):
             return
 
         self._state = "playing"
+        self._paused = False
+        self._playback_pause_event.clear()
         self._repeat_session = RepeatPlaybackSession(total=repeat_count)
         self._repeat_session.mark_started()
         self._overlay.start_playing(speed, repeat_current=1, repeat_total=repeat_count)
@@ -922,6 +999,11 @@ class MainWindow(QMainWindow):
                 session = self._repeat_session
                 if session is None or not session.should_start_cycle(i):
                     break
+                while self._playback_pause_event.is_set():
+                    session = self._repeat_session
+                    if session is None or session.was_stopped:
+                        return
+                    time.sleep(0.02)
                 session.mark_cycle_started(i)
                 self._sig_repeat_cycle.emit(i + 1, repeat_count)
 
@@ -943,6 +1025,7 @@ class MainWindow(QMainWindow):
                         on_complete=_on_complete,
                         on_error=_on_error,
                         event_range=_range,
+                        start_pause_requested=self._playback_pause_event.is_set,
                     )
                 except Exception as exc:
                     self._sig_play_error.emit(str(exc))
@@ -964,12 +1047,20 @@ class MainWindow(QMainWindow):
                     session = self._repeat_session
                     if session is not None:
                         session.mark_between_cycles()
-                    deadline = time.monotonic() + interval_ms / 1000.0
-                    while time.monotonic() < deadline:
+                    remaining_s = interval_ms / 1000.0
+                    last_active = time.monotonic()
+                    while remaining_s > 0:
                         session = self._repeat_session
                         if session is None or session.was_stopped:
                             return
-                        time.sleep(0.05)
+                        now = time.monotonic()
+                        if self._playback_pause_event.is_set():
+                            last_active = now
+                            time.sleep(0.02)
+                            continue
+                        remaining_s -= now - last_active
+                        last_active = now
+                        time.sleep(min(0.05, max(0.0, remaining_s)))
 
             session = self._repeat_session
             if session is not None:
@@ -1004,6 +1095,8 @@ class MainWindow(QMainWindow):
         from macroflow.win32 import stop_emergency_hook
         if self._repeat_session is not None:
             self._repeat_session.request_stop()
+        self._playback_pause_event.clear()
+        self._paused = False
         player.stop()
         stop_emergency_hook()
         stopped = not player.is_playing()
@@ -1028,6 +1121,8 @@ class MainWindow(QMainWindow):
         if self._repeat_session is not None:
             self._repeat_session.mark_finished()
         self._repeat_session = None
+        self._playback_pause_event.clear()
+        self._paused = False
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -1043,6 +1138,8 @@ class MainWindow(QMainWindow):
         if self._repeat_session is not None:
             self._repeat_session.mark_finished()
         self._repeat_session = None
+        self._playback_pause_event.clear()
+        self._paused = False
         self._state = "idle"
         self._overlay.stop()
         self._poll_timer.stop()
@@ -1068,6 +1165,9 @@ class MainWindow(QMainWindow):
 
     def _insert_color_trigger(self) -> None:
         """녹화 중 F7: 현재 마우스 커서 위치의 픽셀 색을 ColorTriggerEvent로 삽입한다."""
+        if self._paused:
+            self._sb_state.setText("Ⅱ 녹화 일시중지 중에는 색상 체크를 삽입할 수 없습니다")
+            return
         from macroflow import recorder
         from macroflow.win32 import get_cursor_pos, get_pixel_color, pixel_to_ratio
 
@@ -1361,6 +1461,10 @@ class MainWindow(QMainWindow):
             self._act_play.setText("⏹ 중지 (F7)" if is_play else "▶ 재생 (F7)")
 
         self._act_stop.setEnabled(is_rec or is_play or is_stop or seq_running)
+        self._act_pause.setEnabled((is_rec or is_play) and not seq_running)
+        self._act_pause.setText(
+            "▶ 계속 (F8)" if self._paused else "⏸ 일시중지 (F8)"
+        )
         self._act_range_play.setEnabled(
             is_idle and not seq_running and self._macro is not None and not is_seq_tab
         )
