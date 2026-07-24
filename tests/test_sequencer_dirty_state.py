@@ -49,16 +49,17 @@ def test_dirty_transitions_for_mutations_and_noops() -> None:
             assert widget.is_dirty()
             widget._set_dirty(False)
             widget.add_macro_file(first)
-            assert not widget.is_dirty(), "duplicate add must be a no-op"
+            assert widget.is_dirty(), "duplicate path must create a deliberate new step"
+            assert [item.path for item in widget._items] == [first, first]
 
-            widget._list.setCurrentRow(0)
+            widget._list.setCurrentRow(1)
             widget._remove_selected()
             assert widget.is_dirty()
             widget._set_dirty(False)
+            widget._list.clearSelection()
             widget._remove_selected()
             assert not widget.is_dirty(), "remove without selection must be a no-op"
 
-            widget.add_macro_file(first)
             widget.add_macro_file(second)
             widget._set_dirty(False)
             widget._gap_spin.setValue(widget._gap_spin.value() + 1)

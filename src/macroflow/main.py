@@ -78,6 +78,17 @@ def main() -> None:
     logger.info(f"  cwd        : {Path.cwd()}")
     logger.info("=" * 60)
 
+    if "--smoke-inline-sequence" in sys.argv:
+        try:
+            from macroflow.package_smoke import run_inline_sequence_smoke
+
+            run_inline_sequence_smoke()
+            logger.info("PACKAGED_INLINE_SEQUENCE_SMOKE_OK")
+            return
+        except Exception:
+            logger.exception("Packaged inline sequence smoke failed")
+            sys.exit(2)
+
     # ── PyQt6 임포트 ───────────────────────────────────────────────────────
     try:
         from PyQt6.QtWidgets import QApplication

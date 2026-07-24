@@ -12,17 +12,22 @@ drag-drop-sequencer.md 스펙 기반.
 
 from __future__ import annotations
 
+import copy
+import dataclasses
 import logging
+import secrets
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QDragEnterEvent, QDropEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -35,6 +40,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.macro_file import inline_event_block_valid, settings_types_valid
 from macroflow.script_engine import (
     EndNode,
     FlowEngine,
@@ -43,6 +49,25 @@ from macroflow.script_engine import (
     WaitFixedNode,
     load_flow,
     save_flow,
+)
+from macroflow.sequence_model import (
+    InlineActionItem,
+    MacroFileItem,
+    SequenceItem,
+    WaitItem,
+    build_sequence_flow,
+    project_sequence_flow,
+)
+from macroflow.types import (
+    ColorTriggerEvent,
+    MacroSettings,
+    MouseButtonEvent,
+    TextInputEvent,
+)
+from macroflow.ui.editor_insertions import (
+    _insert_click_events,
+    _insert_color_trigger_event,
+    _insert_text_input_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -262,19 +287,43 @@ def _build_canonical_flow(
     )
 
 
-class _MacroItem:
-    """시퀀서 목록의 단일 항목."""
+class _MacroItem(MacroFileItem):
+    """Backward-compatible macro row with stable sequence identity."""
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.status: str = "pending"   # pending | running | done | error
-        self.message: str = ""
+    def __init__(self, path: Path, *, step_id: str | None = None) -> None:
+        super().__init__(
+            step_id=step_id or f"macro-{secrets.token_hex(4)}",
+            path=path,
+        )
 
     @property
     def display_text(self) -> str:
-        icon = _STATUS_ICONS.get(self.status, "○")
-        msg = f"  — {self.message}" if self.message else ""
-        return f"{icon}  {self.path.name}{msg}"
+        return _item_display_text(self)
+
+
+def _item_display_text(item: SequenceItem) -> str:
+    icon = _STATUS_ICONS.get(item.status, "○")
+    message = f"  — {item.message}" if item.message else ""
+    if isinstance(item, MacroFileItem):
+        detail = f"📄  {item.path.name}"
+    elif isinstance(item, WaitItem):
+        detail = f"⏱  {item.duration_ms}ms 대기"
+    else:
+        display_label = item.label.replace("\r", "").replace("\n", "\\n")
+        if len(display_label) > 120:
+            display_label = f"{display_label[:117]}..."
+        detail = f"⚙  {display_label}"
+    return f"{icon}  {detail}{message}"
+
+
+def _node_local_events(events: list[Any]) -> list[Any]:
+    if not events:
+        return []
+    first_timestamp = min(event.timestamp_ns for event in events)
+    return [
+        dataclasses.replace(event, timestamp_ns=event.timestamp_ns - first_timestamp)
+        for event in events
+    ]
 
 
 class MacroSequencerWidget(QWidget):
@@ -291,6 +340,8 @@ class MacroSequencerWidget(QWidget):
     open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
     merge_to_editor = pyqtSignal(object)  # 병합 결과 MacroData → 에디터로 전달
     dirty_changed = pyqtSignal(bool)      # 미저장 변경 상태
+    f6_capture_started = pyqtSignal()
+    f6_capture_ended = pyqtSignal()
     _node_started = pyqtSignal(int, str, str)
     _node_finished = pyqtSignal(int, str, bool, str)
     _sequence_finished = pyqtSignal(int, str)
@@ -298,7 +349,7 @@ class MacroSequencerWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._items: list[_MacroItem] = []
+        self._items: list[SequenceItem] = []
         self._engine: FlowEngine | None = None
         self._run_generation = 0
         self._active_generation: int | None = None
@@ -306,6 +357,7 @@ class MacroSequencerWidget(QWidget):
         self._document_created_at: str | None = None
         self._is_dirty = False
         self._suppress_dirty = False
+        self._f6_capture_cb: Callable[[float, float, str], None] | None = None
         self._setup_ui()
         self._node_started.connect(self._apply_node_start)
         self._node_finished.connect(self._apply_node_done)
@@ -326,10 +378,34 @@ class MacroSequencerWidget(QWidget):
         toolbar = QToolBar("시퀀서 도구", self)
         toolbar.setMovable(False)
 
-        self._act_add = QAction("+ 매크로 추가", self)
-        self._act_add.setToolTip("매크로 JSON 파일을 목록에 추가합니다")
+        self._act_add = QAction("➕ 단계: 매크로 파일", self)
+        self._act_add.setToolTip("매크로 JSON 파일을 선택 행 다음에 추가합니다")
         self._act_add.triggered.connect(self._add_files)
         toolbar.addAction(self._act_add)
+
+        self._act_add_text = QAction("💬 문구", self)
+        self._act_add_text.triggered.connect(self._prompt_text_action)
+        toolbar.addAction(self._act_add_text)
+
+        self._act_add_click = QAction("🖱 클릭", self)
+        self._act_add_click.setToolTip("클릭 종류를 선택한 뒤 F6으로 좌표를 지정합니다")
+        self._act_add_click.triggered.connect(self._prompt_click_capture)
+        toolbar.addAction(self._act_add_click)
+
+        self._act_add_color = QAction("🎨 색상 대기", self)
+        self._act_add_color.setToolTip("F6으로 좌표와 목표 색상을 지정합니다")
+        self._act_add_color.triggered.connect(self._prompt_color_capture)
+        toolbar.addAction(self._act_add_color)
+
+        self._act_add_wait = QAction("⏱ 대기", self)
+        self._act_add_wait.triggered.connect(self._prompt_wait_action)
+        toolbar.addAction(self._act_add_wait)
+
+        self._act_duplicate = QAction("⧉ 복제", self)
+        self._act_duplicate.setShortcut(QKeySequence("Ctrl+D"))
+        self._act_duplicate.triggered.connect(self._duplicate_selected)
+        self._act_duplicate.setEnabled(False)
+        toolbar.addAction(self._act_duplicate)
 
         self._act_remove = QAction("— 제거", self)
         self._act_remove.setToolTip("선택한 항목을 목록에서 제거합니다")
@@ -470,15 +546,230 @@ class MacroSequencerWidget(QWidget):
         if not normalized_path.exists():
             self._log_message(f"파일을 찾을 수 없습니다: {path}")
             return
-        for existing in self._items:
-            if existing.path.resolve(strict=False) == normalized_path:
-                self._log_message(f"이미 목록에 있습니다: {normalized_path.name}")
-                return
         item = _MacroItem(normalized_path)
-        self._items.append(item)
-        self._refresh_list_item(len(self._items) - 1)
+        self._insert_sequence_item(item)
+
+    def _insert_sequence_item(self, item: SequenceItem) -> None:
+        """Insert after the selected row, or append when there is no selection."""
+        if self._engine is not None:
+            self._log_message("실행 중에는 시퀀스 단계를 변경할 수 없습니다")
+            return
+        row = self._list.currentRow()
+        index = row + 1 if 0 <= row < len(self._items) else len(self._items)
+        self._items.insert(index, item)
+        self._refresh_all()
+        self._list.setCurrentRow(index)
         self._update_buttons()
         self._set_dirty(True)
+
+    def add_text_action(self, text: str) -> None:
+        """Add a literal text-input action after the current row."""
+        if not text:
+            return
+        events = _node_local_events(_insert_text_input_event([], -1, text, 0))
+        self._insert_sequence_item(
+            InlineActionItem(
+                step_id=f"inline-{secrets.token_hex(4)}",
+                label=f"문구 입력: {text}",
+                events=events,
+                playback_settings=MacroSettings(),
+            )
+        )
+
+    def add_click_action(
+        self,
+        x_ratio: float,
+        y_ratio: float,
+        *,
+        button: Literal["left", "right", "middle"] = "left",
+        is_double: bool = False,
+        recorded_color: str | None = None,
+        _replace_row: int | None = None,
+    ) -> None:
+        """Add or replace a click action using ratio coordinates."""
+        events = _node_local_events(
+            _insert_click_events(
+                [],
+                -1,
+                x_ratio,
+                y_ratio,
+                button,
+                is_double,
+                0,
+                recorded_color,
+            )
+        )
+        click_name = f"{button} {'더블' if is_double else ''}클릭".replace("  ", " ")
+        self._put_inline_action(
+            InlineActionItem(
+                step_id=f"inline-{secrets.token_hex(4)}",
+                label=f"{click_name}: X {x_ratio:.2%}, Y {y_ratio:.2%}",
+                events=events,
+                playback_settings=MacroSettings(),
+            ),
+            _replace_row,
+        )
+
+    def add_color_wait_action(
+        self,
+        x_ratio: float,
+        y_ratio: float,
+        target_color: str,
+        *,
+        timeout_ms: int,
+        _replace_row: int | None = None,
+    ) -> None:
+        """Add or replace a color trigger whose timeout is a sequence failure."""
+        settings = MacroSettings()
+        events = _node_local_events(
+            _insert_color_trigger_event(
+                [],
+                -1,
+                x_ratio,
+                y_ratio,
+                target_color,
+                timeout_ms=timeout_ms,
+                check_interval_ms=settings.color_trigger_check_interval_ms,
+            )
+        )
+        self._put_inline_action(
+            InlineActionItem(
+                step_id=f"inline-{secrets.token_hex(4)}",
+                label=(
+                    f"색상 대기: {target_color.upper()} · X {x_ratio:.2%}, "
+                    f"Y {y_ratio:.2%} · {timeout_ms}ms"
+                ),
+                events=events,
+                playback_settings=settings,
+            ),
+            _replace_row,
+        )
+
+    def _put_inline_action(
+        self,
+        action: InlineActionItem,
+        replace_row: int | None,
+    ) -> None:
+        if self._engine is not None:
+            self._log_message("실행 중에는 시퀀스 단계를 변경할 수 없습니다")
+            return
+        if replace_row is None:
+            self._insert_sequence_item(action)
+            return
+        if not 0 <= replace_row < len(self._items):
+            return
+        existing = self._items[replace_row]
+        action.step_id = existing.step_id
+        if isinstance(existing, InlineActionItem):
+            action.playback_settings = copy.deepcopy(existing.playback_settings)
+        self._items[replace_row] = action
+        self._refresh_list_item(replace_row)
+        self._list.setCurrentRow(replace_row)
+        self._update_buttons()
+        self._set_dirty(True)
+
+    def add_wait_action(self, duration_ms: int) -> None:
+        """Add an explicit real-time wait step."""
+        if not 0 <= duration_ms <= _MAX_GAP_MS:
+            raise ValueError(f"대기 시간은 0~{_MAX_GAP_MS}ms 범위여야 합니다.")
+        self._insert_sequence_item(
+            WaitItem(
+                step_id=f"wait-{secrets.token_hex(4)}",
+                duration_ms=duration_ms,
+            )
+        )
+
+    def preflight_errors(self) -> list[str]:
+        """Validate every step before any player or input side effect starts."""
+        from macroflow.macro_file import load as load_macro
+
+        errors: list[str] = []
+        for index, item in enumerate(self._items, start=1):
+            if isinstance(item, MacroFileItem):
+                if not item.path.exists():
+                    errors.append(f"{index}번 단계 파일 없음: {item.path}")
+                    continue
+                try:
+                    load_macro(str(item.path))
+                except Exception as exc:
+                    errors.append(f"{index}번 단계 파일 오류: {item.path.name} ({exc})")
+            elif isinstance(item, InlineActionItem):
+                if (
+                    not item.events
+                    or not inline_event_block_valid(item.events)
+                    or not settings_types_valid(item.playback_settings)
+                ):
+                    errors.append(f"{index}번 inline 단계 형식 오류: {item.label}")
+            elif not 0 <= item.duration_ms <= _MAX_GAP_MS:
+                errors.append(f"{index}번 대기 단계 범위 오류: {item.duration_ms}ms")
+        return errors
+
+    def _edit_inline_item(self, row: int) -> None:
+        if self._engine is not None:
+            self._log_message("실행 중에는 시퀀스 단계를 편집할 수 없습니다")
+            return
+        item = self._items[row]
+        if isinstance(item, WaitItem):
+            value, ok = QInputDialog.getInt(
+                self,
+                "대기 단계 편집",
+                "대기 시간 (ms):",
+                item.duration_ms,
+                0,
+                _MAX_GAP_MS,
+            )
+            if self._engine is not None:
+                self._log_message("실행 중에는 시퀀스 단계를 편집할 수 없습니다")
+                return
+            if ok and value != item.duration_ms:
+                item.duration_ms = value
+                self._refresh_list_item(row)
+                self._set_dirty(True)
+            return
+        if isinstance(item, InlineActionItem) and len(item.events) == 1:
+            event = item.events[0]
+            if isinstance(event, TextInputEvent):
+                text, ok = QInputDialog.getMultiLineText(
+                    self,
+                    "문구 입력 편집",
+                    "입력할 문구:",
+                    event.text,
+                )
+                if self._engine is not None:
+                    self._log_message("실행 중에는 시퀀스 단계를 편집할 수 없습니다")
+                    return
+                if ok and text and text != event.text:
+                    item.events = _node_local_events(
+                        _insert_text_input_event([], -1, text, 0)
+                    )
+                    item.label = f"문구 입력: {text}"
+                    self._refresh_list_item(row)
+                    self._set_dirty(True)
+                    return
+            if isinstance(event, ColorTriggerEvent):
+                self.start_color_wait_capture(
+                    timeout_ms=event.timeout_ms,
+                    replace_row=row,
+                )
+                self._log_message("F6을 눌러 새 색상 확인 위치를 지정하세요")
+                return
+        if isinstance(item, InlineActionItem) and item.events and all(
+            isinstance(event, MouseButtonEvent) for event in item.events
+        ):
+            first_click = item.events[0]
+            assert isinstance(first_click, MouseButtonEvent)
+            self.start_click_capture(
+                button=first_click.button,
+                is_double=len(item.events) == 4,
+                replace_row=row,
+            )
+            self._log_message("F6을 눌러 새 클릭 위치를 지정하세요")
+            return
+        QMessageBox.information(
+            self,
+            "단계 편집",
+            "이 단계는 현재 시퀀서에서 직접 편집할 수 없습니다.",
+        )
 
     def _refresh_list_item(self, idx: int) -> None:
         """단일 목록 행을 갱신한다."""
@@ -491,8 +782,8 @@ class MacroSequencerWidget(QWidget):
 
         if list_item is None:
             return
-        list_item.setText(item_data.display_text)
-        list_item.setData(Qt.ItemDataRole.UserRole, str(item_data.path))
+        list_item.setText(_item_display_text(item_data))
+        list_item.setData(Qt.ItemDataRole.UserRole, item_data.step_id)
         color = _STATUS_COLORS.get(item_data.status, QColor(80, 80, 80))
         list_item.setForeground(QBrush(color))
 
@@ -507,18 +798,18 @@ class MacroSequencerWidget(QWidget):
         if self._engine is not None:
             self._refresh_all()
             return
-        previous_paths = [item.path for item in self._items]
-        items_by_path = {str(item.path): item for item in self._items}
-        new_items: list[_MacroItem] = []
+        previous_ids = [item.step_id for item in self._items]
+        items_by_id = {item.step_id: item for item in self._items}
+        new_items: list[SequenceItem] = []
         for i in range(self._list.count()):
             list_item = self._list.item(i)
             if list_item is None:
                 continue
-            path_value = list_item.data(Qt.ItemDataRole.UserRole)
-            if isinstance(path_value, str) and path_value in items_by_path:
-                new_items.append(items_by_path[path_value])
+            step_id = list_item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(step_id, str) and step_id in items_by_id:
+                new_items.append(items_by_id[step_id])
         self._items = new_items
-        if [item.path for item in new_items] != previous_paths:
+        if [item.step_id for item in new_items] != previous_ids:
             self._set_dirty(True)
 
     def add_macro_file(self, path: Path) -> None:
@@ -553,10 +844,11 @@ class MacroSequencerWidget(QWidget):
         """worker가 종료 확인되기 전까지 active run으로 간주한다."""
         return self._engine is not None
 
-    def run_sequence(self, speed: float = 1.0) -> None:
+    def run_sequence(self, speed: float = 1.0) -> bool:
         """외부(main_window)에서 시퀀스를 시작한다."""
         if self._items and self._engine is None:
-            self._run_sequence(speed=speed)
+            return self._run_sequence(speed=speed)
+        return False
 
     def stop_sequence(self) -> bool:
         """중지를 요청하고 worker 종료가 확인됐는지 반환한다."""
@@ -603,6 +895,128 @@ class MacroSequencerWidget(QWidget):
             return str(Path(sys.executable).parent)
         return str(Path.cwd())
 
+    def _prompt_text_action(self) -> None:
+        text, ok = QInputDialog.getMultiLineText(
+            self,
+            "문구 입력 단계",
+            "입력할 문구:",
+        )
+        if ok and text:
+            self.add_text_action(text)
+
+    def _prompt_click_capture(self) -> None:
+        choice, ok = QInputDialog.getItem(
+            self,
+            "클릭 단계",
+            "클릭 종류:",
+            ["좌클릭", "더블클릭", "우클릭"],
+            0,
+            False,
+        )
+        if not ok:
+            return
+        button: Literal["left", "right", "middle"] = (
+            "right" if choice == "우클릭" else "left"
+        )
+        self.start_click_capture(button=button, is_double=choice == "더블클릭")
+        self._log_message("F6을 눌러 클릭 위치를 지정하세요")
+
+    def _prompt_color_capture(self) -> None:
+        timeout_ms, ok = QInputDialog.getInt(
+            self,
+            "색상 대기 단계",
+            "최대 대기 시간 (ms, 0=제한 없음):",
+            10_000,
+            0,
+            600_000,
+        )
+        if ok:
+            self.start_color_wait_capture(timeout_ms=timeout_ms)
+            self._log_message("F6을 눌러 색상 확인 위치를 지정하세요")
+
+    def _prompt_wait_action(self) -> None:
+        duration_ms, ok = QInputDialog.getInt(
+            self,
+            "고정 대기 단계",
+            "대기 시간 (ms):",
+            500,
+            0,
+            _MAX_GAP_MS,
+        )
+        if ok:
+            self.add_wait_action(duration_ms)
+
+    def is_f6_capture_active(self) -> bool:
+        return self._f6_capture_cb is not None
+
+    def start_click_capture(
+        self,
+        *,
+        button: Literal["left", "right", "middle"],
+        is_double: bool,
+        replace_row: int | None = None,
+    ) -> None:
+        self.cancel_f6_capture()
+        self._f6_capture_cb = lambda x, y, color: self.add_click_action(
+            x,
+            y,
+            button=button,
+            is_double=is_double,
+            recorded_color=color,
+            _replace_row=replace_row,
+        )
+        self.f6_capture_started.emit()
+
+    def start_color_wait_capture(
+        self,
+        *,
+        timeout_ms: int,
+        replace_row: int | None = None,
+    ) -> None:
+        self.cancel_f6_capture()
+        self._f6_capture_cb = lambda x, y, color: self.add_color_wait_action(
+            x,
+            y,
+            color,
+            timeout_ms=timeout_ms,
+            _replace_row=replace_row,
+        )
+        self.f6_capture_started.emit()
+
+    def consume_f6_capture(self, x_ratio: float, y_ratio: float, color_hex: str) -> bool:
+        callback = self._f6_capture_cb
+        if callback is None:
+            return False
+        self._f6_capture_cb = None
+        try:
+            callback(x_ratio, y_ratio, color_hex)
+        finally:
+            self.f6_capture_ended.emit()
+        return True
+
+    def cancel_f6_capture(self) -> None:
+        if self._f6_capture_cb is None:
+            return
+        self._f6_capture_cb = None
+        self.f6_capture_ended.emit()
+
+    def _duplicate_selected(self) -> None:
+        if self._engine is not None:
+            return
+        row = self._list.currentRow()
+        if not 0 <= row < len(self._items):
+            return
+        duplicate = copy.deepcopy(self._items[row])
+        if isinstance(duplicate, MacroFileItem):
+            duplicate.step_id = f"macro-{secrets.token_hex(4)}"
+        elif isinstance(duplicate, WaitItem):
+            duplicate.step_id = f"wait-{secrets.token_hex(4)}"
+        else:
+            duplicate.step_id = f"inline-{secrets.token_hex(4)}"
+        duplicate.status = "pending"
+        duplicate.message = ""
+        self._insert_sequence_item(duplicate)
+
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self, "매크로 파일 추가",
@@ -633,12 +1047,21 @@ class MacroSequencerWidget(QWidget):
     def _on_selection_changed(self) -> None:
         has_sel = bool(self._list.selectedItems())
         self._act_remove.setEnabled(has_sel and self._engine is None)
+        self._act_duplicate.setEnabled(has_sel and self._engine is None)
 
     def _on_item_double_clicked(self, item: object) -> None:
-        """목록 항목 더블클릭 시 해당 매크로를 에디터로 불러온다."""
+        """Open macro rows in the editor; edit inline rows in place."""
+        del item
+        if self._engine is not None:
+            self._log_message("실행 중에는 시퀀스 단계를 열거나 편집할 수 없습니다")
+            return
         row = self._list.currentRow()
         if 0 <= row < len(self._items):
-            path = self._items[row].path
+            sequence_item = self._items[row]
+            if not isinstance(sequence_item, MacroFileItem):
+                self._edit_inline_item(row)
+                return
+            path = sequence_item.path
             if path.exists():
                 self.open_in_editor.emit(str(path))
             else:
@@ -665,14 +1088,28 @@ class MacroSequencerWidget(QWidget):
             return False
         if not self.confirm_discard_changes():
             return False
+        if self._engine is not None:
+            self._log_message("실행 중에는 플로우를 교체할 수 없습니다")
+            return False
         try:
             flow = load_flow(str(path), strict=True)
-            macro_paths, gap_ms = _project_linear_flow(flow, path)
-            if not self._gap_spin.minimum() <= gap_ms <= self._gap_spin.maximum():
-                raise ValueError("현재 시퀀서 UI에서 표현할 수 없는 간격입니다.")
-            loaded_items = [_MacroItem(macro_path) for macro_path in macro_paths]
+            if flow.version == "1.0":
+                macro_paths, gap_ms = _project_linear_flow(flow, path)
+                if not self._gap_spin.minimum() <= gap_ms <= self._gap_spin.maximum():
+                    raise ValueError("현재 시퀀서 UI에서 표현할 수 없는 간격입니다.")
+                loaded_items: list[SequenceItem] = [
+                    _MacroItem(macro_path, step_id=f"macro_{index:03d}")
+                    for index, macro_path in enumerate(macro_paths)
+                ]
+            else:
+                loaded_items = project_sequence_flow(flow, path)
+                gap_ms = 0
         except Exception as exc:
             QMessageBox.critical(self, "플로우 열기 오류", str(exc))
+            return False
+
+        if self._engine is not None:
+            self._log_message("실행 중에는 플로우를 교체할 수 없습니다")
             return False
 
         self._suppress_dirty = True
@@ -691,7 +1128,7 @@ class MacroSequencerWidget(QWidget):
         return True
 
     def _save_flow(self) -> bool:
-        if not self._items:
+        if self._engine is not None or not self._items:
             return False
         if self._current_flow_path is None:
             return self._save_flow_as()
@@ -705,11 +1142,13 @@ class MacroSequencerWidget(QWidget):
         )
         if answer != QMessageBox.StandardButton.Yes:
             return False
+        if self._engine is not None:
+            return False
 
         return self._do_save_flow(self._current_flow_path)
 
     def _save_flow_as(self) -> bool:
-        if not self._items:
+        if self._engine is not None or not self._items:
             return False
         path, _ = QFileDialog.getSaveFileName(
             self, "다른 이름으로 플로우 저장",
@@ -718,13 +1157,19 @@ class MacroSequencerWidget(QWidget):
         )
         if not path:
             return False
+        if self._engine is not None:
+            return False
         if not path.endswith(".macroflow"):
             path += ".macroflow"
         return self._do_save_flow(Path(path))
 
     def _do_save_flow(self, path: Path) -> bool:
+        if self._engine is not None:
+            return False
         try:
             flow = self._build_flow(path)
+            if self._engine is not None:
+                return False
             save_flow(flow, str(path))
         except Exception as exc:
             QMessageBox.critical(self, "플로우 저장 오류", str(exc))
@@ -740,18 +1185,29 @@ class MacroSequencerWidget(QWidget):
         created_at = self._document_created_at or datetime.now().isoformat(
             timespec="seconds"
         )
-        return _build_canonical_flow(
-            [item.path for item in self._items],
-            self._gap_spin.value(),
-            save_path,
-            created_at=created_at,
-        )
+        if all(isinstance(item, MacroFileItem) for item in self._items):
+            return _build_canonical_flow(
+                [item.path for item in self._items if isinstance(item, MacroFileItem)],
+                self._gap_spin.value(),
+                save_path,
+                created_at=created_at,
+            )
+        return build_sequence_flow(self._items, save_path, created_at=created_at)
 
     # ── 시퀀스 실행 ───────────────────────────────────────────────────────────
 
-    def _run_sequence(self, speed: float = 1.0) -> None:
+    def _run_sequence(self, speed: float = 1.0) -> bool:
+        self.cancel_f6_capture()
         if not self._items or self._engine is not None:
-            return
+            return False
+
+        errors = self.preflight_errors()
+        if errors:
+            message = "\n".join(errors)
+            self._log_message(f"실행 전 검증 실패: {message}")
+            QMessageBox.warning(self, "시퀀스 실행 전 검증 실패", message)
+            self.sequence_error.emit(message)
+            return False
 
         # 상태 초기화
         for item in self._items:
@@ -761,10 +1217,16 @@ class MacroSequencerWidget(QWidget):
         self._log.clear()
 
         # 임시 플로우 경로 (저장된 파일 없으면 홈 디렉토리 기준)
+        first_macro = next(
+            (item for item in self._items if isinstance(item, MacroFileItem)),
+            None,
+        )
         flow_base = (
             self._current_flow_path.parent
             if self._current_flow_path
-            else self._items[0].path.parent
+            else first_macro.path.parent
+            if first_macro is not None
+            else Path.cwd()
         )
         temp_flow_path = flow_base / "__temp_sequence__.macroflow"
         flow = self._build_flow(temp_flow_path)
@@ -799,6 +1261,7 @@ class MacroSequencerWidget(QWidget):
                 self._update_buttons()
             raise
         self._log_message(f"시퀀스 실행 시작 (속도 {speed:.1f}x)")
+        return True
 
     def _stop_sequence(self) -> bool:
         engine = self._engine
@@ -901,7 +1364,10 @@ class MacroSequencerWidget(QWidget):
         self.sequence_error.emit(message)
 
     def _node_id_to_idx(self, node_id: str) -> int:
-        """macro_000 형식 node_id를 _items 인덱스로 변환한다."""
+        """Map stable v1.1 IDs or legacy macro_NNN IDs to visible rows."""
+        for index, item in enumerate(self._items):
+            if item.step_id == node_id:
+                return index
         if not node_id.startswith("macro_"):
             return -1
         try:
@@ -918,7 +1384,11 @@ class MacroSequencerWidget(QWidget):
         하나의 MacroData로 병합한 뒤 merge_to_editor 신호를 방출한다.
         이벤트의 source_file 필드에 원본 파일명이 기록되어 에디터 '출처' 열에 표시된다.
         """
-        if self._engine is not None or len(self._items) < 2:
+        if (
+            self._engine is not None
+            or len(self._items) < 2
+            or not all(isinstance(item, MacroFileItem) for item in self._items)
+        ):
             return
 
         from macroflow.macro_file import load, merge_macros
@@ -926,6 +1396,7 @@ class MacroSequencerWidget(QWidget):
 
         macro_tuples: list[tuple[MacroData, str]] = []
         for item in self._items:
+            assert isinstance(item, MacroFileItem)
             try:
                 macro = load(str(item.path))
             except Exception as exc:
@@ -953,12 +1424,23 @@ class MacroSequencerWidget(QWidget):
         has_items = bool(self._items)
         editable = self._engine is None
         self._act_add.setEnabled(editable)
+        self._act_add_text.setEnabled(editable)
+        self._act_add_click.setEnabled(editable)
+        self._act_add_color.setEnabled(editable)
+        self._act_add_wait.setEnabled(editable)
         self._act_remove.setEnabled(editable and bool(self._list.selectedItems()))
+        self._act_duplicate.setEnabled(editable and bool(self._list.selectedItems()))
         self._act_open_flow.setEnabled(editable)
         self._act_save_flow.setEnabled(editable and has_items)
         self._act_save_flow_as.setEnabled(editable and has_items)
-        self._act_merge.setEnabled(editable and len(self._items) >= 2)
-        self._gap_spin.setEnabled(editable)
+        macro_only = all(isinstance(item, MacroFileItem) for item in self._items)
+        self._act_merge.setEnabled(editable and macro_only and len(self._items) >= 2)
+        self._act_merge.setToolTip(
+            "목록의 모든 매크로를 순서대로 이어 붙여 에디터로 보냅니다."
+            if macro_only
+            else "혼합 단계의 에디터 병합은 아직 지원하지 않습니다."
+        )
+        self._gap_spin.setEnabled(editable and macro_only)
         self._list.setDragEnabled(editable)
         self._list.setAcceptDrops(editable)
         viewport = self._list.viewport()

@@ -26,7 +26,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import macroflow.expression_sandbox as _expression_sandbox
 from macroflow.expression_sandbox import (
@@ -36,9 +36,35 @@ from macroflow.expression_sandbox import (
     validate_expression as _validate_expression_rules,
 )
 from macroflow.expression_sandbox import validate_wait_ms as _validated_wait_ms
-from macroflow.types import AnyEvent, ConditionEvent, LoopEvent
+from macroflow.macro_file import (
+    event_from_dict,
+    inline_event_block_valid,
+    settings_from_dict,
+    settings_types_valid,
+)
+from macroflow.types import (
+    AnyEvent,
+    ConditionEvent,
+    LoopEvent,
+    MacroData,
+    MacroMeta,
+    MacroSettings,
+)
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from macroflow.player import PlaybackSession
+
+
+def _safe_callback(callback: Callable[..., None] | None, *args: object) -> None:
+    """Notify UI/host code without letting callback failures corrupt flow state."""
+    if callback is None:
+        return
+    try:
+        callback(*args)
+    except Exception:
+        logger.exception("Flow callback failed: %r", callback)
 
 
 # ── FlowNode 데이터 타입 ──────────────────────────────────────────────────────
@@ -102,6 +128,19 @@ class WaitFixedNode:
 
 
 @dataclasses.dataclass
+class InlineEventsNode:
+    """Execute a node-local block of existing macro events."""
+
+    id: str
+    label: str
+    events: list[AnyEvent]
+    playback_settings: MacroSettings
+    next_on_success: str | None = None
+    next_on_failure: str | None = None
+    position: dict[str, int] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass
 class EndNode:
     """플로우 종료 노드."""
 
@@ -111,7 +150,14 @@ class EndNode:
     position: dict[str, int] = dataclasses.field(default_factory=dict)
 
 
-AnyFlowNode = MacroNode | ColorCheckNode | CounterNode | WaitFixedNode | EndNode
+AnyFlowNode = (
+    MacroNode
+    | ColorCheckNode
+    | CounterNode
+    | WaitFixedNode
+    | InlineEventsNode
+    | EndNode
+)
 
 
 @dataclasses.dataclass
@@ -160,6 +206,10 @@ def iter_linear_macro_paths(flow: MacroFlow, flow_path: str | Path) -> list[Path
 
 class FlowError(Exception):
     """플로우 실행 중 복구 불가 오류."""
+
+    def __init__(self, message: str, *, node_done_reported: bool = False) -> None:
+        super().__init__(message)
+        self.node_done_reported = node_done_reported
 
 
 # ── 직렬화/역직렬화 ────────────────────────────────────────────────────────────
@@ -212,6 +262,16 @@ def _dict_to_node(d: dict[str, Any]) -> AnyFlowNode:
                 next=d.get("next"),
                 position=pos,
             )
+        case "inline_events":
+            return InlineEventsNode(
+                id=nid,
+                label=label,
+                events=[event_from_dict(event) for event in d.get("events", [])],
+                playback_settings=settings_from_dict(d.get("playback_settings", {})),
+                next_on_success=d.get("next_on_success"),
+                next_on_failure=d.get("next_on_failure"),
+                position=pos,
+            )
         case "end":
             return EndNode(
                 id=nid, label=label,
@@ -235,6 +295,8 @@ def _node_to_dict(node: AnyFlowNode) -> dict[str, Any]:
         d["type"] = "counter"
     elif isinstance(node, WaitFixedNode):
         d["type"] = "wait_fixed"
+    elif isinstance(node, InlineEventsNode):
+        d["type"] = "inline_events"
     elif isinstance(node, EndNode):
         d["type"] = "end"
     return d
@@ -319,10 +381,56 @@ def _strict_flow_types_valid(flow: MacroFlow) -> bool:
         elif isinstance(node, WaitFixedNode):
             if type(node.duration_ms) is not int or not nullable_string(node.next):
                 return False
+        elif isinstance(node, InlineEventsNode):
+            if (
+                type(node.events) is not list
+                or not node.events
+                or not inline_event_block_valid(node.events)
+                or not settings_types_valid(node.playback_settings)
+                or not all(
+                    nullable_string(value)
+                    for value in (node.next_on_success, node.next_on_failure)
+                )
+            ):
+                return False
         elif isinstance(node, EndNode):
-            if type(node.status) is not str:
+            if node.status not in {"success", "error"}:
                 return False
     return True
+
+
+def _strict_flow_graph_valid(flow: MacroFlow) -> bool:
+    """Reject dangling and hidden nodes while preserving intentional graph cycles."""
+    if flow.start_node_id not in flow.nodes:
+        return False
+
+    def outgoing(node: AnyFlowNode) -> tuple[str | None, ...]:
+        if isinstance(node, (MacroNode, InlineEventsNode)):
+            return (node.next_on_success, node.next_on_failure)
+        if isinstance(node, ColorCheckNode):
+            return (node.on_match, node.on_timeout)
+        if isinstance(node, CounterNode):
+            return (node.on_continue, node.on_max_reached)
+        if isinstance(node, WaitFixedNode):
+            return (node.next,)
+        return ()
+
+    visited: set[str] = set()
+    pending = [flow.start_node_id]
+    while pending:
+        node_id = pending.pop()
+        if node_id in visited:
+            continue
+        node = flow.nodes.get(node_id)
+        if node is None:
+            return False
+        visited.add(node_id)
+        for target in outgoing(node):
+            if target is not None:
+                if target not in flow.nodes:
+                    return False
+                pending.append(target)
+    return visited == set(flow.nodes)
 
 
 def load_flow(path: str, *, strict: bool = False) -> MacroFlow:
@@ -359,11 +467,23 @@ def load_flow(path: str, *, strict: bool = False) -> MacroFlow:
         start_node_id=raw["start_node_id"],
         nodes=nodes,
     )
-    if strict and (
-        not _strict_flow_types_valid(flow)
-        or not _json_values_equal(raw, _flow_to_dict(flow))
-    ):
-        raise ValueError("정규 형식이 아닌 필드가 있어 손실 방지를 위해 로드를 거부했습니다.")
+    if strict:
+        if flow.version not in {"1.0", "1.1"}:
+            raise ValueError(
+                f"지원하지 않는 플로우 버전: {flow.version!r} (정규 형식 아님)"
+            )
+        if flow.version == "1.0" and any(
+            isinstance(node, InlineEventsNode) for node in flow.nodes.values()
+        ):
+            raise ValueError("v1.0 정규 플로우에는 inline_events 노드를 사용할 수 없습니다.")
+        if (
+            not _strict_flow_types_valid(flow)
+            or (flow.version == "1.1" and not _strict_flow_graph_valid(flow))
+            or not _json_values_equal(raw, _flow_to_dict(flow))
+        ):
+            raise ValueError(
+                "정규 형식이 아닌 필드가 있어 손실 방지를 위해 로드를 거부했습니다."
+            )
     return flow
 
 
@@ -391,7 +511,7 @@ def save_flow(flow: MacroFlow, path: str) -> None:
             delete=False,
         ) as temp_file:
             temp_path = Path(temp_file.name)
-            json.dump(data, temp_file, ensure_ascii=False, indent=2)
+            json.dump(data, temp_file, ensure_ascii=False, indent=2, allow_nan=False)
             temp_file.flush()
             os.fsync(temp_file.fileno())
         os.replace(temp_path, p)
@@ -456,6 +576,8 @@ class FlowEngine:
         self._lifecycle_lock = threading.Lock()
         self._stopping = False
         self._stop_calls_in_progress = 0
+        self._player_session: PlaybackSession | None = None
+        self._player_session_lock = threading.Lock()
 
     def start(self, flow: MacroFlow) -> None:
         """플로우를 별도 스레드에서 실행 시작한다."""
@@ -483,10 +605,13 @@ class FlowEngine:
             self._stopping = True
             self._stop_calls_in_progress += 1
             worker = self._thread
-        from macroflow import player
-
         try:
-            player.stop()
+            from macroflow import player
+
+            with self._player_session_lock:
+                player_session = self._player_session
+            if player_session is not None:
+                player.stop(player_session)
             if worker is not None:
                 worker.join(timeout=5.0)
         finally:
@@ -514,33 +639,35 @@ class FlowEngine:
             if current_id not in flow.nodes:
                 msg = f"노드 ID를 찾을 수 없습니다: {current_id!r}"
                 logger.error(msg)
-                if self._on_error:
-                    self._on_error(msg)
+                _safe_callback(self._on_error, msg)
                 return
 
             node = flow.nodes[current_id]
             label = getattr(node, "label", current_id)
 
-            if self._on_node_start:
-                self._on_node_start(current_id, label)
+            _safe_callback(self._on_node_start, current_id, label)
 
             try:
                 current_id = self._execute_node(node)
+                if isinstance(node, EndNode) and node.status != "success":
+                    _safe_callback(
+                        self._on_error,
+                        f"플로우가 오류 상태로 종료되었습니다: {node.status}",
+                    )
+                    return
             except FlowError as e:
                 logger.error(f"FlowError: {e}")
-                if self._on_node_done:
-                    self._on_node_done(current_id or "", False, str(e))
-                if self._on_error:
-                    self._on_error(str(e))
+                if not e.node_done_reported:
+                    _safe_callback(self._on_node_done, current_id or "", False, str(e))
+                _safe_callback(self._on_error, str(e))
                 return
             except Exception as e:
                 logger.exception(f"예상치 못한 오류: {e}")
-                if self._on_error:
-                    self._on_error(str(e))
+                _safe_callback(self._on_error, str(e))
                 return
 
-        if not self._stop_flag.is_set() and self._on_complete:
-            self._on_complete("success")
+        if not self._stop_flag.is_set():
+            _safe_callback(self._on_complete, "success")
 
     def _execute_node(self, node: AnyFlowNode) -> str | None:
         """노드를 실행하고 다음 노드 ID를 반환한다.
@@ -551,6 +678,9 @@ class FlowEngine:
         if isinstance(node, MacroNode):
             return self._run_macro_node(node)
 
+        elif isinstance(node, InlineEventsNode):
+            return self._run_inline_events_node(node)
+
         elif isinstance(node, ColorCheckNode):
             return self._run_color_check_node(node)
 
@@ -560,13 +690,21 @@ class FlowEngine:
         elif isinstance(node, WaitFixedNode):
             if self._stop_flag.wait(node.duration_ms / 1000.0):
                 return None
-            if self._on_node_done:
-                self._on_node_done(node.id, True, f"{node.duration_ms}ms 대기 완료")
+            _safe_callback(
+                self._on_node_done,
+                node.id,
+                True,
+                f"{node.duration_ms}ms 대기 완료",
+            )
             return node.next
 
         elif isinstance(node, EndNode):
-            if self._on_node_done:
-                self._on_node_done(node.id, node.status == "success", node.status)
+            _safe_callback(
+                self._on_node_done,
+                node.id,
+                node.status == "success",
+                node.status,
+            )
             return None
 
         return None
@@ -598,7 +736,7 @@ class FlowEngine:
             msg = f"매크로 파일 없음: {macro_path}"
             raise FlowError(msg)
 
-        from macroflow import macro_file, player
+        from macroflow import macro_file
 
         try:
             macro = macro_file.load(str(macro_path))
@@ -606,32 +744,114 @@ class FlowEngine:
             msg = f"매크로 로드 실패: {e}"
             raise FlowError(msg) from e
 
+        return self._run_macro_data(
+            node.id,
+            macro,
+            next_on_success=node.next_on_success,
+            next_on_failure=node.next_on_failure,
+        )
+
+    def _run_inline_events_node(self, node: InlineEventsNode) -> str | None:
+        """Execute an inline action block through the normal macro player."""
+        macro = MacroData(
+            meta=MacroMeta(
+                version="1.0",
+                app_version="",
+                created_at="",
+                screen_width=0,
+                screen_height=0,
+                dpi_scale=1.0,
+            ),
+            settings=node.playback_settings,
+            raw_events=list(node.events),
+            events=list(node.events),
+            is_edited=False,
+        )
+        return self._run_macro_data(
+            node.id,
+            macro,
+            next_on_success=node.next_on_success,
+            next_on_failure=node.next_on_failure,
+        )
+
+    def _run_macro_data(
+        self,
+        node_id: str,
+        macro: MacroData,
+        *,
+        next_on_success: str | None,
+        next_on_failure: str | None,
+    ) -> str | None:
+        """Run MacroData synchronously and map its result to flow edges."""
+        from macroflow import player
+
         done_event = threading.Event()
-        result: dict[str, Any] = {"ok": True, "msg": ""}
+        callback_lock = threading.Lock()
+        callback_state: dict[str, Any] = {
+            "accepting": True,
+            "ok": True,
+            "msg": "",
+        }
+
+        def _finish(ok: bool, message: str) -> None:
+            with callback_lock:
+                if not callback_state["accepting"] or done_event.is_set():
+                    return
+                callback_state["ok"] = ok
+                callback_state["msg"] = message
+                done_event.set()
 
         def _on_complete() -> None:
-            result["ok"] = True
-            done_event.set()
+            _finish(True, "")
 
         def _on_error(exc: Exception) -> None:
-            result["ok"] = False
-            result["msg"] = str(exc)
-            done_event.set()
+            _finish(False, str(exc))
 
-        player.play(macro, speed=self._speed, on_complete=_on_complete, on_error=_on_error)
+        try:
+            player_session = player.play(
+                macro,
+                speed=self._speed,
+                on_complete=_on_complete,
+                on_error=_on_error,
+            )
+        except Exception as exc:
+            message = str(exc)
+            _safe_callback(self._on_node_done, node_id, False, message)
+            if next_on_failure is None:
+                raise FlowError(message, node_done_reported=True) from exc
+            return next_on_failure
+
+        with self._player_session_lock:
+            self._player_session = player_session
 
         # 재생 완료 또는 중단 신호까지 대기
         while not done_event.is_set() and not self._stop_flag.is_set():
             self._stop_flag.wait(0.05)
 
+        with callback_lock:
+            callback_state["accepting"] = False
         if self._stop_flag.is_set():
-            player.stop()
+            player.stop(player_session)
+            with self._player_session_lock:
+                if self._player_session == player_session:
+                    self._player_session = None
             return None
 
-        if self._on_node_done:
-            self._on_node_done(node.id, result["ok"], result["msg"])
+        with self._player_session_lock:
+            if self._player_session == player_session:
+                self._player_session = None
 
-        return node.next_on_success if result["ok"] else node.next_on_failure
+        ok = bool(callback_state["ok"])
+        message = str(callback_state["msg"])
+        _safe_callback(self._on_node_done, node_id, ok, message)
+
+        if not ok and next_on_failure is None:
+            raise FlowError(
+                message or f"노드 실행 실패: {node_id}",
+                node_done_reported=True,
+            )
+
+        return next_on_success if ok else next_on_failure
 
     def _run_color_check_node(self, node: ColorCheckNode) -> str | None:
         """GetPixel 폴링으로 색 감지 대기 후 다음 노드 ID를 반환한다."""
@@ -673,8 +893,10 @@ class FlowEngine:
                 return None
 
         msg = f"색 감지 {'성공' if matched else '타임아웃'}"
-        if self._on_node_done:
-            self._on_node_done(node.id, matched, msg)
+        _safe_callback(self._on_node_done, node.id, matched, msg)
+
+        if not matched and node.on_timeout is None:
+            raise FlowError(msg, node_done_reported=True)
 
         return node.on_match if matched else node.on_timeout
 
@@ -684,8 +906,7 @@ class FlowEngine:
         reached = node._value >= node.max
         msg = f"카운터 {node.name}: {node._value}/{node.max}"
         logger.debug(msg)
-        if self._on_node_done:
-            self._on_node_done(node.id, True, msg)
+        _safe_callback(self._on_node_done, node.id, True, msg)
         return node.on_max_reached if reached else node.on_continue
 
 

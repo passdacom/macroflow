@@ -852,3 +852,113 @@ class TestColorTriggerInfiniteWait:
 
         move.assert_any_call(959, 540)
         move.assert_any_call(960, 540)
+
+
+def test_stale_playback_session_cannot_stop_new_worker() -> None:
+    first_done = threading.Event()
+    first = player.play(
+        _make_macro(
+            [
+                WaitEvent(
+                    id="first-wait",
+                    type="wait",
+                    timestamp_ns=0,
+                    duration_ms=1,
+                )
+            ]
+        ),
+        on_complete=first_done.set,
+    )
+    assert first_done.wait(timeout=1.0)
+
+    second = player.play(
+        _make_macro(
+            [
+                WaitEvent(
+                    id="second-wait",
+                    type="wait",
+                    timestamp_ns=0,
+                    duration_ms=1_000,
+                )
+            ]
+        )
+    )
+    try:
+        assert player.is_playing()
+        assert player.stop(first) is False
+        assert player.is_playing()
+    finally:
+        assert player.stop(second) is True
+
+
+def test_new_playback_is_rejected_until_owned_stop_cleanup_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    release_entered = threading.Event()
+    allow_release = threading.Event()
+    original_release = player._release_active_inputs
+
+    def blocking_release() -> None:
+        if threading.current_thread().name == "owned-stopper":
+            release_entered.set()
+            assert allow_release.wait(timeout=1.0)
+            return
+        original_release()
+
+    monkeypatch.setattr(player, "_release_active_inputs", blocking_release)
+    first = player.play(
+        _make_macro(
+            [
+                WaitEvent(
+                    id="handoff-wait",
+                    type="wait",
+                    timestamp_ns=0,
+                    duration_ms=1_000,
+                )
+            ]
+        )
+    )
+    stop_result: list[bool] = []
+    stopper = threading.Thread(
+        target=lambda: stop_result.append(player.stop(first)),
+        name="owned-stopper",
+    )
+    stopper.start()
+    assert release_entered.wait(timeout=1.0)
+    deadline = time.monotonic() + 1.0
+    while player.is_playing() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert not player.is_playing()
+
+    with pytest.raises(player.PlaybackError, match="중지 정리"):
+        player.play(
+            _make_macro(
+                [
+                    WaitEvent(
+                        id="too-early",
+                        type="wait",
+                        timestamp_ns=0,
+                        duration_ms=10,
+                    )
+                ]
+            )
+        )
+
+    allow_release.set()
+    stopper.join(timeout=1.0)
+    assert not stopper.is_alive()
+    assert stop_result == [True]
+
+    second = player.play(
+        _make_macro(
+            [
+                WaitEvent(
+                    id="after-cleanup",
+                    type="wait",
+                    timestamp_ns=0,
+                    duration_ms=1_000,
+                )
+            ]
+        )
+    )
+    assert player.stop(second) is True
