@@ -13,7 +13,10 @@ import copy
 import dataclasses
 import json
 import logging
+import math
+import re
 import shutil
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
@@ -220,6 +223,166 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
 def _event_to_dict(event: AnyEvent) -> dict[str, Any]:
     """MacroEvent 인스턴스를 JSON 직렬화 가능한 딕셔너리로 변환한다."""
     return dataclasses.asdict(event)
+
+
+def event_from_dict(data: dict[str, Any]) -> AnyEvent:
+    """Public canonical decoder shared by macro JSON and flow documents."""
+    return _dict_to_event(data)
+
+
+def event_to_dict(event: AnyEvent) -> dict[str, Any]:
+    """Public canonical encoder shared by macro JSON and flow documents."""
+    return _event_to_dict(event)
+
+
+def settings_from_dict(data: dict[str, Any]) -> MacroSettings:
+    """Decode a settings snapshot with the same legacy defaults as macro files."""
+    return _dict_to_settings(data)
+
+
+def settings_to_dict(settings: MacroSettings) -> dict[str, Any]:
+    """Encode a complete playback-settings snapshot."""
+    return dataclasses.asdict(settings)
+
+
+def _valid_color(value: object) -> bool:
+    return value is None or (
+        type(value) is str and re.fullmatch(r"#[0-9A-Fa-f]{6}", value) is not None
+    )
+
+
+def _valid_required_color(value: object) -> bool:
+    return type(value) is str and re.fullmatch(r"#[0-9A-Fa-f]{6}", value) is not None
+
+
+def event_types_valid(event: AnyEvent, *, _depth: int = 0) -> bool:
+    """Return whether an event has strict JSON-safe runtime field types."""
+    if _depth > 16 or (
+        type(event.id) is not str
+        or type(event.type) is not str
+        or type(event.timestamp_ns) is not int
+        or not (event.delay_override_ms is None or type(event.delay_override_ms) is int)
+        or type(event.source_file) is not str
+        or type(event.remark) is not str
+    ):
+        return False
+
+    def finite_ratio(value: object) -> bool:
+        return type(value) is float and math.isfinite(value)
+
+    if isinstance(event, MouseButtonEvent):
+        return (
+            finite_ratio(event.x_ratio)
+            and finite_ratio(event.y_ratio)
+            and event.button in {"left", "right", "middle"}
+            and _valid_color(event.recorded_color)
+            and type(event.color_check_enabled) is bool
+            and event.color_check_on_mismatch in {"skip", "stop", "wait"}
+        )
+    if isinstance(event, MouseMoveEvent):
+        return finite_ratio(event.x_ratio) and finite_ratio(event.y_ratio)
+    if isinstance(event, MouseWheelEvent):
+        return (
+            type(event.delta) is int
+            and event.axis in {"vertical", "horizontal"}
+            and finite_ratio(event.x_ratio)
+            and finite_ratio(event.y_ratio)
+        )
+    if isinstance(event, KeyEvent):
+        return type(event.key) is str and type(event.vk_code) is int
+    if isinstance(event, WaitEvent):
+        return type(event.duration_ms) is int
+    if isinstance(event, ColorTriggerEvent):
+        return (
+            finite_ratio(event.x_ratio)
+            and finite_ratio(event.y_ratio)
+            and _valid_color(event.target_color)
+            and type(event.tolerance) is int
+            and type(event.timeout_ms) is int
+            and type(event.check_interval_ms) is int
+            and event.on_timeout in {"error", "skip", "retry"}
+        )
+    if isinstance(event, WindowTriggerEvent):
+        return (
+            type(event.window_title_contains) is str
+            and type(event.timeout_ms) is int
+            and event.on_timeout in {"error", "skip", "retry"}
+        )
+    if isinstance(event, TextInputEvent):
+        return type(event.text) is str
+    if isinstance(event, ConditionEvent):
+        return (
+            type(event.expression) is str
+            and type(event.if_true) is list
+            and type(event.if_false) is list
+            and all(event_types_valid(item, _depth=_depth + 1) for item in event.if_true)
+            and all(event_types_valid(item, _depth=_depth + 1) for item in event.if_false)
+        )
+    if isinstance(event, LoopEvent):
+        return (
+            type(event.count) is int
+            and type(event.events) is list
+            and all(event_types_valid(item, _depth=_depth + 1) for item in event.events)
+        )
+    return False
+
+
+def settings_types_valid(settings: MacroSettings) -> bool:
+    """Return whether a settings snapshot preserves exact numeric JSON types."""
+    for field in dataclasses.fields(settings):
+        value = getattr(settings, field.name)
+        if field.name == "default_playback_speed":
+            if type(value) is not float or not math.isfinite(value):
+                return False
+        elif type(value) is not int:
+            return False
+    return True
+
+
+def inline_event_block_valid(events: list[AnyEvent]) -> bool:
+    """Validate one semantic sequencer action without widening macro-file behavior."""
+    if not events or not all(event_types_valid(event) for event in events):
+        return False
+    if len(events) == 1:
+        event = events[0]
+        if event.timestamp_ns != 0:
+            return False
+        return (
+            isinstance(event, TextInputEvent)
+            and bool(event.text)
+        ) or (
+            isinstance(event, ColorTriggerEvent)
+            and _valid_required_color(event.target_color)
+            and event.tolerance >= 0
+            and event.timeout_ms >= 0
+            and event.check_interval_ms > 0
+            and event.on_timeout == "error"
+        )
+    if len(events) not in {2, 4} or not all(
+        isinstance(event, MouseButtonEvent) for event in events
+    ):
+        return False
+    click_events = [event for event in events if isinstance(event, MouseButtonEvent)]
+    expected_types = (
+        ["mouse_down", "mouse_up"]
+        if len(click_events) == 2
+        else ["mouse_down", "mouse_up", "mouse_down", "mouse_up"]
+    )
+    first = click_events[0]
+    return (
+        [event.type for event in click_events] == expected_types
+        and first.timestamp_ns == 0
+        and all(
+            event.button == first.button
+            and event.x_ratio == first.x_ratio
+            and event.y_ratio == first.y_ratio
+            for event in click_events
+        )
+        and all(
+            previous.timestamp_ns < current.timestamp_ns
+            for previous, current in pairwise(click_events)
+        )
+    )
 
 
 # ── 공개 I/O ─────────────────────────────────────────────────────────────────

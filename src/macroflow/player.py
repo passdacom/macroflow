@@ -51,6 +51,13 @@ class PlaybackError(Exception):
     """재생 중 복구 불가 오류."""
 
 
+@dataclasses.dataclass(frozen=True)
+class PlaybackSession:
+    """Opaque ownership handle for one player worker."""
+
+    _token: object = dataclasses.field(default_factory=object, repr=False)
+
+
 class _PlaybackClock:
     """일시중지 시간을 제외한 재생 active-time 시계와 interruptible wait."""
 
@@ -152,6 +159,9 @@ class _PlayState:
 
 # ── 모듈 레벨 상태 ────────────────────────────────────────────────────────────
 _playback_thread: threading.Thread | None = None
+_playback_session: PlaybackSession | None = None
+_playback_lifecycle_lock = threading.RLock()
+_playback_stop_in_progress = False
 _stop_flag: threading.Event = threading.Event()
 _playback_clock = _PlaybackClock()
 _input_state_lock = threading.RLock()
@@ -840,69 +850,82 @@ def play(
     event_range: tuple[int, int] | None = None,
     on_event_start: Callable[[int, AnyEvent], None] | None = None,
     start_pause_requested: Callable[[], bool] | None = None,
-) -> None:
-    """MacroData를 별도 스레드에서 재생 시작한다.
+) -> PlaybackSession:
+    """Start MacroData playback and return an ownership handle for this worker."""
+    global _playback_thread, _playback_session, _pause_pending
+    with _playback_lifecycle_lock:
+        if _playback_stop_in_progress:
+            raise PlaybackError("이전 재생 중지 정리가 진행 중입니다.")
+        previous_thread = _playback_thread
+        if previous_thread is not None and previous_thread.is_alive():
+            if previous_thread is not threading.current_thread():
+                previous_thread.join(timeout=0.1)
+            if previous_thread.is_alive():
+                raise PlaybackError("이미 재생 중입니다")
 
-    Args:
-        macro: 재생할 MacroData. events 배열 사용.
-        speed: 재생 속도 배율. 기본 1.0.
-        on_event: 각 이벤트 실행 완료 후 알릴 콜백 (idx, event).
-        on_complete: 재생 완료 시 UI에 알릴 콜백.
-        on_error: 오류 발생 시 UI에 알릴 콜백.
-        event_range: (start_idx, end_idx) 구간 재생. None이면 전체 재생.
-        on_event_start: 각 이벤트 실행 직전에 UI에 알릴 콜백 (idx, event).
-        start_pause_requested: worker 첫 이벤트 전에 pause할지 확인하는 콜백.
-
-    Raises:
-        PlaybackError: 기존 재생 worker가 아직 실행 중일 때.
-    """
-    global _playback_thread, _pause_pending
-
-    previous_thread = _playback_thread
-    if previous_thread is not None and previous_thread.is_alive():
-        if previous_thread is not threading.current_thread():
-            previous_thread.join(timeout=0.1)
-        if previous_thread.is_alive():
-            raise PlaybackError("이미 재생 중입니다")
-
-    _stop_flag.clear()
-    _playback_clock.reset()
-    with _input_state_lock:
-        _pause_pending = False
-
-    _playback_thread = threading.Thread(
-        target=_play_loop,
-        args=(
-            macro,
-            speed,
-            on_event,
-            on_complete,
-            on_error,
-            event_range,
-            on_event_start,
-            start_pause_requested,
-        ),
-        daemon=True,
-        name="PlaybackThread",
-    )
-    _playback_thread.start()
-
-
-def stop() -> None:
-    """재생 중단을 요청하고 내부 대기를 깨운 뒤 worker 종료를 기다린다."""
-    global _pause_pending
-    _stop_flag.set()
-    _playback_clock.notify_stop()
-    with _input_state_lock:
-        _pause_pending = False
-    _release_active_inputs()
-    if _playback_thread is not None and _playback_thread is not threading.current_thread():
-        _playback_thread.join(timeout=3.0)
-    # 종료되지 않은 worker의 stop 신호는 유지한다. 다음 play()가 살아 있는
-    # worker를 거부하므로 old worker가 stop clear 후 재개되는 race를 막는다.
-    if _playback_thread is None or not _playback_thread.is_alive():
         _stop_flag.clear()
         _playback_clock.reset()
+        with _input_state_lock:
+            _pause_pending = False
+
+        session = PlaybackSession()
+        worker = threading.Thread(
+            target=_play_loop,
+            args=(
+                macro,
+                speed,
+                on_event,
+                on_complete,
+                on_error,
+                event_range,
+                on_event_start,
+                start_pause_requested,
+            ),
+            daemon=True,
+            name="PlaybackThread",
+        )
+        _playback_thread = worker
+        _playback_session = session
+        try:
+            worker.start()
+        except Exception:
+            _playback_thread = None
+            _playback_session = None
+            raise
+        return session
+
+
+def stop(session: PlaybackSession | None = None) -> bool:
+    """Stop the current worker, optionally only when the caller owns its session."""
+    global _playback_session, _pause_pending, _playback_stop_in_progress
+    with _playback_lifecycle_lock:
+        if _playback_stop_in_progress:
+            return False
+        if session is not None and session != _playback_session:
+            return False
+        worker = _playback_thread
+        if session is not None and (worker is None or not worker.is_alive()):
+            return False
+        _playback_stop_in_progress = True
+        _stop_flag.set()
+    try:
+        _playback_clock.notify_stop()
+        with _input_state_lock:
+            _pause_pending = False
+        _release_active_inputs()
+        if worker is not None and worker is not threading.current_thread():
+            worker.join(timeout=3.0)
+    finally:
+        # 종료되지 않은 worker의 stop 신호는 유지한다. 다음 play()가 살아 있는
+        # worker를 거부하므로 old worker가 stop clear 후 재개되는 race를 막는다.
+        with _playback_lifecycle_lock:
+            if worker is None or not worker.is_alive():
+                if session is None or session == _playback_session:
+                    _playback_session = None
+                _stop_flag.clear()
+                _playback_clock.reset()
+            _playback_stop_in_progress = False
+    return True
 
 
 def pause() -> bool:

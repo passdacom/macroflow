@@ -147,10 +147,14 @@ class MainWindow(QMainWindow):
         self._sequencer.sequence_error.connect(self._on_sequence_done)
         self._sequencer.sequence_progress.connect(self._overlay.set_flow_progress)
         # F6 캡처 힌트 오버레이 연동
-        self._editor.f6_capture_started.connect(
-            lambda: self._overlay.show_hint("F6을 눌러 위치 지정")
-        )
+        self._editor.f6_capture_started.connect(self._reject_f6_capture_if_busy)
+        self._editor.f6_capture_started.connect(self._sequencer.cancel_f6_capture)
+        self._editor.f6_capture_started.connect(self._show_f6_capture_hint)
         self._editor.f6_capture_ended.connect(self._overlay.stop_hint)
+        self._sequencer.f6_capture_started.connect(self._reject_f6_capture_if_busy)
+        self._sequencer.f6_capture_started.connect(self._editor.cancel_f6_capture)
+        self._sequencer.f6_capture_started.connect(self._show_f6_capture_hint)
+        self._sequencer.f6_capture_ended.connect(self._overlay.stop_hint)
         # 즐겨찾기 신호 연결
         self._favorites.open_in_editor.connect(self._load_file_and_switch_tab)
         self._favorites.add_to_sequencer.connect(self._add_favorite_to_sequencer)
@@ -394,6 +398,8 @@ class MainWindow(QMainWindow):
             self._register_hotkeys()
 
     def closeEvent(self, event: QCloseEvent | None) -> None:  # noqa: N802
+        self._editor.cancel_f6_capture()
+        self._sequencer.cancel_f6_capture()
         if self._state in {"recording", "stopping"}:
             if not self._stop_recording_before_close():
                 QMessageBox.warning(
@@ -581,11 +587,44 @@ class MainWindow(QMainWindow):
         if getattr(self, "_shortcut_fallback_registered", False):
             return
         from PyQt6.QtGui import QShortcut
-        QShortcut(QKeySequence("F6"), self).activated.connect(self._toggle_recording)
+        QShortcut(QKeySequence("F6"), self).activated.connect(self._handle_f6)
         QShortcut(QKeySequence("F7"), self).activated.connect(self._toggle_playback)
         QShortcut(QKeySequence("F8"), self).activated.connect(self._toggle_pause)
         self._shortcut_fallback_registered = True
         logger.info("QShortcut 폴백 핫키 등록: F6/F7/F8 (앱 포커스 상태에서만 작동)")
+
+    def _reject_f6_capture_if_busy(self) -> None:
+        if self._state == "idle" and not self._sequencer.is_running():
+            return
+        self._editor.cancel_f6_capture()
+        self._sequencer.cancel_f6_capture()
+        self._sb_state.setText("녹화·재생·시퀀스 실행 중에는 위치를 캡처할 수 없습니다")
+
+    def _show_f6_capture_hint(self) -> None:
+        if self._state == "idle" and (
+            self._editor.is_f6_capture_active()
+            or self._sequencer.is_f6_capture_active()
+        ):
+            self._overlay.show_hint("F6을 눌러 위치 지정")
+
+    def _handle_f6(self) -> None:
+        """Shared native/fallback F6 router with lifecycle-safe precedence."""
+        if self._state == "recording":
+            self._editor.cancel_f6_capture()
+            self._sequencer.cancel_f6_capture()
+            self._toggle_recording()
+            return
+        if self._state != "idle" or self._sequencer.is_running():
+            self._reject_f6_capture_if_busy()
+            return
+        if (
+            self._editor.is_f6_capture_active()
+            or self._sequencer.is_f6_capture_active()
+        ):
+            self._do_f6_capture()
+            return
+        if not self._is_sequencer_tab() and not self._is_favorites_tab():
+            self._toggle_recording()
 
     def _unregister_hotkeys(self) -> None:
         import ctypes
@@ -607,13 +646,7 @@ class MainWindow(QMainWindow):
             msg = ctypes.wintypes.MSG.from_address(int(message))  # type: ignore[arg-type]
             if msg.message == _WM_HOTKEY:
                 if msg.wParam == _HOTKEY_RECORD:
-                    # F6 캡처 모드 확인: 에디터가 캡처 대기 중이면 위치/색 캡처
-                    if self._editor.is_f6_capture_active():
-                        self._do_f6_capture()
-                        return True, 0
-                    # 시퀀서·즐겨찾기 탭에서는 F6(녹화) 무시
-                    if not self._is_sequencer_tab() and not self._is_favorites_tab():
-                        self._toggle_recording()
+                    self._handle_f6()
                     return True, 0
                 if msg.wParam == _HOTKEY_PLAY:
                     if self._state == "recording":
@@ -652,6 +685,13 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, _index: int) -> None:
         """탭 전환 시 툴바 버튼 상태와 상태바 힌트를 갱신한다."""
+        if self._is_sequencer_tab():
+            self._editor.cancel_f6_capture()
+        elif self._tabs.currentWidget() is self._editor:
+            self._sequencer.cancel_f6_capture()
+        else:
+            self._editor.cancel_f6_capture()
+            self._sequencer.cancel_f6_capture()
         self._update_toolbar()
         if self._is_sequencer_tab():
             self._sb_hint.setText("F7: 시퀀스 실행/중지  |  ESC×3: 긴급 중지")
@@ -876,7 +916,7 @@ class MainWindow(QMainWindow):
                 total=self._sequencer.item_count(),
             )
             try:
-                self._sequencer.run_sequence(speed=speed)
+                started = self._sequencer.run_sequence(speed=speed)
             except Exception as exc:
                 self._overlay.stop()
                 if sys.platform == "win32":
@@ -884,6 +924,14 @@ class MainWindow(QMainWindow):
                     stop_emergency_hook()
                 self._sb_state.setText(f"시퀀스 시작 오류: {exc}")
                 logger.exception("시퀀스 시작 오류")
+                return
+            if started is False:
+                self._overlay.stop()
+                if sys.platform == "win32":
+                    from macroflow.win32 import stop_emergency_hook
+
+                    stop_emergency_hook()
+                self._update_toolbar()
                 return
             self._update_toolbar()
             self._sb_state.setText(f"▶ 시퀀스 실행 중 ({speed:.1f}x)")
@@ -1159,7 +1207,10 @@ class MainWindow(QMainWindow):
         r, g, b = get_pixel_color(x, y)
         color_hex = f"#{r:02X}{g:02X}{b:02X}"
 
-        self._editor.consume_f6_capture(x_r, y_r, color_hex)
+        if self._sequencer.is_f6_capture_active():
+            self._sequencer.consume_f6_capture(x_r, y_r, color_hex)
+        else:
+            self._editor.consume_f6_capture(x_r, y_r, color_hex)
         self._overlay.stop_hint()
         logger.info(f"F6 캡처: ({x_r:.3f}, {y_r:.3f}) {color_hex}")
 
@@ -1468,11 +1519,15 @@ class MainWindow(QMainWindow):
         self._act_range_play.setEnabled(
             is_idle and not seq_running and self._macro is not None and not is_seq_tab
         )
-        self._act_save.setEnabled(is_idle and self._macro is not None)
-        self._act_save_as.setEnabled(is_idle and self._macro is not None)
-        self._act_save_seq.setEnabled(is_idle and self._macro is not None)
-        self._act_save_fav.setEnabled(is_idle and self._macro is not None)
-        self._act_restore_prev.setEnabled(is_idle and self._prev_macro is not None)
+        can_mutate_files = is_idle and not seq_running
+        self._act_open.setEnabled(can_mutate_files)
+        self._act_save.setEnabled(can_mutate_files and self._macro is not None)
+        self._act_save_as.setEnabled(can_mutate_files and self._macro is not None)
+        self._act_save_seq.setEnabled(can_mutate_files and self._macro is not None)
+        self._act_save_fav.setEnabled(can_mutate_files and self._macro is not None)
+        self._act_restore_prev.setEnabled(
+            can_mutate_files and self._prev_macro is not None
+        )
 
         # 시퀀서 실행 중이거나 재생/녹화 중에는 속도·반복·간격 설정 불가
         can_change_settings = is_idle and not seq_running
@@ -1490,6 +1545,12 @@ class MainWindow(QMainWindow):
 
     # ── 파일 조작 ─────────────────────────────────────────────────────────────
 
+    def _sequence_file_mutation_blocked(self) -> bool:
+        if not self._sequencer.is_running():
+            return False
+        self._sb_state.setText("시퀀스 실행 중에는 파일을 열거나 저장할 수 없습니다")
+        return True
+
     def _get_default_dir(self) -> str:
         """파일 다이얼로그 초기 폴더를 반환한다.
 
@@ -1502,6 +1563,8 @@ class MainWindow(QMainWindow):
         return str(Path.cwd())
 
     def _open_file(self) -> None:
+        if self._sequence_file_mutation_blocked():
+            return
         path, _ = QFileDialog.getOpenFileName(
             self, "매크로 파일 열기",
             self._get_default_dir(),
@@ -1513,6 +1576,8 @@ class MainWindow(QMainWindow):
 
     def _load_file(self, path: str) -> None:
         """경로에서 매크로를 로드하여 에디터에 표시한다."""
+        if self._sequence_file_mutation_blocked():
+            return
         try:
             from macroflow import macro_file
             loaded_macro = macro_file.load(path)
@@ -1531,6 +1596,8 @@ class MainWindow(QMainWindow):
 
     def _load_file_and_switch_tab(self, path: str) -> None:
         """시퀀서 더블클릭 시: 매크로를 로드하고 에디터 탭으로 전환한다."""
+        if self._sequence_file_mutation_blocked():
+            return
         self._load_file(path)
         self._tabs.setCurrentWidget(self._editor)
 
@@ -1560,6 +1627,8 @@ class MainWindow(QMainWindow):
         _current_file이 설정된 경우: 확인 다이얼로그 후 덮어쓰기.
         _current_file이 없는 경우: _save_file_as()로 위임.
         """
+        if self._sequence_file_mutation_blocked():
+            return
         if self._is_sequencer_tab():
             self._sequencer.save_flow()
             return
@@ -1577,9 +1646,13 @@ class MainWindow(QMainWindow):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        if self._sequence_file_mutation_blocked():
+            return
         self._do_save(str(self._current_file))
 
     def _save_file_as(self) -> None:
+        if self._sequence_file_mutation_blocked():
+            return
         if self._is_sequencer_tab():
             self._sequencer.save_flow_as()
             return
@@ -1592,19 +1665,24 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
+        if self._sequence_file_mutation_blocked():
+            return
         if not path.endswith(".json"):
             path += ".json"
-        self._do_save(path)
-        self._current_file = Path(path)
-        self.setWindowTitle(f"MacroFlow — {Path(path).name}")
+        if self._do_save(path):
+            self._current_file = Path(path)
+            self.setWindowTitle(f"MacroFlow — {Path(path).name}")
 
-    def _do_save(self, path: str) -> None:
+    def _do_save(self, path: str) -> bool:
+        if self._sequence_file_mutation_blocked():
+            return False
         if not self._macro:
-            return
+            return False
         from macroflow import macro_file
         macro_file.save(self._macro, path)
         self._sb_state.setText(f"저장 완료: {Path(path).name}")
         logger.info(f"저장: {path}")
+        return True
 
     def _get_macros_dir(self) -> Path:
         """영구 저장용 macros 디렉토리 경로를 반환한다.
@@ -1627,6 +1705,8 @@ class MainWindow(QMainWindow):
 
     def _save_and_add_to_favorites(self) -> None:
         """현재 매크로를 이름 입력 후 즐겨찾기 폴더에 저장하고 즐겨찾기 탭에 추가한다."""
+        if self._sequence_file_mutation_blocked():
+            return
         if not self._macro:
             return
 
@@ -1638,6 +1718,8 @@ class MainWindow(QMainWindow):
             "저장할 이름을 입력하세요 (파일명으로 사용됩니다):",
             text=suggested,
         )
+        if self._sequence_file_mutation_blocked():
+            return
         if not ok or not name.strip():
             return
 
@@ -1657,6 +1739,8 @@ class MainWindow(QMainWindow):
 
     def _add_favorite_to_sequencer(self, path: str) -> None:
         """즐겨찾기 항목을 시퀀서에 추가한다."""
+        if self._sequencer.is_running():
+            return
         from pathlib import Path as _Path
         self._sequencer.add_macro_file(_Path(path))
         self._sb_state.setText(f"시퀀서 추가: {_Path(path).name}")
@@ -1667,6 +1751,8 @@ class MainWindow(QMainWindow):
         새 녹화를 시작하기 직전에 백업해 둔 매크로를 에디터에 로드한다.
         실수로 F6을 눌러 기존 매크로를 덮어쓴 경우에 사용한다.
         """
+        if self._sequence_file_mutation_blocked():
+            return
         if self._prev_macro is None:
             return
 
@@ -1680,6 +1766,8 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes,
         )
         if reply != QMessageBox.StandardButton.Yes:
+            return
+        if self._sequence_file_mutation_blocked():
             return
 
         restored = self._prev_macro
@@ -1716,6 +1804,8 @@ class MainWindow(QMainWindow):
 
         다이얼로그 없이 즉시 저장되며, 시퀀서 탭으로 자동 전환된다.
         """
+        if self._sequence_file_mutation_blocked():
+            return
         if not self._macro:
             return
         from datetime import datetime

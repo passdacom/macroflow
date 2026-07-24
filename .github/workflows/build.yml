@@ -153,6 +153,30 @@ jobs:
             & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
           }
 
+      - name: Smoke packaged inline sequence codec
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Get-ChildItem 'dist/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          $process = Start-Process -FilePath $exe -ArgumentList '--smoke-inline-sequence' -PassThru
+          try {
+            if (-not $process.WaitForExit(30000)) {
+              & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+              throw "Packaged inline sequence smoke timed out after 30 seconds"
+            }
+            $process.Refresh()
+            if ($process.ExitCode -ne 0) {
+              throw "Packaged inline sequence smoke failed with code $($process.ExitCode)"
+            }
+            Write-Host "PACKAGED_INLINE_SEQUENCE_SMOKE_OK sha256=$hash pid=$($process.Id)"
+          }
+          finally {
+            if (-not $process.HasExited) {
+              & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+            }
+          }
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

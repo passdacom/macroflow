@@ -12,10 +12,12 @@ from macroflow.script_engine import (
     ColorCheckNode,
     EndNode,
     FlowEngine,
+    InlineEventsNode,
     MacroFlow,
     MacroNode,
     WaitFixedNode,
 )
+from macroflow.types import MacroSettings, TextInputEvent
 
 
 def test_missing_macro_reports_node_failure_once(tmp_path: Path) -> None:
@@ -51,7 +53,66 @@ def test_missing_macro_reports_node_failure_once(tmp_path: Path) -> None:
     assert len(errors) == 1
 
 
-def test_stop_interrupts_fixed_wait_without_success_callback(tmp_path: Path) -> None:
+def test_error_end_reports_failure_without_success_completion(tmp_path: Path) -> None:
+    completed: list[str] = []
+    errors: list[str] = []
+    done_calls: list[tuple[str, bool, str]] = []
+    flow = MacroFlow(
+        version="1.0",
+        name="error end",
+        created_at="2026-07-24T00:00:00",
+        start_node_id="end_error",
+        nodes={
+            "end_error": EndNode(
+                id="end_error",
+                label="error",
+                status="error",
+            )
+        },
+    )
+    engine = FlowEngine(
+        str(tmp_path / "sequence.macroflow"),
+        on_node_done=lambda *args: done_calls.append(args),
+        on_complete=completed.append,
+        on_error=errors.append,
+    )
+
+    engine._run(flow)
+
+    assert done_calls == [("end_error", False, "error")]
+    assert completed == []
+    assert errors == ["플로우가 오류 상태로 종료되었습니다: error"]
+
+
+def test_host_callback_exceptions_do_not_corrupt_terminal_state(tmp_path: Path) -> None:
+    completed: list[str] = []
+    flow = MacroFlow(
+        version="1.0",
+        name="callback safety",
+        created_at="2026-07-24T00:00:00",
+        start_node_id="end",
+        nodes={"end": EndNode(id="end", label="완료", status="success")},
+    )
+    engine = FlowEngine(
+        str(tmp_path / "callback.macroflow"),
+        on_node_start=lambda *_args: (_ for _ in ()).throw(RuntimeError("start UI")),
+        on_node_done=lambda *_args: (_ for _ in ()).throw(RuntimeError("done UI")),
+        on_complete=completed.append,
+    )
+
+    engine._run(flow)
+
+    assert completed == ["success"]
+
+
+def test_stop_interrupts_fixed_wait_without_stopping_unowned_player(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from macroflow import player
+
+    player_stop_calls: list[object] = []
+    monkeypatch.setattr(player, "stop", lambda *args: player_stop_calls.append(args))
     entered_wait = threading.Event()
     done_calls: list[tuple[str, bool, str]] = []
     flow = MacroFlow(
@@ -84,6 +145,100 @@ def test_stop_interrupts_fixed_wait_without_success_callback(tmp_path: Path) -> 
     assert elapsed < 0.2
     assert not engine.is_running()
     assert done_calls == []
+    assert player_stop_calls == []
+
+
+def test_color_timeout_without_failure_edge_is_terminal_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from macroflow import win32
+
+    monkeypatch.setattr(win32, "ratio_to_pixel", lambda _x, _y: (0, 0))
+    monkeypatch.setattr(win32, "get_pixel_color", lambda _x, _y: (0, 0, 0))
+    done_calls: list[tuple[str, bool, str]] = []
+    completed: list[str] = []
+    errors: list[str] = []
+    flow = MacroFlow(
+        version="1.0",
+        name="color timeout",
+        created_at="2026-07-24T00:00:00",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.0,
+                y_ratio=0.0,
+                target_color="#FFFFFF",
+                timeout_ms=1,
+                check_interval_ms=1,
+                on_timeout=None,
+            )
+        },
+    )
+    engine = FlowEngine(
+        str(tmp_path / "color.macroflow"),
+        on_node_done=lambda *args: done_calls.append(args),
+        on_complete=completed.append,
+        on_error=errors.append,
+    )
+
+    engine._run(flow)
+
+    assert done_calls == [("color", False, "색 감지 타임아웃")]
+    assert completed == []
+    assert errors == ["색 감지 타임아웃"]
+
+
+def test_synchronous_player_start_failure_reports_node_done_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from macroflow import player
+
+    monkeypatch.setattr(
+        player,
+        "play",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("start boom")),
+    )
+    flow = MacroFlow(
+        version="1.1",
+        name="start failure",
+        created_at="2026-07-24T00:00:00",
+        start_node_id="inline",
+        nodes={
+            "inline": InlineEventsNode(
+                id="inline",
+                label="text",
+                events=[
+                    TextInputEvent(
+                        id="text",
+                        type="text_input",
+                        timestamp_ns=0,
+                        text="A",
+                    )
+                ],
+                playback_settings=MacroSettings(),
+                next_on_failure=None,
+            )
+        },
+    )
+    done_calls: list[tuple[str, bool, str]] = []
+    completed: list[str] = []
+    errors: list[str] = []
+    engine = FlowEngine(
+        str(tmp_path / "failure.macroflow"),
+        on_node_done=lambda *args: done_calls.append(args),
+        on_complete=completed.append,
+        on_error=errors.append,
+    )
+
+    engine._run(flow)
+
+    assert done_calls == [("inline", False, "start boom")]
+    assert completed == []
+    assert errors == ["start boom"]
 
 
 def test_stop_interrupts_color_check_poll_without_callback(
@@ -231,13 +386,15 @@ def test_restart_is_rejected_until_concurrent_stop_returns(
     assert engine._thread is not None
     engine._thread.join(timeout=0.5)
     assert not engine._thread.is_alive()
+    engine._player_session = player.PlaybackSession()
 
     stop_entered = threading.Event()
     release_stop = threading.Event()
 
-    def blocking_stop() -> None:
+    def blocking_stop(_session: player.PlaybackSession) -> bool:
         stop_entered.set()
         release_stop.wait(timeout=1.0)
+        return True
 
     monkeypatch.setattr(player, "stop", blocking_stop)
     stopper = threading.Thread(target=engine.stop)

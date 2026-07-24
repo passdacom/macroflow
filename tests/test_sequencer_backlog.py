@@ -170,13 +170,14 @@ def test_sequencer_status_mapping_ignores_wait_and_end_nodes() -> None:
     assert method_src.index('node_id.startswith("macro_")') < method_src.index('return int(node_id.split("_")[-1])')
 
 
-def test_sequencer_rejects_duplicate_files_after_path_normalization() -> None:
-    """같은 파일은 절대/상대 dot-segment 표기가 달라도 한 번만 추가해야 한다."""
+def test_sequencer_allows_duplicate_files_with_distinct_step_ids() -> None:
+    """같은 파일도 별도 단계 ID로 반복 실행할 수 있어야 한다."""
     src = _ui_source("macroflow.ui.sequencer")
     start = src.index("def _add_item")
     end = src.index("def _refresh_list_item", start)
     method_src = src[start:end]
 
     assert "normalized_path = path.resolve(strict=False)" in method_src
-    assert "existing.path.resolve(strict=False) == normalized_path" in method_src
+    assert "existing.path.resolve(strict=False) == normalized_path" not in method_src
     assert "_MacroItem(normalized_path)" in method_src
+    assert "step_id" in src

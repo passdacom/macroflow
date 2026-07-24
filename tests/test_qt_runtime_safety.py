@@ -31,6 +31,9 @@ def test_main_window_shortcut_fallback_uses_real_pyqt_shortcut() -> None:
         app = QApplication.instance() or QApplication([])
 
         class ShortcutHost(QWidget):
+            def _handle_f6(self):
+                pass
+
             def _toggle_recording(self):
                 pass
 
@@ -68,6 +71,27 @@ def test_playing_state_takes_priority_over_current_tab_for_f7() -> None:
 
         host._stop_playback.assert_called_once_with()
         host._toggle_sequencer.assert_not_called()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_recording_f6_stops_recording_before_capture() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock
+
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "recording"
+        MainWindow._handle_f6(host)
+
+        host._editor.cancel_f6_capture.assert_called_once_with()
+        host._sequencer.cancel_f6_capture.assert_called_once_with()
+        host._toggle_recording.assert_called_once_with()
+        host._do_f6_capture.assert_not_called()
         """
     )
 

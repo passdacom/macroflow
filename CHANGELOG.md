@@ -6,6 +6,9 @@
 
 - F8 글로벌 단축키와 툴바 버튼으로 녹화·일반/구간/반복 재생 일시중지·재개
 - 우측 하단 오버레이의 `PAUSE · REC` / `PAUSE · PLAY` 상태 표시
+- 시퀀서에 매크로 사이 문구 입력·좌/우/더블클릭·색상 대기·고정 대기 단계 추가
+- 동일 매크로 반복 배치, 단계 복제, stable step ID 기반 재정렬
+- `.macroflow` v1.1 `inline_events` 및 재생 설정 snapshot 저장
 
 ### 안정성
 
@@ -13,6 +16,15 @@
 - 재생 active-time clock으로 재개 후 catch-up 실행과 timeout 소진 방지
 - pause는 열린 key·mouse gesture의 원래 release 뒤 안전 경계에서 적용
 - stop/error 시 남아 있는 key·mouse 입력을 정확히 한 번 release
+- 기존 macro JSON 관대한 loader와 canonical `.macroflow` v1.0 호환 유지
+- 실행 전 전체 preflight로 부분 실행·입력 부작용 방지
+- error EndNode와 failure edge 없는 오류의 success 오보고 방지
+- 에디터·시퀀서 F6 capture owner 단일화 및 탭 전환·종료 정리
+- Windows EXE에 side-effect-free mixed-sequence codec smoke 추가
+- player session handle로 FlowEngine이 소유한 재생만 중지하도록 격리
+- 시퀀스 실행 중 매크로 열기·편집·저장을 잠가 preflight 이후 파일 변경 방지
+- native/QShortcut F6을 단일 router로 통합하고 녹화 중 중지 동작 우선
+- packaged codec smoke에 30초 timeout·process tree 정리·SHA256 출력 추가
 
 ## v1.3.1 — 2026-07-23
 
