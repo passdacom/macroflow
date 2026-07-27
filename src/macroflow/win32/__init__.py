@@ -8,6 +8,7 @@ Claude Code가 Linux 서버에서 작업할 때도 import 오류 없이 동작�
 import sys
 
 if sys.platform == "win32":
+    from .clipboard import set_clipboard_text
     from .dpi import get_logical_screen_size, pixel_to_ratio, ratio_to_pixel
     from .hooks import (
         find_window,
@@ -49,6 +50,7 @@ else:
         send_mouse_wheel,
         send_paste,
         send_text,
+        set_clipboard_text,
         start_emergency_hook,
         start_hook,
         stop_emergency_hook,
@@ -74,6 +76,7 @@ __all__ = [
     "send_key",
     "send_paste",
     "send_text",
+    "set_clipboard_text",
     "get_logical_screen_size",
     "ratio_to_pixel",
     "pixel_to_ratio",

@@ -592,8 +592,8 @@ class TestTextInputPlayback:
         monkeypatch.setattr(player, "send_key", MagicMock())
         monkeypatch.setattr(player, "ratio_to_pixel", lambda xr, yr: (int(xr * 1920), int(yr * 1080)))
 
-    def test_text_input_calls_send_text(self, mock_win32: object) -> None:
-        """TextInputEvent 실행 시 send_text가 호출되어야 한다."""
+    def test_text_input_uses_clipboard_and_single_paste(self, mock_win32: object) -> None:
+        """TextInputEvent는 긴 문자열도 한 번의 clipboard paste로 적용한다."""
         from unittest.mock import patch
         event = TextInputEvent(
             id="aa11bb22", type="text_input", timestamp_ns=1_000_000_000,
@@ -601,9 +601,23 @@ class TestTextInputPlayback:
         )
         settings = MacroSettings()
         state = _PlayState()
-        with patch("macroflow.player.send_text") as mock_send:
+        with patch("macroflow.player.set_clipboard_text", return_value=True) as set_clipboard, \
+             patch("macroflow.player.send_paste", return_value=True) as send_paste:
             _execute_event(event, settings, state)
-        mock_send.assert_called_once_with("Hello")
+        set_clipboard.assert_called_once_with("Hello")
+        send_paste.assert_called_once_with()
+
+    def test_text_input_paste_failure_raises_playback_error(self, mock_win32: object) -> None:
+        from unittest.mock import patch
+
+        event = TextInputEvent(
+            id="cc33dd44", type="text_input", timestamp_ns=1_000_000_000,
+            text="Hello",
+        )
+        with patch("macroflow.player.set_clipboard_text", return_value=True), \
+             patch("macroflow.player.send_paste", return_value=False):
+            with pytest.raises(PlaybackError, match="텍스트 입력"):
+                _execute_event(event, MacroSettings(), _PlayState())
 
     def test_text_input_empty_string(self, mock_win32: object) -> None:
         """빈 문자열 TextInputEvent는 send_text를 호출하지 않아야 한다."""
@@ -614,9 +628,11 @@ class TestTextInputPlayback:
         )
         settings = MacroSettings()
         state = _PlayState()
-        with patch("macroflow.player.send_text") as mock_send:
+        with patch("macroflow.player.set_clipboard_text") as set_clipboard, \
+             patch("macroflow.player.send_paste") as send_paste:
             _execute_event(event, settings, state)
-        mock_send.assert_not_called()
+        set_clipboard.assert_not_called()
+        send_paste.assert_not_called()
 
 
 # ── 색 체크 wait 모드 ────────────────────────────────────────────────────────

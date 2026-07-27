@@ -127,7 +127,7 @@ def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> 
              patch("macroflow.win32.get_foreground_window", return_value=777), \\
              patch("macroflow.win32.bring_window_to_foreground", side_effect=lambda hwnd: calls.append(("restore", hwnd)) or True), \\
              patch("macroflow.win32.is_foreground_window", return_value=True), \\
-             patch("macroflow.ui.main_window._set_quick_text_clipboard", side_effect=lambda text: calls.append(("clipboard", text))), \\
+             patch("macroflow.ui.main_window._set_quick_text_clipboard", side_effect=lambda text: calls.append(("clipboard", text)) or True), \\
              patch("macroflow.win32.send_paste", side_effect=lambda: calls.append("paste") or True), \\
              patch("macroflow.ui.main_window.QuickTextDialog", return_value=dialog):
             MainWindow._capture_quick_text(host)

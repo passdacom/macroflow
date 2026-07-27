@@ -125,6 +125,11 @@ def send_paste() -> bool:
     return True
 
 
+def set_clipboard_text(text: str) -> bool:
+    logger.debug("[Mock] set_clipboard_text(length=%d)", len(text))
+    return True
+
+
 # ── DPI / 해상도 ──────────────────────────────────────────
 
 _mock_screen_size: tuple[int, int] = (1920, 1080)

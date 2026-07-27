@@ -54,9 +54,11 @@ from .sequencer import MacroSequencerWidget
 logger = logging.getLogger(__name__)
 
 
-def _set_quick_text_clipboard(text: str) -> None:
+def _set_quick_text_clipboard(text: str) -> bool:
     """Set only user-confirmed quick text without reading existing clipboard data."""
-    QApplication.clipboard().setText(text)
+    from macroflow import win32
+
+    return win32.set_clipboard_text(text)
 
 # ── Win32 핫키 상수 ────────────────────────────────────────────────────────────
 _HOTKEY_RECORD = 1
@@ -783,8 +785,7 @@ class MainWindow(QMainWindow):
                     "원래 텍스트 입력 창을 확인할 수 없어 문구를 기록하지 않았습니다.",
                 )
                 return
-            _set_quick_text_clipboard(text)
-            if not win32.send_paste():
+            if not _set_quick_text_clipboard(text) or not win32.send_paste():
                 QMessageBox.warning(
                     self,
                     "텍스트 입력 실패",
