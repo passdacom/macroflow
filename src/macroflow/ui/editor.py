@@ -58,6 +58,7 @@ from macroflow.types import (
     TextInputEvent,
 )
 from macroflow.ui import editor_table as _editor_table
+from macroflow.ui.editor_actions import delete_after_group, range_from_group_to_end
 from macroflow.ui.editor_dialogs import (
     create_capture_controls,
     create_delay_spin,
@@ -575,6 +576,11 @@ class EventEditorWidget(QWidget):
         primary = self._macro.events[row.primary_idx]
 
         self._add_context_action(menu, "▶ 이 이벤트만 실행", lambda: self._play_single_event(row_idx))
+        self._add_context_action(
+            menu,
+            "▶ 이 동작부터 끝까지 1회 재생",
+            lambda: self._play_from_row_to_end(row_idx),
+        )
         menu.addSeparator()
 
         self._add_context_action(
@@ -628,6 +634,11 @@ class EventEditorWidget(QWidget):
         self._add_context_action(menu, "🖱 클릭 추가(&L)...", lambda: self._insert_click(row_idx))
         self._add_context_action(menu, "📝 비고 편집(&N)...", lambda: self._edit_remark(row_idx))
         menu.addSeparator()
+        self._add_context_action(
+            menu,
+            "🗑 이 동작 이후 모두 삭제...",
+            lambda: self._delete_after_row(row_idx),
+        )
 
     def _context_menu(self, pos: object) -> None:
         rows = self._selected_row_indices()
@@ -1032,8 +1043,72 @@ class EventEditorWidget(QWidget):
         self._apply_events(events)
 
     def _toggle_moves(self) -> None:
+        from PyQt6.QtCore import QItemSelectionModel
+
+        selected_ids = {
+            self._rows[row_idx].primary_event_id
+            for row_idx in self._selected_row_indices()
+            if row_idx < len(self._rows)
+        }
+        current_row = self._table.currentRow()
+        current_id = (
+            self._rows[current_row].primary_event_id
+            if 0 <= current_row < len(self._rows)
+            else ""
+        )
         self._show_moves = self._act_toggle_moves.isChecked()
         self._refresh()
+        selection_model = self._table.selectionModel()
+        if selection_model is None:
+            return
+        selection_model.clearSelection()
+        restored_rows: list[int] = []
+        flags = (
+            QItemSelectionModel.SelectionFlag.Select
+            | QItemSelectionModel.SelectionFlag.Rows
+        )
+        for row_idx, row in enumerate(self._rows):
+            if row.primary_event_id in selected_ids:
+                selection_model.select(self._table.model().index(row_idx, 0), flags)
+                restored_rows.append(row_idx)
+        anchor = next(
+            (row_idx for row_idx, row in enumerate(self._rows) if row.primary_event_id == current_id),
+            restored_rows[0] if restored_rows else -1,
+        )
+        if anchor >= 0:
+            anchor_index = self._table.model().index(anchor, 0)
+            selection_model.setCurrentIndex(
+                anchor_index,
+                QItemSelectionModel.SelectionFlag.NoUpdate,
+            )
+            self._table.scrollTo(
+                anchor_index,
+                QAbstractItemView.ScrollHint.PositionAtCenter,
+            )
+
+    def _delete_after_row(self, row_idx: int) -> None:
+        if self._macro is None or row_idx >= len(self._rows):
+            return
+        row = self._rows[row_idx]
+        events = delete_after_group(self._macro.events, row.event_indices)
+        if events is self._macro.events:
+            return
+        removed_count = len(self._macro.events) - len(events)
+        reply = QMessageBox.question(
+            self,
+            "이 동작 이후 모두 삭제",
+            f"{row_idx + 1}번 동작은 유지하고 이후 원본 이벤트 {removed_count}개를 삭제합니다.\n\n"
+            "마우스 이동을 포함한 모든 이후 동작이 삭제됩니다.\n"
+            "필요하면 Ctrl+Z로 되돌릴 수 있습니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._push_undo()
+        self._apply_events(events)
+        if row_idx < len(self._rows):
+            self._table.selectRow(row_idx)
 
     def _delete_mouse_moves(self) -> None:
         if self._macro is None:
@@ -1384,5 +1459,15 @@ class EventEditorWidget(QWidget):
             return
         start_idx = min(indices)
         end_idx = max(indices) + 1
+        self.play_event_range.emit(start_idx, end_idx)
+
+    def _play_from_row_to_end(self, row: int) -> None:
+        """선택한 논리 동작부터 매크로 끝까지 기존 range 경로로 1회 재생한다."""
+        if self._macro is None or row >= len(self._rows):
+            return
+        start_idx, end_idx = range_from_group_to_end(
+            self._rows[row].event_indices,
+            total_events=len(self._macro.events),
+        )
         self.play_event_range.emit(start_idx, end_idx)
 

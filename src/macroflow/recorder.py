@@ -30,6 +30,7 @@ from macroflow.types import (
     MouseButtonEvent,
     MouseMoveEvent,
     MouseWheelEvent,
+    TextInputEvent,
 )
 from macroflow.win32 import (
     get_logical_screen_size,
@@ -42,8 +43,8 @@ from macroflow.win32 import (
 logger = logging.getLogger(__name__)
 
 # ── 핫키 VK 코드 — 이 키들은 raw_events에 기록하지 않는다 ─────────────────────
-# spec: 단축키 자체(F6/F7/F8 key_down/key_up)는 raw_events에 기록하지 않음
-_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76, 0x77})  # F6, F7, F8
+# spec: 단축키 자체(F6/F7/F8/F9 key_down/key_up)는 raw_events에 기록하지 않음
+_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76, 0x77, 0x78})
 
 # ── ESC×3 긴급 중지 상수 ─────────────────────────────────────────────────────
 _VK_ESCAPE: int = 0x1B
@@ -118,7 +119,9 @@ def _vk_to_key(vk_code: int) -> str:
 
 # ── 모듈 레벨 상태 ────────────────────────────────────────────────────────────
 _recording: bool = False
-_raw_queue: deque[tuple[str, int, int, tuple[int, int, int]]] | None = None
+_RawEvent = tuple[str, int, int, tuple[int, int, int]]
+_CaptureItem = _RawEvent | AnyEvent
+_raw_queue: deque[_CaptureItem] | None = None
 _consumer_thread: threading.Thread | None = None
 _stop_consumer: threading.Event = threading.Event()
 _event_buffer: list[AnyEvent] = []
@@ -274,6 +277,10 @@ def _consumer_loop() -> None:
     while not _stop_consumer.is_set():
         if _raw_queue and len(_raw_queue) > 0:
             raw = _raw_queue.popleft()
+            if not isinstance(raw, tuple):
+                with _event_buffer_lock:
+                    _event_buffer.append(raw)
+                continue
             # ESC×3 긴급 중지 감지 (포커스 무관)
             if _check_esc_triple(raw):
                 logger.info("ESC×3 긴급 중지 감지 (LL Hook)")
@@ -290,7 +297,7 @@ def _consumer_loop() -> None:
     # 종료 신호 후 잔여 이벤트 처리
     while _raw_queue and len(_raw_queue) > 0:
         raw = _raw_queue.popleft()
-        event = _process_raw(raw)
+        event = raw if not isinstance(raw, tuple) else _process_raw(raw)
         if event is not None:
             with _event_buffer_lock:
                 _event_buffer.append(event)
@@ -501,6 +508,30 @@ def inject_color_trigger(
     with _event_buffer_lock:
         _event_buffer.append(event)
     logger.info(f"ColorTriggerEvent 삽입: {color_hex} @ ({x_ratio:.3f}, {y_ratio:.3f})")
+
+
+def inject_text_input(text: str) -> bool:
+    """열린 pause 경계에 TextInputEvent를 ordered capture stream으로 삽입한다."""
+    if not _recording or not text or _raw_queue is None:
+        return False
+    with _pause_lock:
+        pause_started_ns = _pause_started_ns
+        intervals = tuple(_pause_intervals)
+    if pause_started_ns is None:
+        return False
+
+    paused_before_ns = sum(end_ns - start_ns for start_ns, end_ns in intervals)
+    timestamp_ns = max(0, pause_started_ns - _rec_start_ns - paused_before_ns)
+    _raw_queue.append(
+        TextInputEvent(
+            id=secrets.token_hex(4),
+            type="text_input",
+            timestamp_ns=timestamp_ns,
+            text=text,
+        )
+    )
+    logger.info("TextInputEvent 삽입")
+    return True
 
 
 def is_recording() -> bool:

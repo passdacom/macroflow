@@ -27,15 +27,17 @@ if sys.platform == "win32":
         send_mouse_wheel,
         send_text,
     )
-    from .window import bring_window_to_foreground
+    from .window import bring_window_to_foreground, get_foreground_window, is_foreground_window
 else:
     # 비-Windows 환경: Mock 자동 주입 (개발·테스트용)
     from .mock import (
         bring_window_to_foreground,
         find_window,
         get_cursor_pos,
+        get_foreground_window,
         get_logical_screen_size,
         get_pixel_color,
+        is_foreground_window,
         pixel_to_ratio,
         ratio_to_pixel,
         send_key,
@@ -54,6 +56,8 @@ else:
 __all__ = [
     "bring_window_to_foreground",
     "get_cursor_pos",
+    "get_foreground_window",
+    "is_foreground_window",
     "get_pixel_color",
     "start_hook",
     "stop_hook",

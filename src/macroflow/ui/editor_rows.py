@@ -86,6 +86,8 @@ class _DisplayRow:
     delay_str: str            # 딜레이(ms) 열 텍스트
     event_indices: list[int]  # 이 행이 나타내는 이벤트 인덱스들
     primary_idx: int          # 딜레이/편집 기준 이벤트 인덱스
+    event_ids: tuple[str, ...] = ()
+    primary_event_id: str = ""
     source_file: str = ""     # 출처 파일명 (병합 매크로에서 설정)
     color_check_enabled: bool = False         # 색 체크 활성 여부
     color_check_on_mismatch: str = "skip"     # "skip" | "stop" | "wait"
@@ -350,6 +352,8 @@ def _build_loop_row(event: LoopEvent, index: int) -> _DisplayRow:
 def _apply_row_metadata(rows: list[_DisplayRow], events: list[AnyEvent]) -> None:
     # primary 이벤트 기준으로 비고를 표시한다. 그룹 내부 secondary 이벤트의 비고는 저장/로드로 보존하되 UI 행에는 직접 표시하지 않는다.
     for row in rows:
+        row.event_ids = tuple(events[index].id for index in row.event_indices)
+        row.primary_event_id = events[row.primary_idx].id
         row.remark = events[row.primary_idx].remark
 
     # 기록 간격 계산: 재생 override와 섞지 않고 각 행 primary timestamp만 사용한다.

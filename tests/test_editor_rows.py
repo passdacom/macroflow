@@ -197,6 +197,27 @@ def test_grouped_row_uses_primary_event_remark() -> None:
     assert rows[0].remark == "primary remark"
 
 
+def test_display_row_exposes_stable_event_identity_across_move_visibility() -> None:
+    events = [
+        MouseMoveEvent(
+            id="move-before",
+            type="mouse_move",
+            timestamp_ns=90_000_000,
+            x_ratio=0.1,
+            y_ratio=0.1,
+        ),
+        _mouse_down("click-down", 100_000_000),
+        _mouse_up("click-up", 120_000_000),
+    ]
+
+    hidden_rows = _build_rows(events, show_moves=False)
+    visible_rows = _build_rows(events, show_moves=True)
+
+    assert hidden_rows[0].primary_event_id == "click-down"
+    assert hidden_rows[0].event_ids == ("click-down", "click-up")
+    assert visible_rows[1].primary_event_id == hidden_rows[0].primary_event_id
+
+
 def test_position_edit_policy_covers_drag_orphan_and_visible_moves_only() -> None:
     """위치 편집 대상 kind 정책은 드래그/고아 클릭/표시된 이동을 포함하고 대기 행은 제외한다."""
     drag_events = [

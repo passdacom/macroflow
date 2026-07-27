@@ -10,7 +10,7 @@ import dataclasses
 
 from macroflow.types import AnyEvent, MacroData
 
-_DEFAULT_APPEND_GAP_MS = 250
+_DEFAULT_APPEND_GAP_MS = 0
 _NS_PER_MS = 1_000_000
 
 
@@ -45,7 +45,7 @@ def append_recording(
 ) -> MacroData:
     """Append a newly recorded macro to ``base_macro`` and return a new MacroData.
 
-    The first newly recorded event is placed after the latest existing event plus
+    The first newly recorded event is placed at the latest existing event plus
     ``gap_ms``. Existing metadata/settings are preserved so the current file keeps
     its identity and compatibility settings.
     """

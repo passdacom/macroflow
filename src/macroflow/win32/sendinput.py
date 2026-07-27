@@ -125,7 +125,7 @@ def _mouse_input(x: int, y: int, flags: int) -> _INPUT:
     return inp
 
 
-def _send(*inputs: _INPUT) -> None:
+def _send(*inputs: _INPUT) -> bool:
     arr = (_INPUT * len(inputs))(*inputs)
     sent: int = _user32.SendInput(len(inputs), arr, _INPUT_SIZE)
     if sent != len(inputs):
@@ -133,6 +133,8 @@ def _send(*inputs: _INPUT) -> None:
             "SendInput: 요청 %d개 중 %d개만 전송됨 (UIPI 차단 또는 권한 문제 가능성)",
             len(inputs), sent,
         )
+        return False
+    return True
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -250,7 +252,7 @@ def send_key(vk_code: int, is_down: bool) -> None:
     _send(inp)
 
 
-def send_text(text: str) -> None:
+def send_text(text: str) -> bool:
     """Unicode 문자열을 KEYEVENTF_UNICODE로 문자 단위 전송한다.
 
     키보드 배치·IME 상태에 무관하게 입력한 문자를 그대로 전송한다.
@@ -293,4 +295,5 @@ def send_text(text: str) -> None:
             inputs.extend([inp_down, inp_up])
 
     if inputs:
-        _send(*inputs)
+        return _send(*inputs)
+    return True
