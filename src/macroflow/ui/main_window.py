@@ -1833,12 +1833,15 @@ class MainWindow(QMainWindow):
 
         # 파일명 입력 받기
         suggested = self._current_file.stem if self._current_file else "즐겨찾기"
-        name, ok = QInputDialog.getText(
-            self,
-            "즐겨찾기 이름 입력",
-            "저장할 이름을 입력하세요 (파일명으로 사용됩니다):",
-            text=suggested,
-        )
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setWindowTitle("즐겨찾기 이름 입력")
+        dialog.setLabelText("저장할 이름을 입력하세요 (파일명으로 사용됩니다):")
+        dialog.setTextValue(suggested)
+        dialog.setMinimumWidth(640)
+        dialog.resize(640, 160)
+        ok = dialog.exec() == QDialog.DialogCode.Accepted
+        name = dialog.textValue()
         if self._sequence_file_mutation_blocked():
             return
         if not ok or not name.strip():

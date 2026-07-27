@@ -420,3 +420,37 @@ def test_sequencer_worker_callbacks_update_visible_state_on_gui_thread() -> None
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_favorite_name_dialog_is_wide_enough_for_long_titles() -> None:
+    result = _run_offscreen(
+        """
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtWidgets import QDialog
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._macro = object()
+        host._current_file = Path("매우 긴 즐겨찾기 제목을 입력하기 위한 기존 매크로.json")
+        host._sequence_file_mutation_blocked.side_effect = [False, False]
+        host._favorites.add_favorite.return_value = True
+        dialog = Mock()
+        dialog.exec.return_value = QDialog.DialogCode.Accepted
+        dialog.textValue.return_value = "긴 즐겨찾기 제목"
+
+        with patch("macroflow.ui.main_window.QInputDialog", return_value=dialog) as dialog_type:
+            dialog_type.InputMode.TextInput = object()
+            MainWindow._save_and_add_to_favorites(host)
+
+        dialog.setMinimumWidth.assert_called_once_with(640)
+        dialog.resize.assert_called_once_with(640, 160)
+        dialog.setTextValue.assert_called_once_with(
+            "매우 긴 즐겨찾기 제목을 입력하기 위한 기존 매크로"
+        )
+        host._favorites.add_favorite.assert_called_once_with(host._macro, "긴 즐겨찾기 제목")
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
