@@ -53,6 +53,11 @@ from .sequencer import MacroSequencerWidget
 
 logger = logging.getLogger(__name__)
 
+
+def _set_quick_text_clipboard(text: str) -> None:
+    """Set only user-confirmed quick text without reading existing clipboard data."""
+    QApplication.clipboard().setText(text)
+
 # ── Win32 핫키 상수 ────────────────────────────────────────────────────────────
 _HOTKEY_RECORD = 1
 _HOTKEY_PLAY = 2
@@ -778,7 +783,8 @@ class MainWindow(QMainWindow):
                     "원래 텍스트 입력 창을 확인할 수 없어 문구를 기록하지 않았습니다.",
                 )
                 return
-            if not win32.send_text(text):
+            _set_quick_text_clipboard(text)
+            if not win32.send_paste():
                 QMessageBox.warning(
                     self,
                     "텍스트 입력 실패",

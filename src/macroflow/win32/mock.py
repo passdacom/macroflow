@@ -120,6 +120,11 @@ def send_text(text: str) -> bool:
     return True
 
 
+def send_paste() -> bool:
+    logger.debug("[Mock] send_paste()")
+    return True
+
+
 # ── DPI / 해상도 ──────────────────────────────────────────
 
 _mock_screen_size: tuple[int, int] = (1920, 1080)

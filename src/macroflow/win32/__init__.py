@@ -25,6 +25,7 @@ if sys.platform == "win32":
         send_mouse_drag,
         send_mouse_move,
         send_mouse_wheel,
+        send_paste,
         send_text,
     )
     from .window import bring_window_to_foreground, get_foreground_window, is_foreground_window
@@ -46,6 +47,7 @@ else:
         send_mouse_drag,
         send_mouse_move,
         send_mouse_wheel,
+        send_paste,
         send_text,
         start_emergency_hook,
         start_hook,
@@ -70,6 +72,7 @@ __all__ = [
     "send_mouse_move",
     "send_mouse_wheel",
     "send_key",
+    "send_paste",
     "send_text",
     "get_logical_screen_size",
     "ratio_to_pixel",

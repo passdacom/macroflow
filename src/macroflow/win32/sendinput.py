@@ -44,6 +44,9 @@ KEYEVENTF_UNICODE: int = 0x0004
 _TEXT_INPUT_BATCH_SIZE: int = 256
 _TEXT_INPUT_BATCH_DELAY_S: float = 0.005
 _TEXT_INPUT_DRAIN_DELAY_S: float = 0.050
+_PASTE_INPUT_DRAIN_DELAY_S: float = 0.100
+_VK_CONTROL: int = 0x11
+_VK_V: int = 0x56
 
 # 버튼 이름 → (down flag, up flag) 매핑
 _BUTTON_FLAGS: dict[str, tuple[int, int]] = {
@@ -255,6 +258,31 @@ def send_key(vk_code: int, is_down: bool) -> None:
         dwFlags=flags, time=0, dwExtraInfo=0,
     )
     _send(inp)
+
+
+def send_paste() -> bool:
+    """Send one Ctrl+V chord and allow the target control to consume the paste."""
+    inputs: list[_INPUT] = []
+    for vk_code, is_down in (
+        (_VK_CONTROL, True),
+        (_VK_V, True),
+        (_VK_V, False),
+        (_VK_CONTROL, False),
+    ):
+        flags = 0 if is_down else KEYEVENTF_KEYUP
+        inp = _INPUT(type=INPUT_KEYBOARD)
+        inp._input.ki = _KEYBDINPUT(
+            wVk=vk_code,
+            wScan=0,
+            dwFlags=flags,
+            time=0,
+            dwExtraInfo=0,
+        )
+        inputs.append(inp)
+    if not _send(*inputs):
+        return False
+    time.sleep(_PASTE_INPUT_DRAIN_DELAY_S)
+    return True
 
 
 def send_text(text: str) -> bool:
