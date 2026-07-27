@@ -136,6 +136,7 @@ def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> 
             ("restore", 777),
             ("apply", "아주 긴 텍스트"),
             ("record", "아주 긴 텍스트"),
+            ("restore", 777),
             "resume",
         ]
         host._set_recording_paused_ui.assert_any_call(True)
@@ -245,6 +246,48 @@ def test_f9_send_failure_does_not_commit_text_event() -> None:
         inject.assert_not_called()
         warning.assert_called_once()
         assert host._quick_text_session_active is False
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_f9_final_focus_failure_keeps_recording_paused() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtWidgets import QDialog
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "recording"
+        host._paused = False
+        host._append_recording_mode = False
+        host._quick_text_session_active = False
+        dialog = Mock()
+        dialog.exec.return_value = QDialog.DialogCode.Accepted
+        dialog.text.return_value = "focus guarded text"
+
+        with patch("macroflow.recorder.is_paused", return_value=False), \\
+             patch("macroflow.recorder.pause_recording", return_value=True), \\
+             patch("macroflow.recorder.inject_text_input", return_value=True), \\
+             patch("macroflow.recorder.resume_recording") as resume, \\
+             patch("macroflow.win32.get_foreground_window", return_value=777), \\
+             patch("macroflow.win32.bring_window_to_foreground", side_effect=[True, False]), \\
+             patch("macroflow.win32.is_foreground_window", return_value=True), \\
+             patch("macroflow.win32.send_text", return_value=True), \\
+             patch("macroflow.ui.main_window.QuickTextDialog", return_value=dialog), \\
+             patch("macroflow.ui.main_window.QMessageBox.warning") as warning:
+            MainWindow._capture_quick_text(host)
+
+        resume.assert_not_called()
+        host._set_recording_paused_ui.assert_called_with(True)
+        warning.assert_called_once_with(
+            host,
+            "대상 창 복원 실패",
+            "원래 입력 창을 다시 확인할 수 없어 녹화를 일시중지 상태로 유지합니다.",
+        )
         """
     )
 

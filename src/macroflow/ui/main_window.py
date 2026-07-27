@@ -742,6 +742,7 @@ class MainWindow(QMainWindow):
         owns_pause = False
         target_hwnd = 0
         restored = False
+        focus_failure_warned = False
         try:
             owns_pause = not recorder.is_paused()
             if owns_pause and not recorder.pause_recording():
@@ -770,6 +771,7 @@ class MainWindow(QMainWindow):
                 and win32.is_foreground_window(target_hwnd)
             )
             if not restored:
+                focus_failure_warned = True
                 QMessageBox.warning(
                     self,
                     "대상 창 복원 실패",
@@ -792,10 +794,30 @@ class MainWindow(QMainWindow):
                 return
             self._sb_state.setText("텍스트 동작을 기록했습니다")
         finally:
-            if not restored and target_hwnd > 0:
-                win32.bring_window_to_foreground(target_hwnd)
-            if owns_pause and self._state == "recording" and recorder.resume_recording():
+            final_focus_restored = (
+                target_hwnd > 0
+                and win32.bring_window_to_foreground(target_hwnd)
+                and win32.is_foreground_window(target_hwnd)
+            )
+            if (
+                not final_focus_restored
+                and not focus_failure_warned
+                and self._state == "recording"
+            ):
+                QMessageBox.warning(
+                    self,
+                    "대상 창 복원 실패",
+                    "원래 입력 창을 다시 확인할 수 없어 녹화를 일시중지 상태로 유지합니다.",
+                )
+            if (
+                owns_pause
+                and self._state == "recording"
+                and final_focus_restored
+                and recorder.resume_recording()
+            ):
                 self._set_recording_paused_ui(False)
+            elif owns_pause and self._state == "recording":
+                self._set_recording_paused_ui(True)
             elif not owns_pause and self._state == "recording":
                 self._set_recording_paused_ui(True)
             self._quick_text_session_active = False

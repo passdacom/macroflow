@@ -12,6 +12,7 @@ import ctypes
 import ctypes.wintypes
 import logging
 import sys
+import time
 
 assert sys.platform == "win32", "sendinput.py는 Windows에서만 실행 가능합니다"
 
@@ -39,6 +40,10 @@ MOUSEEVENTF_ABSOLUTE: int = 0x8000
 KEYEVENTF_KEYUP: int = 0x0002
 KEYEVENTF_SCANCODE: int = 0x0008
 KEYEVENTF_UNICODE: int = 0x0004
+
+_TEXT_INPUT_BATCH_SIZE: int = 256
+_TEXT_INPUT_BATCH_DELAY_S: float = 0.005
+_TEXT_INPUT_DRAIN_DELAY_S: float = 0.050
 
 # 버튼 이름 → (down flag, up flag) 매핑
 _BUTTON_FLAGS: dict[str, tuple[int, int]] = {
@@ -295,5 +300,11 @@ def send_text(text: str) -> bool:
             inputs.extend([inp_down, inp_up])
 
     if inputs:
-        return _send(*inputs)
+        for start in range(0, len(inputs), _TEXT_INPUT_BATCH_SIZE):
+            if not _send(*inputs[start : start + _TEXT_INPUT_BATCH_SIZE]):
+                return False
+            time.sleep(_TEXT_INPUT_BATCH_DELAY_S)
+        # SendInput 성공은 queue 삽입을 의미한다. 마지막 batch가 원래 foreground
+        # control에서 소비되기 전에 Qt modal parent가 focus를 회수하지 않도록 drain한다.
+        time.sleep(_TEXT_INPUT_DRAIN_DELAY_S)
     return True
