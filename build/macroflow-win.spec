@@ -10,7 +10,7 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(SPECPATH).parent.parent  # repository root (spec lives in build/)
+ROOT = Path(SPECPATH).parent  # repository root (SPECPATH is build/)
 
 a = Analysis(
     [str(ROOT / 'src' / 'macroflow' / 'main.py')],
