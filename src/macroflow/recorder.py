@@ -526,7 +526,11 @@ def inject_color_trigger(
     logger.info(f"ColorTriggerEvent 삽입: {color_hex} @ ({x_ratio:.3f}, {y_ratio:.3f})")
 
 
-def inject_text_input(text: str) -> bool:
+def inject_text_input(
+    text: str,
+    *,
+    delay_override_ms: int | None = None,
+) -> bool:
     """열린 pause 경계에 TextInputEvent를 ordered capture stream으로 삽입한다."""
     if not _recording or not text or _raw_queue is None:
         return False
@@ -543,6 +547,7 @@ def inject_text_input(text: str) -> bool:
             id=secrets.token_hex(4),
             type="text_input",
             timestamp_ns=timestamp_ns,
+            delay_override_ms=delay_override_ms,
             text=text,
         )
     )

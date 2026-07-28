@@ -37,6 +37,12 @@ def test_main_window_registers_f9_quick_text_hotkey_and_routes_it() -> None:
     assert "self._capture_quick_text()" in _SOURCE
 
 
+def test_settings_menu_exposes_f9_text_playback_delay_default() -> None:
+    assert 'QAction("F9 텍스트 재생 대기...", self)' in _SOURCE
+    assert "act_quick_text_delay.triggered.connect(self._show_quick_text_delay_settings)" in _SOURCE
+    assert "def _show_quick_text_delay_settings" in _SOURCE
+
+
 def test_delete_mouse_moves_requires_confirmation_dialog() -> None:
     """mouse_move 영구 삭제는 확인창을 거쳐야 한다."""
     module = ast.parse(_EDITOR_SOURCE)

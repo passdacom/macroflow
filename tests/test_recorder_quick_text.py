@@ -37,7 +37,10 @@ def test_quick_text_discards_all_pause_activity_and_excludes_pause_time(
         recorder._raw_queue.append(
             ("k", start_ns + 60_000_000_000, 0x0100, (0x43, 0, 0))
         )
-        assert recorder.inject_text_input("긴 문구를 붙여넣습니다")
+        assert recorder.inject_text_input(
+            "긴 문구를 붙여넣습니다",
+            delay_override_ms=100,
+        )
         recorder._raw_queue.append(
             ("k", start_ns + 70_000_000_000, 0x0101, (0x43, 0, 0))
         )
@@ -59,6 +62,7 @@ def test_quick_text_discards_all_pause_activity_and_excludes_pause_time(
     text = macro.events[1]
     assert isinstance(text, TextInputEvent)
     assert text.text == "긴 문구를 붙여넣습니다"
+    assert text.delay_override_ms == 100
     assert text.timestamp_ns == 50_000_000_000
     assert macro.events[2].timestamp_ns == 51_000_000_000
     assert macro.raw_events == macro.events
