@@ -49,6 +49,13 @@ from .playback_repeat import (
     range_playback_options,
 )
 from .quick_text_dialog import QuickTextDialog
+from .quick_text_settings import (
+    QUICK_TEXT_DELAY_KEY,
+    quick_text_delay_input,
+)
+from .quick_text_settings import (
+    quick_text_delay_override as _read_quick_text_delay_override,
+)
 from .sequencer import MacroSequencerWidget
 
 logger = logging.getLogger(__name__)
@@ -59,6 +66,14 @@ def _set_quick_text_clipboard(text: str) -> bool:
     from macroflow import win32
 
     return win32.set_clipboard_text(text)
+
+
+def _quick_text_delay_override() -> int | None:
+    """Return the app-level delay applied to newly recorded F9 text events."""
+    from PyQt6.QtCore import QSettings
+
+    return _read_quick_text_delay_override(QSettings("MacroFlow", "MacroFlow"))
+
 
 # ── Win32 핫키 상수 ────────────────────────────────────────────────────────────
 _HOTKEY_RECORD = 1
@@ -244,6 +259,13 @@ class MainWindow(QMainWindow):
         )
         act_color_settings.triggered.connect(self._show_color_check_settings)
         settings_menu.addAction(act_color_settings)
+
+        act_quick_text_delay = QAction("F9 텍스트 재생 대기...", self)
+        act_quick_text_delay.setToolTip(
+            "녹화 중 F9로 삽입하는 텍스트 동작의 기본 재생 대기를 설정합니다"
+        )
+        act_quick_text_delay.triggered.connect(self._show_quick_text_delay_settings)
+        settings_menu.addAction(act_quick_text_delay)
 
     def _setup_toolbar(self) -> None:
         # ── 1행: 녹화 / 재생 / 중지 ──────────────────────────────────────────
@@ -792,7 +814,10 @@ class MainWindow(QMainWindow):
                     "대상 창에 텍스트를 모두 입력하지 못해 매크로에는 기록하지 않았습니다.",
                 )
                 return
-            if not recorder.inject_text_input(text):
+            if not recorder.inject_text_input(
+                text,
+                delay_override_ms=_quick_text_delay_override(),
+            ):
                 QMessageBox.warning(
                     self,
                     "텍스트 기록 실패",
@@ -1369,6 +1394,31 @@ class MainWindow(QMainWindow):
 
         self._sb_state.setText(f"● 녹화 중  |  색상 체크 삽입: {color_hex}  ({x}, {y})")
         logger.info(f"색상 체크 삽입: {color_hex} @ pixel ({x}, {y})")
+
+    def _show_quick_text_delay_settings(self) -> None:
+        """새 F9 TextInputEvent에 적용할 앱 공통 재생 대기 기본값을 편집한다."""
+        from PyQt6.QtCore import QSettings
+
+        settings = QSettings("MacroFlow", "MacroFlow")
+        current = quick_text_delay_input(settings)
+        value, ok = QInputDialog.getInt(
+            self,
+            "F9 텍스트 재생 대기",
+            "새로 녹화하는 F9 텍스트 동작의 실행 전 대기 (ms):\n"
+            "-1 = 녹화 타이밍 사용\n"
+            " 0 = 직전 이벤트 종료 뒤 즉시 실행\n"
+            "양수 = 지정 시간 대기 (재생 속도 배율 적용)\n"
+            "권장 기본값 = 100 ms",
+            current,
+            -1,
+            60_000,
+            10,
+        )
+        if not ok:
+            return
+        settings.setValue(QUICK_TEXT_DELAY_KEY, value)
+        label = "녹화 타이밍" if value < 0 else f"{value} ms"
+        self._sb_state.setText(f"F9 텍스트 기본 재생 대기: {label}")
 
     def _show_color_check_settings(self) -> None:
         """현재 매크로와 앱 공통 색 체크 timeout/폴링 기본값을 편집한다."""

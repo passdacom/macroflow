@@ -122,7 +122,8 @@ def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> 
         calls = []
         with patch("macroflow.recorder.is_paused", return_value=False), \\
              patch("macroflow.recorder.pause_recording", side_effect=lambda: calls.append("pause") or True), \\
-             patch("macroflow.recorder.inject_text_input", side_effect=lambda text: calls.append(("record", text)) or True), \\
+             patch("macroflow.ui.main_window._quick_text_delay_override", return_value=100), \\
+             patch("macroflow.recorder.inject_text_input", side_effect=lambda text, *, delay_override_ms: calls.append(("record", text, delay_override_ms)) or True), \\
              patch("macroflow.recorder.suppress_next_key_release", side_effect=lambda keys: calls.append(("suppress", keys))), \\
              patch("macroflow.recorder.resume_recording", side_effect=lambda: calls.append("resume") or True), \\
              patch("macroflow.win32.get_foreground_window", return_value=777), \\
@@ -138,13 +139,42 @@ def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> 
             ("restore", 777),
             ("clipboard", "아주 긴 텍스트"),
             "paste",
-            ("record", "아주 긴 텍스트"),
+            ("record", "아주 긴 텍스트", 100),
             ("restore", 777),
             ("suppress", {0x11, 0xA2, 0xA3}),
             "resume",
         ]
         host._set_recording_paused_ui.assert_any_call(True)
         host._set_recording_paused_ui.assert_called_with(False)
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_f9_text_delay_settings_persists_app_default_without_macro() -> None:
+    result = _run_offscreen(
+        """
+        import tempfile
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtCore import QSettings
+        from macroflow.ui.main_window import MainWindow
+        from macroflow.ui.quick_text_settings import QUICK_TEXT_DELAY_KEY
+
+        with tempfile.TemporaryDirectory() as directory:
+            QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+            QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, directory)
+            host = Mock()
+
+            with patch("macroflow.ui.main_window.QInputDialog.getInt", return_value=(250, True)):
+                MainWindow._show_quick_text_delay_settings(host)
+
+            settings = QSettings("MacroFlow", "MacroFlow")
+            assert int(settings.value(QUICK_TEXT_DELAY_KEY)) == 250
+            host._sb_state.setText.assert_called_once_with(
+                "F9 텍스트 기본 재생 대기: 250 ms"
+            )
         """
     )
 
