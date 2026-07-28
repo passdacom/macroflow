@@ -8,6 +8,7 @@ Claude Code가 Linux 서버에서 작업할 때도 import 오류 없이 동작�
 import sys
 
 if sys.platform == "win32":
+    from .clipboard import set_clipboard_text
     from .dpi import get_logical_screen_size, pixel_to_ratio, ratio_to_pixel
     from .hooks import (
         find_window,
@@ -25,17 +26,20 @@ if sys.platform == "win32":
         send_mouse_drag,
         send_mouse_move,
         send_mouse_wheel,
+        send_paste,
         send_text,
     )
-    from .window import bring_window_to_foreground
+    from .window import bring_window_to_foreground, get_foreground_window, is_foreground_window
 else:
     # 비-Windows 환경: Mock 자동 주입 (개발·테스트용)
     from .mock import (
         bring_window_to_foreground,
         find_window,
         get_cursor_pos,
+        get_foreground_window,
         get_logical_screen_size,
         get_pixel_color,
+        is_foreground_window,
         pixel_to_ratio,
         ratio_to_pixel,
         send_key,
@@ -44,7 +48,9 @@ else:
         send_mouse_drag,
         send_mouse_move,
         send_mouse_wheel,
+        send_paste,
         send_text,
+        set_clipboard_text,
         start_emergency_hook,
         start_hook,
         stop_emergency_hook,
@@ -54,6 +60,8 @@ else:
 __all__ = [
     "bring_window_to_foreground",
     "get_cursor_pos",
+    "get_foreground_window",
+    "is_foreground_window",
     "get_pixel_color",
     "start_hook",
     "stop_hook",
@@ -66,7 +74,9 @@ __all__ = [
     "send_mouse_move",
     "send_mouse_wheel",
     "send_key",
+    "send_paste",
     "send_text",
+    "set_clipboard_text",
     "get_logical_screen_size",
     "ratio_to_pixel",
     "pixel_to_ratio",

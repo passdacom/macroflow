@@ -12,6 +12,7 @@ import ctypes
 import ctypes.wintypes
 import logging
 import sys
+import time
 
 assert sys.platform == "win32", "sendinput.py는 Windows에서만 실행 가능합니다"
 
@@ -39,6 +40,13 @@ MOUSEEVENTF_ABSOLUTE: int = 0x8000
 KEYEVENTF_KEYUP: int = 0x0002
 KEYEVENTF_SCANCODE: int = 0x0008
 KEYEVENTF_UNICODE: int = 0x0004
+
+_TEXT_INPUT_BATCH_SIZE: int = 256
+_TEXT_INPUT_BATCH_DELAY_S: float = 0.005
+_TEXT_INPUT_DRAIN_DELAY_S: float = 0.050
+_PASTE_INPUT_DRAIN_DELAY_S: float = 0.100
+_VK_CONTROL: int = 0x11
+_VK_V: int = 0x56
 
 # 버튼 이름 → (down flag, up flag) 매핑
 _BUTTON_FLAGS: dict[str, tuple[int, int]] = {
@@ -125,7 +133,7 @@ def _mouse_input(x: int, y: int, flags: int) -> _INPUT:
     return inp
 
 
-def _send(*inputs: _INPUT) -> None:
+def _send(*inputs: _INPUT) -> bool:
     arr = (_INPUT * len(inputs))(*inputs)
     sent: int = _user32.SendInput(len(inputs), arr, _INPUT_SIZE)
     if sent != len(inputs):
@@ -133,6 +141,8 @@ def _send(*inputs: _INPUT) -> None:
             "SendInput: 요청 %d개 중 %d개만 전송됨 (UIPI 차단 또는 권한 문제 가능성)",
             len(inputs), sent,
         )
+        return False
+    return True
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -250,7 +260,32 @@ def send_key(vk_code: int, is_down: bool) -> None:
     _send(inp)
 
 
-def send_text(text: str) -> None:
+def send_paste() -> bool:
+    """Send one Ctrl+V chord and allow the target control to consume the paste."""
+    inputs: list[_INPUT] = []
+    for vk_code, is_down in (
+        (_VK_CONTROL, True),
+        (_VK_V, True),
+        (_VK_V, False),
+        (_VK_CONTROL, False),
+    ):
+        flags = 0 if is_down else KEYEVENTF_KEYUP
+        inp = _INPUT(type=INPUT_KEYBOARD)
+        inp._input.ki = _KEYBDINPUT(
+            wVk=vk_code,
+            wScan=0,
+            dwFlags=flags,
+            time=0,
+            dwExtraInfo=0,
+        )
+        inputs.append(inp)
+    if not _send(*inputs):
+        return False
+    time.sleep(_PASTE_INPUT_DRAIN_DELAY_S)
+    return True
+
+
+def send_text(text: str) -> bool:
     """Unicode 문자열을 KEYEVENTF_UNICODE로 문자 단위 전송한다.
 
     키보드 배치·IME 상태에 무관하게 입력한 문자를 그대로 전송한다.
@@ -293,4 +328,11 @@ def send_text(text: str) -> None:
             inputs.extend([inp_down, inp_up])
 
     if inputs:
-        _send(*inputs)
+        for start in range(0, len(inputs), _TEXT_INPUT_BATCH_SIZE):
+            if not _send(*inputs[start : start + _TEXT_INPUT_BATCH_SIZE]):
+                return False
+            time.sleep(_TEXT_INPUT_BATCH_DELAY_S)
+        # SendInput 성공은 queue 삽입을 의미한다. 마지막 batch가 원래 foreground
+        # control에서 소비되기 전에 Qt modal parent가 focus를 회수하지 않도록 drain한다.
+        time.sleep(_TEXT_INPUT_DRAIN_DELAY_S)
+    return True

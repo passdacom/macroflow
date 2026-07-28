@@ -10,7 +10,7 @@
 import sys
 from pathlib import Path
 
-ROOT = Path(SPECPATH).parent   # macro-harness/ 루트
+ROOT = Path(SPECPATH).parent  # repository root (SPECPATH is build/)
 
 a = Analysis(
     [str(ROOT / 'src' / 'macroflow' / 'main.py')],

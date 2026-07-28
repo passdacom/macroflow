@@ -48,17 +48,27 @@ from .playback_repeat import (
     full_playback_options,
     range_playback_options,
 )
+from .quick_text_dialog import QuickTextDialog
 from .sequencer import MacroSequencerWidget
 
 logger = logging.getLogger(__name__)
+
+
+def _set_quick_text_clipboard(text: str) -> bool:
+    """Set only user-confirmed quick text without reading existing clipboard data."""
+    from macroflow import win32
+
+    return win32.set_clipboard_text(text)
 
 # ── Win32 핫키 상수 ────────────────────────────────────────────────────────────
 _HOTKEY_RECORD = 1
 _HOTKEY_PLAY = 2
 _HOTKEY_PAUSE = 3
+_HOTKEY_QUICK_TEXT = 4
 _VK_F6 = 0x75
 _VK_F7 = 0x76
 _VK_F8 = 0x77
+_VK_F9 = 0x78
 _WM_HOTKEY = 0x0312
 
 _MAX_RECENT_SAVES = 10
@@ -89,6 +99,7 @@ class MainWindow(QMainWindow):
         self._hotkeys_registered: bool = False
         self._shortcut_fallback_registered: bool = False
         self._paused: bool = False
+        self._quick_text_session_active: bool = False
         self._playback_pause_event = threading.Event()
         self._recording_stop_thread: threading.Thread | None = None
 
@@ -567,14 +578,16 @@ class MainWindow(QMainWindow):
             ok1 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_RECORD, 0, _VK_F6))
             ok2 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_PLAY, 0, _VK_F7))
             ok3 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_PAUSE, 0, _VK_F8))
-            if ok1 and ok2 and ok3:
+            ok4 = bool(ctypes.windll.user32.RegisterHotKey(hwnd, _HOTKEY_QUICK_TEXT, 0, _VK_F9))
+            if ok1 and ok2 and ok3 and ok4:
                 self._hotkeys_registered = True
-                logger.info("글로벌 핫키 등록 완료: F6 (녹화), F7 (재생), F8 (일시중지)")
+                logger.info("글로벌 핫키 등록 완료: F6/F7/F8/F9")
             else:
                 for hotkey_id, registered in (
                     (_HOTKEY_RECORD, ok1),
                     (_HOTKEY_PLAY, ok2),
                     (_HOTKEY_PAUSE, ok3),
+                    (_HOTKEY_QUICK_TEXT, ok4),
                 ):
                     if registered:
                         ctypes.windll.user32.UnregisterHotKey(hwnd, hotkey_id)
@@ -590,8 +603,9 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("F6"), self).activated.connect(self._handle_f6)
         QShortcut(QKeySequence("F7"), self).activated.connect(self._toggle_playback)
         QShortcut(QKeySequence("F8"), self).activated.connect(self._toggle_pause)
+        QShortcut(QKeySequence("F9"), self).activated.connect(self._capture_quick_text)
         self._shortcut_fallback_registered = True
-        logger.info("QShortcut 폴백 핫키 등록: F6/F7/F8 (앱 포커스 상태에서만 작동)")
+        logger.info("QShortcut 폴백 핫키 등록: F6/F7/F8/F9 (앱 포커스 상태에서만 작동)")
 
     def _reject_f6_capture_if_busy(self) -> None:
         if self._state == "idle" and not self._sequencer.is_running():
@@ -632,6 +646,7 @@ class MainWindow(QMainWindow):
         ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_RECORD)
         ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_PLAY)
         ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_PAUSE)
+        ctypes.windll.user32.UnregisterHotKey(hwnd, _HOTKEY_QUICK_TEXT)
         self._hotkeys_registered = False
 
     def nativeEvent(  # type: ignore[override]
@@ -664,6 +679,9 @@ class MainWindow(QMainWindow):
                     return True, 0
                 if msg.wParam == _HOTKEY_PAUSE:
                     self._toggle_pause()
+                    return True, 0
+                if msg.wParam == _HOTKEY_QUICK_TEXT:
+                    self._capture_quick_text()
                     return True, 0
         return False, 0
 
@@ -699,14 +717,126 @@ class MainWindow(QMainWindow):
             self._sb_hint.setText("더블클릭: 매크로 로드  |  우클릭: 시퀀서 추가")
         else:
             self._sb_hint.setText(
-                "F6: 녹화  |  F7: 재생/색트리거  |  F8: 일시중지/계속  |  ESC×3: 긴급 중지"
+                "F6: 녹화  |  F7: 재생/색트리거  |  F8: 일시중지  |  F9: 텍스트 기록  |  ESC×3"
             )
 
     # ── 상태 머신 ─────────────────────────────────────────────────────────────
 
+    def _set_recording_paused_ui(self, paused: bool) -> None:
+        self._paused = paused
+        self._overlay.set_paused(paused)
+        self._sb_state.setText(
+            "Ⅱ 이어서 녹화 일시중지"
+            if paused and self._append_recording_mode
+            else "Ⅱ 녹화 일시중지"
+            if paused
+            else "● 이어서 녹화 중"
+            if self._append_recording_mode
+            else "● 녹화 중"
+        )
+        self._update_toolbar()
+
+    def _capture_quick_text(self) -> None:
+        """F9: composer 전체 구간을 제외하고 semantic text event를 기록·적용한다."""
+        if self._state != "recording":
+            return
+        if self._quick_text_session_active:
+            self._sb_state.setText("F9 텍스트 입력이 이미 열려 있습니다")
+            return
+        from macroflow import recorder, win32
+
+        self._quick_text_session_active = True
+        owns_pause = False
+        target_hwnd = 0
+        restored = False
+        focus_failure_warned = False
+        try:
+            owns_pause = not recorder.is_paused()
+            if owns_pause and not recorder.pause_recording():
+                return
+            target_hwnd = win32.get_foreground_window()
+            self._set_recording_paused_ui(True)
+
+            dialog = QuickTextDialog(self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            text = dialog.text()
+            if not text:
+                self._sb_state.setText("빈 텍스트는 기록하지 않았습니다")
+                return
+            if len(text) > 100_000:
+                QMessageBox.warning(
+                    self,
+                    "텍스트가 너무 깁니다",
+                    "텍스트는 100,000자까지 기록할 수 있습니다.",
+                )
+                return
+
+            restored = (
+                target_hwnd > 0
+                and win32.bring_window_to_foreground(target_hwnd)
+                and win32.is_foreground_window(target_hwnd)
+            )
+            if not restored:
+                focus_failure_warned = True
+                QMessageBox.warning(
+                    self,
+                    "대상 창 복원 실패",
+                    "원래 텍스트 입력 창을 확인할 수 없어 문구를 기록하지 않았습니다.",
+                )
+                return
+            if not _set_quick_text_clipboard(text) or not win32.send_paste():
+                QMessageBox.warning(
+                    self,
+                    "텍스트 입력 실패",
+                    "대상 창에 텍스트를 모두 입력하지 못해 매크로에는 기록하지 않았습니다.",
+                )
+                return
+            if not recorder.inject_text_input(text):
+                QMessageBox.warning(
+                    self,
+                    "텍스트 기록 실패",
+                    "대상 창에는 텍스트가 입력됐지만 매크로 기록에 실패했습니다.",
+                )
+                return
+            self._sb_state.setText("텍스트 동작을 기록했습니다")
+        finally:
+            final_focus_restored = (
+                target_hwnd > 0
+                and win32.bring_window_to_foreground(target_hwnd)
+                and win32.is_foreground_window(target_hwnd)
+            )
+            if (
+                not final_focus_restored
+                and not focus_failure_warned
+                and self._state == "recording"
+            ):
+                QMessageBox.warning(
+                    self,
+                    "대상 창 복원 실패",
+                    "원래 입력 창을 다시 확인할 수 없어 녹화를 일시중지 상태로 유지합니다.",
+                )
+            if (
+                owns_pause
+                and self._state == "recording"
+                and final_focus_restored
+                and recorder.resume_recording()
+            ):
+                self._set_recording_paused_ui(False)
+            elif owns_pause and self._state == "recording":
+                self._set_recording_paused_ui(True)
+            elif not owns_pause and self._state == "recording":
+                self._set_recording_paused_ui(True)
+            self._quick_text_session_active = False
+
     def _toggle_pause(self) -> None:
         """F8: 현재 녹화 또는 일반 재생을 일시중지/재개한다."""
         if self._state == "recording":
+            if self._quick_text_session_active:
+                self._sb_state.setText(
+                    "F9 텍스트 입력 중에는 일시정지를 해제할 수 없습니다"
+                )
+                return
             from macroflow import recorder
 
             changed = (
@@ -716,17 +846,8 @@ class MainWindow(QMainWindow):
             )
             if not changed:
                 return
-            self._paused = not self._paused
-            self._overlay.set_paused(self._paused)
-            self._sb_state.setText(
-                "Ⅱ 이어서 녹화 일시중지"
-                if self._paused and self._append_recording_mode
-                else "Ⅱ 녹화 일시중지"
-                if self._paused
-                else "● 이어서 녹화 중"
-                if self._append_recording_mode
-                else "● 녹화 중"
-            )
+            self._set_recording_paused_ui(not self._paused)
+            return
         elif self._state == "playing":
             from macroflow import player
 
@@ -1712,12 +1833,15 @@ class MainWindow(QMainWindow):
 
         # 파일명 입력 받기
         suggested = self._current_file.stem if self._current_file else "즐겨찾기"
-        name, ok = QInputDialog.getText(
-            self,
-            "즐겨찾기 이름 입력",
-            "저장할 이름을 입력하세요 (파일명으로 사용됩니다):",
-            text=suggested,
-        )
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setWindowTitle("즐겨찾기 이름 입력")
+        dialog.setLabelText("저장할 이름을 입력하세요 (파일명으로 사용됩니다):")
+        dialog.setTextValue(suggested)
+        dialog.setMinimumWidth(640)
+        dialog.resize(640, 160)
+        ok = dialog.exec() == QDialog.DialogCode.Accepted
+        name = dialog.textValue()
         if self._sequence_file_mutation_blocked():
             return
         if not ok or not name.strip():

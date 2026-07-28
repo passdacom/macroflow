@@ -52,3 +52,21 @@ def bring_window_to_foreground(hwnd: int) -> bool:
     user32.SetForegroundWindow.argtypes = [ctypes.wintypes.HWND]
     user32.SetForegroundWindow.restype = ctypes.wintypes.BOOL
     return _activate_with_user32(user32, hwnd)
+
+
+def get_foreground_window() -> int:
+    """Return the current native foreground HWND, or 0 when unavailable."""
+    if sys.platform != "win32":
+        return 0
+    import ctypes
+    import ctypes.wintypes
+
+    get_foreground = ctypes.windll.user32.GetForegroundWindow
+    get_foreground.argtypes = []
+    get_foreground.restype = ctypes.wintypes.HWND
+    return int(get_foreground() or 0)
+
+
+def is_foreground_window(hwnd: int) -> bool:
+    """Read back whether ``hwnd`` is currently foreground."""
+    return hwnd > 0 and get_foreground_window() == hwnd

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from macroflow.types import KeyEvent, MacroData, MacroMeta, MacroSettings, MouseMoveEvent
 from macroflow.ui.append_recording import append_recording, shift_event_timestamps
+from macroflow.ui.editor_actions import delete_after_group
+from macroflow.ui.editor_history import macro_with_events
 
 
 def _macro(events: list[KeyEvent | MouseMoveEvent]) -> MacroData:
@@ -66,6 +68,49 @@ def test_append_recording_places_new_events_after_base_last_event_with_gap() -> 
     assert combined.meta is base.meta
     assert combined.settings is base.settings
     assert combined.is_edited is True
+
+
+def test_append_recording_default_continues_exactly_at_base_completion() -> None:
+    base = _macro([_key("old", 50_000_000_000)])
+    recorded = _macro([_move("new1", 3_000_000_000), _key("new2", 3_400_000_000)])
+
+    combined = append_recording(base, recorded)
+
+    assert [event.timestamp_ns for event in combined.events] == [
+        50_000_000_000,
+        50_000_000_000,
+        50_400_000_000,
+    ]
+
+
+def test_delete_tail_then_append_resumes_at_selected_action_completion() -> None:
+    original = _macro(
+        [
+            _key("before", 10_000_000_000),
+            _key("selected", 50_000_000_000),
+            _move("deleted-move", 50_100_000_000),
+            _key("deleted-tail", 100_000_000_000),
+        ]
+    )
+    trimmed = macro_with_events(original, delete_after_group(original.events, [1]))
+    newly_recorded = _macro(
+        [_move("continued", 4_000_000_000), _key("continued-2", 4_500_000_000)]
+    )
+
+    combined = append_recording(trimmed, newly_recorded)
+
+    assert [event.id for event in combined.events] == [
+        "before",
+        "selected",
+        "continued",
+        "continued-2",
+    ]
+    assert [event.timestamp_ns for event in combined.events] == [
+        10_000_000_000,
+        50_000_000_000,
+        50_000_000_000,
+        50_500_000_000,
+    ]
 
 
 def test_append_recording_empty_capture_returns_edited_copy_without_timestamp_error() -> None:

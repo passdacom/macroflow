@@ -61,6 +61,7 @@ class _FakeMenu:
 
 def _install_fake_pyqt(monkeypatch: pytest.MonkeyPatch) -> None:
     qtcore = types.ModuleType("PyQt6.QtCore")
+    qtcore.QItemSelectionModel = MagicMock()
     qtcore.QPoint = MagicMock()
     qtcore.Qt = MagicMock()
     qtcore.pyqtSignal = _Signal
@@ -191,6 +192,7 @@ def test_single_color_checked_click_menu_includes_color_policy_submenu(
 
     assert _action_texts(menu) == [
         "▶ 이 이벤트만 실행",
+        "▶ 이 동작부터 끝까지 1회 재생",
         "---",
         "재생 대기 설정(&D)...",
         "위치 변경(&P)...",
@@ -199,6 +201,7 @@ def test_single_color_checked_click_menu_includes_color_policy_submenu(
         "🖱 클릭 추가(&L)...",
         "📝 비고 편집(&N)...",
         "---",
+        "🗑 이 동작 이후 모두 삭제...",
     ]
     assert [submenu.title for submenu in menu.submenus] == ["불일치 시 동작(&M)"]
     submenu = menu.submenus[0]
@@ -227,6 +230,7 @@ def test_text_input_menu_includes_text_edit_and_common_insert_actions(
 
     assert _action_texts(menu) == [
         "▶ 이 이벤트만 실행",
+        "▶ 이 동작부터 끝까지 1회 재생",
         "---",
         "재생 대기 설정(&D)...",
         "💬 텍스트 편집(&E)...",
@@ -234,6 +238,7 @@ def test_text_input_menu_includes_text_edit_and_common_insert_actions(
         "🖱 클릭 추가(&L)...",
         "📝 비고 편집(&N)...",
         "---",
+        "🗑 이 동작 이후 모두 삭제...",
     ]
     actions = [action for action in menu.actions if not isinstance(action, str)]
     assert all(action.triggered.connect.called for action in actions)

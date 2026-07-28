@@ -28,6 +28,15 @@ def test_main_window_registers_f8_pause_hotkey_and_routes_it() -> None:
     assert "self._toggle_pause()" in _SOURCE
 
 
+def test_main_window_registers_f9_quick_text_hotkey_and_routes_it() -> None:
+    assert "_HOTKEY_QUICK_TEXT = 4" in _SOURCE
+    assert "_VK_F9 = 0x78" in _SOURCE
+    assert "RegisterHotKey(hwnd, _HOTKEY_QUICK_TEXT, 0, _VK_F9)" in _SOURCE
+    assert "UnregisterHotKey(hwnd, _HOTKEY_QUICK_TEXT)" in _SOURCE
+    assert "if msg.wParam == _HOTKEY_QUICK_TEXT:" in _SOURCE
+    assert "self._capture_quick_text()" in _SOURCE
+
+
 def test_delete_mouse_moves_requires_confirmation_dialog() -> None:
     """mouse_move 영구 삭제는 확인창을 거쳐야 한다."""
     module = ast.parse(_EDITOR_SOURCE)

@@ -41,7 +41,8 @@ from macroflow.win32 import (
     send_mouse_drag,
     send_mouse_move,
     send_mouse_wheel,
-    send_text,
+    send_paste,
+    set_clipboard_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -351,7 +352,8 @@ def _execute_event(
 
     elif isinstance(event, TextInputEvent):
         if event.text and not _stop_flag.is_set():
-            send_text(event.text)
+            if not set_clipboard_text(event.text) or not send_paste():
+                raise PlaybackError("텍스트 입력을 대상 창에 붙여넣지 못했습니다")
 
     elif isinstance(event, WaitEvent):
         _wait_active(event.duration_ms / state.speed / 1000.0)

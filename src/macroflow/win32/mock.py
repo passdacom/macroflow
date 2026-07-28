@@ -74,6 +74,14 @@ def bring_window_to_foreground(hwnd: int) -> bool:
     return False
 
 
+def get_foreground_window() -> int:
+    return 0
+
+
+def is_foreground_window(hwnd: int) -> bool:
+    return False
+
+
 def find_window(title_contains: str) -> int | None:
     """FindWindow Mock — 항상 None 반환."""
     logger.debug(f"[Mock] find_window('{title_contains}') → None")
@@ -107,8 +115,19 @@ def send_key(vk_code: int, is_down: bool) -> None:
     logger.debug(f"[Mock] send_key(vk={vk_code:#04x}, down={is_down})")
 
 
-def send_text(text: str) -> None:
-    logger.debug(f"[Mock] send_text({text!r})")
+def send_text(text: str) -> bool:
+    logger.debug("[Mock] send_text(length=%d)", len(text))
+    return True
+
+
+def send_paste() -> bool:
+    logger.debug("[Mock] send_paste()")
+    return True
+
+
+def set_clipboard_text(text: str) -> bool:
+    logger.debug("[Mock] set_clipboard_text(length=%d)", len(text))
+    return True
 
 
 # ── DPI / 해상도 ──────────────────────────────────────────
