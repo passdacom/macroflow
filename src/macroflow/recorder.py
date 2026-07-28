@@ -16,7 +16,7 @@ import secrets
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import datetime
 
 from macroflow import __version__
@@ -134,6 +134,7 @@ _recording_pressed_keys: set[int] = set()
 _recording_pressed_mouse: set[str] = set()
 _suppressed_pause_keys: set[int] = set()
 _suppressed_pause_mouse: set[str] = set()
+_suppressed_release_groups: list[frozenset[int]] = []
 _screen_w: int = 1920
 _screen_h: int = 1080
 _esc_press_times: deque[float] = deque(maxlen=3)
@@ -314,6 +315,20 @@ def _process_raw(
         vk_code = data[0]
         is_down = w_param in (_WM_KEYDOWN, _WM_SYSKEYDOWN)
         is_up = w_param in (_WM_KEYUP, _WM_SYSKEYUP)
+        with _pause_lock:
+            release_group = next(
+                (group for group in _suppressed_release_groups if vk_code in group),
+                None,
+            )
+            if release_group is not None:
+                _suppressed_release_groups.remove(release_group)
+        if (
+            release_group is not None
+            and is_up
+            and not any(code in _recording_pressed_keys for code in release_group)
+        ):
+            _suppressed_pause_keys.difference_update(release_group)
+            return None
         if pause_boundary_ns is not None:
             if is_down:
                 if vk_code not in _recording_pressed_keys:
@@ -405,6 +420,7 @@ def start_recording(
     with _pause_lock:
         _pause_intervals = []
         _pause_started_ns = None
+        _suppressed_release_groups.clear()
     _recording_pressed_keys.clear()
     _recording_pressed_mouse.clear()
     _suppressed_pause_keys.clear()
@@ -532,6 +548,21 @@ def inject_text_input(text: str) -> bool:
     )
     logger.info("TextInputEvent 삽입")
     return True
+
+
+def suppress_next_key_release(vk_codes: Iterable[int]) -> None:
+    """Suppress one trailing key-up from a just-finished paused UI gesture.
+
+    ``vk_codes`` may contain generic/left/right variants of the same modifier.
+    The first matching transition consumes the whole group: a key-up is dropped,
+    while a new key-down merely clears the fence and is recorded normally.
+    """
+    group = frozenset(vk_codes)
+    if not group:
+        return
+    with _pause_lock:
+        if group not in _suppressed_release_groups:
+            _suppressed_release_groups.append(group)
 
 
 def is_recording() -> bool:

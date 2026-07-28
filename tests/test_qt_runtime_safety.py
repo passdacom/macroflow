@@ -123,6 +123,7 @@ def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> 
         with patch("macroflow.recorder.is_paused", return_value=False), \\
              patch("macroflow.recorder.pause_recording", side_effect=lambda: calls.append("pause") or True), \\
              patch("macroflow.recorder.inject_text_input", side_effect=lambda text: calls.append(("record", text)) or True), \\
+             patch("macroflow.recorder.suppress_next_key_release", side_effect=lambda keys: calls.append(("suppress", keys))), \\
              patch("macroflow.recorder.resume_recording", side_effect=lambda: calls.append("resume") or True), \\
              patch("macroflow.win32.get_foreground_window", return_value=777), \\
              patch("macroflow.win32.bring_window_to_foreground", side_effect=lambda hwnd: calls.append(("restore", hwnd)) or True), \\
@@ -139,6 +140,7 @@ def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> 
             "paste",
             ("record", "아주 긴 텍스트"),
             ("restore", 777),
+            ("suppress", {0x11, 0xA2, 0xA3}),
             "resume",
         ]
         host._set_recording_paused_ui.assert_any_call(True)

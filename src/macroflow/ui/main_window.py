@@ -820,9 +820,14 @@ class MainWindow(QMainWindow):
                 owns_pause
                 and self._state == "recording"
                 and final_focus_restored
-                and recorder.resume_recording()
             ):
-                self._set_recording_paused_ui(False)
+                # Ctrl+Enter는 dialog를 Ctrl key-up보다 먼저 닫을 수 있다.
+                # 재개 직후 도착하는 해당 release만 녹화되지 않도록 fence를 둔다.
+                recorder.suppress_next_key_release({0x11, 0xA2, 0xA3})
+                if recorder.resume_recording():
+                    self._set_recording_paused_ui(False)
+                else:
+                    self._set_recording_paused_ui(True)
             elif owns_pause and self._state == "recording":
                 self._set_recording_paused_ui(True)
             elif not owns_pause and self._state == "recording":

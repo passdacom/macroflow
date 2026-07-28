@@ -90,3 +90,45 @@ def test_f9_hotkey_is_never_converted_to_raw_key_event() -> None:
 
     assert recorder._convert_raw(("k", 100, 0x0100, (0x78, 0, 0))) is None
     assert recorder._convert_raw(("k", 200, 0x0101, (0x78, 0, 0))) is None
+
+
+def test_quick_text_commit_suppresses_late_ctrl_release_only() -> None:
+    """Ctrl+Enter 완료 후 pause 밖에서 도착한 Ctrl key-up만 폐기한다."""
+    recorder._rec_start_ns = 0
+    recorder._pause_intervals = [(100, 200)]
+    recorder._pause_started_ns = None
+    recorder._recording_pressed_keys.clear()
+    recorder._suppressed_pause_keys.clear()
+
+    # Composer 안의 Ctrl-down은 이미 pause suppression 상태로 처리된 경우도 있다.
+    assert recorder._process_raw(("k", 150, 0x0100, (0xA2, 0, 0))) is None
+    assert 0xA2 in recorder._suppressed_pause_keys
+
+    recorder.suppress_next_key_release({0x11, 0xA2, 0xA3})
+
+    assert recorder._process_raw(("k", 210, 0x0101, (0xA2, 0, 0))) is None
+    assert 0xA2 not in recorder._suppressed_pause_keys
+
+    next_down = recorder._process_raw(("k", 300, 0x0100, (0xA2, 0, 0)))
+    next_up = recorder._process_raw(("k", 310, 0x0101, (0xA2, 0, 0)))
+    assert next_down is not None and next_down.type == "key_down"
+    assert next_up is not None and next_up.type == "key_up"
+
+
+def test_quick_text_release_fence_preserves_ctrl_held_before_pause() -> None:
+    """F9 전에 기록된 Ctrl-down은 release fence가 짝 key-up을 삼키면 안 된다."""
+    recorder._rec_start_ns = 0
+    recorder._pause_intervals = [(100, 200)]
+    recorder._pause_started_ns = None
+    recorder._recording_pressed_keys.clear()
+    recorder._suppressed_pause_keys.clear()
+
+    ctrl_down = recorder._process_raw(("k", 50, 0x0100, (0xA2, 0, 0)))
+    assert ctrl_down is not None and ctrl_down.type == "key_down"
+
+    recorder.suppress_next_key_release({0x11, 0xA2, 0xA3})
+    ctrl_up = recorder._process_raw(("k", 150, 0x0101, (0xA2, 0, 0)))
+
+    assert ctrl_up is not None and ctrl_up.type == "key_up"
+    assert ctrl_up.timestamp_ns == 99
+    assert 0xA2 not in recorder._recording_pressed_keys
