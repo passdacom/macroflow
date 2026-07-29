@@ -42,9 +42,23 @@ from macroflow.win32 import (
 
 logger = logging.getLogger(__name__)
 
-# ── 핫키 VK 코드 — 이 키들은 raw_events에 기록하지 않는다 ─────────────────────
-# spec: 단축키 자체(F6/F7/F8/F9 key_down/key_up)는 raw_events에 기록하지 않음
-_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76, 0x77, 0x78})
+# ── 핫키 VK 코드 — 활성 운영 단축키는 raw_events에 기록하지 않는다 ────────────
+_DEFAULT_FILTERED_VK_CODES: frozenset[int] = frozenset({0x75, 0x76, 0x77, 0x78})
+_filtered_hotkey_vk_codes: frozenset[int] = _DEFAULT_FILTERED_VK_CODES
+
+
+def configure_filtered_hotkey_vk_codes(vk_codes: set[int] | frozenset[int]) -> None:
+    """Atomically replace the runtime hotkeys excluded from recording."""
+    normalized = frozenset(vk_codes)
+    if any(not isinstance(vk, int) or isinstance(vk, bool) or not 0 <= vk <= 0xFF for vk in normalized):
+        raise ValueError("hotkey virtual-key codes must be integers in 0..255")
+    global _filtered_hotkey_vk_codes
+    _filtered_hotkey_vk_codes = normalized
+
+
+def filtered_hotkey_vk_codes() -> frozenset[int]:
+    """Return the currently active recorder hotkey filter."""
+    return _filtered_hotkey_vk_codes
 
 # ── ESC×3 긴급 중지 상수 ─────────────────────────────────────────────────────
 _VK_ESCAPE: int = 0x1B
@@ -237,7 +251,7 @@ def _convert_raw(
     elif kind == "k":
         vk_code, _scan, _flags = data
         # 핫키(F6, F7, F8)는 기록하지 않는다
-        if vk_code in _FILTERED_VK_CODES:
+        if vk_code in _filtered_hotkey_vk_codes:
             return None
         if wParam in (_WM_KEYDOWN, _WM_SYSKEYDOWN):
             return KeyEvent(

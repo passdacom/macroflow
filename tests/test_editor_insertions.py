@@ -6,13 +6,13 @@ from collections.abc import Iterator
 
 import pytest
 
-from macroflow.types import AnyEvent, ColorTriggerEvent, MouseButtonEvent, TextInputEvent, WaitEvent
-from macroflow.ui.editor_insertions import (
+from macroflow.event_insertions import (
     _insert_click_events,
     _insert_color_trigger_event,
     _insert_text_input_event,
     _selected_insert_after_event_idx,
 )
+from macroflow.types import AnyEvent, ColorTriggerEvent, MouseButtonEvent, TextInputEvent, WaitEvent
 
 
 def _ids() -> Iterator[str]:

@@ -1,9 +1,12 @@
 # 변경 내역
 
-## Unreleased
+## v1.5.0 — 2026-07-29
 
 ### 추가
 
+- 설정 가능한 글로벌 운영 단축키(F1~F24, Windows 예약 F12 제외)와 에디터 내부 동작 추가 단축키
+- 텍스트 입력·클릭·색 체크 삽입을 툴바·우클릭 메뉴·키보드에서 동일한 명령으로 실행
+- 매크로 에디터와 시퀀서의 작업 흐름별 다중 행 툴바 및 현재 탭 문서용 파일 명령
 - F8 글로벌 단축키와 툴바 버튼으로 녹화·일반/구간/반복 재생 일시중지·재개
 - 우측 하단 오버레이의 `PAUSE · REC` / `PAUSE · PLAY` 상태 표시
 - 시퀀서에 매크로 사이 문구 입력·좌/우/더블클릭·색상 대기·고정 대기 단계 추가
@@ -12,6 +15,11 @@
 
 ### 안정성
 
+- 글로벌 단축키 세트의 원자적 교체·부분 실패 정리·이전 설정 rollback·degraded fail-closed 처리
+- QSettings 저장 후 sync/readback 검증과 저장 실패 시 runtime 설정 복구
+- 활성 글로벌 키에서 recorder suppression을 파생해 변경 전 키를 정상 녹화 가능
+- 설정 다이얼로그의 modal nested event loop 중 자동화 명령 차단 및 적용 직전 idle 재검증
+- 실제 Windows `RegisterHotKey` 점유 충돌과 이전 세트 복구를 검증하는 Windows 전용 테스트
 - 녹화 pause 구간의 이벤트와 경과시간을 timestamp에서 제거하고 queue 경계 이벤트 보존
 - 재생 active-time clock으로 재개 후 catch-up 실행과 timeout 소진 방지
 - pause는 열린 key·mouse gesture의 원래 release 뒤 안전 경계에서 적용
@@ -28,6 +36,9 @@
 
 ### 수정
 
+- 시퀀서 탭의 `Ctrl+O/S/Shift+S`가 매크로 파일이 아닌 현재 플로우 문서에 적용되도록 수정
+- 삽입 후 stable event ID로 새 행을 선택·스크롤·포커스하고 stale 비동기 색 캡처를 취소
+- 860px 창과 14pt 접근성 글꼴에서 필수 툴바 동작이 overflow 메뉴로 숨지 않도록 문구·폭 조정
 - 색 대기 hover 갱신을 8px 이동·50ms 유지·원위치 복귀로 강화하고 pause·stop·timeout 경계 보장
 - 클릭/드래그 판정을 재생 지연이 아닌 RAW 녹화 시간으로 고정해 색 일치 후 체크박스 클릭이 간헐적으로 drag로 변형되던 문제 수정
 

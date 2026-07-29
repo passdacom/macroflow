@@ -5,6 +5,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from macroflow.hotkey_config import DEFAULT_HOTKEY_CONFIG
+from macroflow.win32.hotkeys import MOD_NOREPEAT, native_hotkeys
+
 _SOURCE = Path("src/macroflow/ui/main_window.py").read_text(encoding="utf-8")
 _EDITOR_SOURCE = Path("src/macroflow/ui/editor.py").read_text(encoding="utf-8")
 
@@ -15,31 +18,42 @@ def test_play_toolbar_uses_stop_copy_while_playing() -> None:
     end = _SOURCE.index("def _update_range_spinboxes", start)
     method_src = _SOURCE[start:end]
 
-    assert '"⏹ 중지 (F7)" if is_play else "▶ 재생 (F7)"' in method_src
-    assert '"▶ 계속 (F8)" if self._paused else "⏸ 일시중지 (F8)"' in method_src
+    assert 'f"⏹ 중지 ({play_key})" if is_play else f"▶ 재생 ({play_key})"' in method_src
+    assert 'f"▶ 계속 ({pause_key})"' in method_src
+    assert 'f"⏸ 일시중지 ({pause_key})"' in method_src
 
 
 def test_main_window_registers_f8_pause_hotkey_and_routes_it() -> None:
-    assert "_HOTKEY_PAUSE = 3" in _SOURCE
-    assert "_VK_F8 = 0x77" in _SOURCE
-    assert "RegisterHotKey(hwnd, _HOTKEY_PAUSE, 0, _VK_F8)" in _SOURCE
-    assert "UnregisterHotKey(hwnd, _HOTKEY_PAUSE)" in _SOURCE
-    assert "if msg.wParam == _HOTKEY_PAUSE:" in _SOURCE
+    assert DEFAULT_HOTKEY_CONFIG.binding_for("runtime.pause_or_resume") == "F8"
+    native = next(
+        item
+        for item in native_hotkeys(DEFAULT_HOTKEY_CONFIG)
+        if item.action_id == "runtime.pause_or_resume"
+    )
+    assert native.registration_id == 3
+    assert native.vk == 0x77
+    assert native.modifiers == MOD_NOREPEAT
+    assert 'action_id == "runtime.pause_or_resume"' in _SOURCE
     assert "self._toggle_pause()" in _SOURCE
 
 
 def test_main_window_registers_f9_quick_text_hotkey_and_routes_it() -> None:
-    assert "_HOTKEY_QUICK_TEXT = 4" in _SOURCE
-    assert "_VK_F9 = 0x78" in _SOURCE
-    assert "RegisterHotKey(hwnd, _HOTKEY_QUICK_TEXT, 0, _VK_F9)" in _SOURCE
-    assert "UnregisterHotKey(hwnd, _HOTKEY_QUICK_TEXT)" in _SOURCE
-    assert "if msg.wParam == _HOTKEY_QUICK_TEXT:" in _SOURCE
+    assert DEFAULT_HOTKEY_CONFIG.binding_for("recording.quick_text") == "F9"
+    native = next(
+        item
+        for item in native_hotkeys(DEFAULT_HOTKEY_CONFIG)
+        if item.action_id == "recording.quick_text"
+    )
+    assert native.registration_id == 4
+    assert native.vk == 0x78
+    assert native.modifiers == MOD_NOREPEAT
+    assert 'action_id == "recording.quick_text"' in _SOURCE
     assert "self._capture_quick_text()" in _SOURCE
 
 
 def test_settings_menu_exposes_f9_text_playback_delay_default() -> None:
     assert 'QAction("F9 텍스트 재생 대기...", self)' in _SOURCE
-    assert "act_quick_text_delay.triggered.connect(self._show_quick_text_delay_settings)" in _SOURCE
+    assert "self._act_quick_text_delay.triggered.connect(self._show_quick_text_delay_settings)" in _SOURCE
     assert "def _show_quick_text_delay_settings" in _SOURCE
 
 

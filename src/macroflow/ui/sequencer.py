@@ -40,6 +40,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.event_insertions import (
+    _insert_click_events,
+    _insert_color_trigger_event,
+    _insert_text_input_event,
+)
 from macroflow.macro_file import inline_event_block_valid, settings_types_valid
 from macroflow.script_engine import (
     EndNode,
@@ -63,11 +68,6 @@ from macroflow.types import (
     MacroSettings,
     MouseButtonEvent,
     TextInputEvent,
-)
-from macroflow.ui.editor_insertions import (
-    _insert_click_events,
-    _insert_color_trigger_event,
-    _insert_text_input_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -357,6 +357,7 @@ class MacroSequencerWidget(QWidget):
         self._document_created_at: str | None = None
         self._is_dirty = False
         self._suppress_dirty = False
+        self._capture_hotkey_label = "F6"
         self._f6_capture_cb: Callable[[float, float, str], None] | None = None
         self._setup_ui()
         self._node_started.connect(self._apply_node_start)
@@ -374,81 +375,87 @@ class MacroSequencerWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 도구바
-        toolbar = QToolBar("시퀀서 도구", self)
-        toolbar.setMovable(False)
+        # 1행: 시퀀스 단계 추가
+        add_toolbar = QToolBar("단계 추가", self)
+        add_toolbar.setObjectName("sequencer-add-toolbar")
+        add_toolbar.setMovable(False)
 
-        self._act_add = QAction("➕ 단계: 매크로 파일", self)
+        self._act_add = QAction("➕ 매크로", self)
         self._act_add.setToolTip("매크로 JSON 파일을 선택 행 다음에 추가합니다")
         self._act_add.triggered.connect(self._add_files)
-        toolbar.addAction(self._act_add)
+        add_toolbar.addAction(self._act_add)
 
-        self._act_add_text = QAction("💬 문구", self)
+        self._act_add_text = QAction("📝 문구", self)
         self._act_add_text.triggered.connect(self._prompt_text_action)
-        toolbar.addAction(self._act_add_text)
+        add_toolbar.addAction(self._act_add_text)
 
         self._act_add_click = QAction("🖱 클릭", self)
         self._act_add_click.setToolTip("클릭 종류를 선택한 뒤 F6으로 좌표를 지정합니다")
         self._act_add_click.triggered.connect(self._prompt_click_capture)
-        toolbar.addAction(self._act_add_click)
+        add_toolbar.addAction(self._act_add_click)
 
         self._act_add_color = QAction("🎨 색상 대기", self)
         self._act_add_color.setToolTip("F6으로 좌표와 목표 색상을 지정합니다")
         self._act_add_color.triggered.connect(self._prompt_color_capture)
-        toolbar.addAction(self._act_add_color)
+        add_toolbar.addAction(self._act_add_color)
 
         self._act_add_wait = QAction("⏱ 대기", self)
         self._act_add_wait.triggered.connect(self._prompt_wait_action)
-        toolbar.addAction(self._act_add_wait)
+        add_toolbar.addAction(self._act_add_wait)
+
+        # 2행: 플로우 문서와 선택 단계 편집
+        manage_toolbar = QToolBar("플로우/편집", self)
+        manage_toolbar.setObjectName("sequencer-manage-toolbar")
+        manage_toolbar.setMovable(False)
 
         self._act_duplicate = QAction("⧉ 복제", self)
         self._act_duplicate.setShortcut(QKeySequence("Ctrl+D"))
         self._act_duplicate.triggered.connect(self._duplicate_selected)
         self._act_duplicate.setEnabled(False)
-        toolbar.addAction(self._act_duplicate)
+        manage_toolbar.addAction(self._act_duplicate)
 
         self._act_remove = QAction("— 제거", self)
         self._act_remove.setToolTip("선택한 항목을 목록에서 제거합니다")
         self._act_remove.triggered.connect(self._remove_selected)
         self._act_remove.setEnabled(False)
-        toolbar.addAction(self._act_remove)
+        manage_toolbar.addAction(self._act_remove)
 
-        toolbar.addSeparator()
+        flow_toolbar = QToolBar("플로우 파일", self)
+        flow_toolbar.setObjectName("sequencer-flow-toolbar")
+        flow_toolbar.setMovable(False)
 
         self._act_open_flow = QAction("📂 플로우 열기", self)
         self._act_open_flow.setToolTip(".macroflow 파일을 불러옵니다")
         self._act_open_flow.triggered.connect(self._open_flow)
-        toolbar.addAction(self._act_open_flow)
+        flow_toolbar.addAction(self._act_open_flow)
 
-        self._act_save_flow = QAction("💾 저장  Ctrl+S", self)
+        self._act_save_flow = QAction("💾 저장", self)
         self._act_save_flow.setToolTip(
             "현재 .macroflow 파일에 덮어쓰기 저장합니다 (파일이 없으면 다른 이름으로 저장)"
         )
-        self._act_save_flow.setShortcut(QKeySequence("Ctrl+S"))
-        self._act_save_flow.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._act_save_flow.triggered.connect(self._save_flow)
         self._act_save_flow.setEnabled(False)
-        toolbar.addAction(self._act_save_flow)
+        flow_toolbar.addAction(self._act_save_flow)
 
-        self._act_save_flow_as = QAction("💾 다른 이름으로 저장", self)
+        self._act_save_flow_as = QAction("💾 다른 이름", self)
         self._act_save_flow_as.setToolTip("새 경로를 지정하여 .macroflow 파일로 저장합니다")
         self._act_save_flow_as.triggered.connect(self._save_flow_as)
         self._act_save_flow_as.setEnabled(False)
-        toolbar.addAction(self._act_save_flow_as)
+        flow_toolbar.addAction(self._act_save_flow_as)
 
-        toolbar.addSeparator()
+        manage_toolbar.addSeparator()
 
-        self._act_merge = QAction("🔗 에디터로 병합", self)
+        self._act_merge = QAction("🔗 병합", self)
         self._act_merge.setToolTip(
             "목록의 모든 매크로를 순서대로 이어 붙여 하나의 매크로로 만든 뒤\n"
             "매크로 에디터 탭으로 보냅니다 (저장 후 수정 가능)"
         )
         self._act_merge.triggered.connect(self._merge_to_editor)
         self._act_merge.setEnabled(False)
-        toolbar.addAction(self._act_merge)
+        manage_toolbar.addAction(self._act_merge)
 
-        toolbar.addSeparator()
-        toolbar.addWidget(QLabel(" 매크로 사이 대기:"))
+        manage_toolbar.addSeparator()
+        manage_toolbar.addWidget(QLabel(" 매크로 간격:"))
         self._gap_spin = QSpinBox()
         self._gap_spin.setMinimum(0)
         self._gap_spin.setMaximum(_MAX_GAP_MS)
@@ -462,9 +469,11 @@ class MacroSequencerWidget(QWidget):
         )
         self._gap_spin.setFixedWidth(95)
         self._gap_spin.valueChanged.connect(self._on_gap_changed)
-        toolbar.addWidget(self._gap_spin)
+        manage_toolbar.addWidget(self._gap_spin)
 
-        layout.addWidget(toolbar)
+        layout.addWidget(add_toolbar)
+        layout.addWidget(flow_toolbar)
+        layout.addWidget(manage_toolbar)
 
         # 본문: 목록 + 실행 버튼 + 로그
         splitter = QSplitter(Qt.Orientation.Vertical, self)
@@ -751,7 +760,9 @@ class MacroSequencerWidget(QWidget):
                     timeout_ms=event.timeout_ms,
                     replace_row=row,
                 )
-                self._log_message("F6을 눌러 새 색상 확인 위치를 지정하세요")
+                self._log_message(
+                    f"{self._capture_hotkey_label}을 눌러 새 색상 확인 위치를 지정하세요"
+                )
                 return
         if isinstance(item, InlineActionItem) and item.events and all(
             isinstance(event, MouseButtonEvent) for event in item.events
@@ -763,7 +774,9 @@ class MacroSequencerWidget(QWidget):
                 is_double=len(item.events) == 4,
                 replace_row=row,
             )
-            self._log_message("F6을 눌러 새 클릭 위치를 지정하세요")
+            self._log_message(
+                f"{self._capture_hotkey_label}을 눌러 새 클릭 위치를 지정하세요"
+            )
             return
         QMessageBox.information(
             self,
@@ -854,6 +867,15 @@ class MacroSequencerWidget(QWidget):
         """중지를 요청하고 worker 종료가 확인됐는지 반환한다."""
         return self._stop_sequence()
 
+    def open_flow(self) -> None:
+        """외부(main_window)에서 플로우 열기 다이얼로그를 연다."""
+        self._open_flow()
+
+    def set_capture_hotkey_label(self, label: str) -> None:
+        self._capture_hotkey_label = label
+        self._act_add_click.setToolTip(f"클릭 종류를 선택한 뒤 {label}으로 좌표를 지정합니다")
+        self._act_add_color.setToolTip(f"{label}으로 좌표와 목표 색상을 지정합니다")
+
     def save_flow(self) -> bool:
         """외부(main_window)에서 현재 플로우를 저장한다."""
         return self._save_flow()
@@ -919,7 +941,9 @@ class MacroSequencerWidget(QWidget):
             "right" if choice == "우클릭" else "left"
         )
         self.start_click_capture(button=button, is_double=choice == "더블클릭")
-        self._log_message("F6을 눌러 클릭 위치를 지정하세요")
+        self._log_message(
+            f"{self._capture_hotkey_label}을 눌러 클릭 위치를 지정하세요"
+        )
 
     def _prompt_color_capture(self) -> None:
         timeout_ms, ok = QInputDialog.getInt(
@@ -932,7 +956,9 @@ class MacroSequencerWidget(QWidget):
         )
         if ok:
             self.start_color_wait_capture(timeout_ms=timeout_ms)
-            self._log_message("F6을 눌러 색상 확인 위치를 지정하세요")
+            self._log_message(
+                f"{self._capture_hotkey_label}을 눌러 색상 확인 위치를 지정하세요"
+            )
 
     def _prompt_wait_action(self) -> None:
         duration_ms, ok = QInputDialog.getInt(

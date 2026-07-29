@@ -34,6 +34,7 @@ from macroflow.ui.editor_rows import (  # noqa: E402
     DISPLAY_ROW_KINDS,
     POSITION_EDIT_KINDS,
     _build_rows,
+    _find_row_for_event_ids,
 )
 
 
@@ -365,3 +366,19 @@ def test_simple_event_rows_keep_labels_details_and_truncation_contract() -> None
         ("condition", "조건 분기", long_expr[:30]),
         ("loop", "반복", "×3"),
     ]
+
+
+def test_find_row_for_event_ids_returns_first_group_containing_new_event() -> None:
+    rows = _build_rows(
+        [
+            _mouse_down("click-down", 100_000_000),
+            _mouse_up("click-up", 120_000_000),
+            TextInputEvent(id="text", type="text_input", timestamp_ns=200_000_000, text="x"),
+        ],
+        show_moves=False,
+    )
+
+    assert _find_row_for_event_ids(rows, {"click-up"}) == 0
+    assert _find_row_for_event_ids(rows, {"text"}) == 1
+    assert _find_row_for_event_ids(rows, {"missing"}) is None
+    assert _find_row_for_event_ids(rows, set()) is None
