@@ -79,7 +79,8 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
             "↩ 취소", "↪ 재실행", "원본 복원",
         ]
         interval = window._editor.findChild(QCheckBox)
-        assert interval is not None and editor_edit.isAncestorOf(interval)
+        editor_add = toolbar(window._editor, "editor-add-toolbar")
+        assert interval is not None and editor_add.isAncestorOf(interval)
 
         for tab in (window._editor, window._sequencer, window._favorites):
             window._tabs.setCurrentWidget(tab)
@@ -118,7 +119,7 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_fixed_toolbar_rows_fit_supported_minimum_width() -> None:
+def test_toolbar_rows_fit_initial_width_without_restricting_manual_shrink() -> None:
     result = _run_offscreen(
         """
         from PyQt6.QtWidgets import QApplication, QToolBar
@@ -129,9 +130,19 @@ def test_fixed_toolbar_rows_fit_supported_minimum_width() -> None:
         MainWindow._initialize_hotkeys = lambda self: None
         app = QApplication.instance() or QApplication([])
         window = MainWindow()
-        assert window.minimumWidth() == 1280
-        window.resize(1280, 620)
+        assert window.minimumWidth() == 0
+        assert window.width() == 1180
+        window.resize(480, 620)
+        assert window.width() == 480
+        window.resize(1180, 620)
         window.show()
+        app.processEvents()
+        assert window.minimumWidth() == 0
+        assert window.minimumHeight() == 0
+        window.resize(100, 100)
+        app.processEvents()
+        assert (window.width(), window.height()) == (100, 100)
+        window.resize(1180, 620)
         app.processEvents()
 
         def toolbar(owner, object_name):
@@ -155,11 +166,12 @@ def test_fixed_toolbar_rows_fit_supported_minimum_width() -> None:
         playback_toolbar = toolbar(window, "playback-settings-toolbar")
         range_toolbar = toolbar(window, "range-playback-toolbar")
 
-        assert [action.text() for action in editor_add.actions()] == [
+        assert [action.text() for action in editor_add.actions() if action.text()] == [
             "📝 텍스트 입력 추가", "🖱 클릭 추가", "🎨 색 체크 삽입"
         ]
         assert [action.text() for action in sequence_add.actions()] == [
-            "➕ 매크로", "📝 문구", "🖱 클릭", "🎨 색상 대기", "⏱ 대기"
+            "➕ 매크로 추가", "📝 문구 추가", "🖱 클릭 추가",
+            "🎨 색상 대기 추가", "⏱ 대기 추가"
         ]
 
         window._tabs.setCurrentWidget(window._editor)
@@ -169,6 +181,7 @@ def test_fixed_toolbar_rows_fit_supported_minimum_width() -> None:
         assert range_toolbar.isVisible()
         assert not has_visible_overflow(editor_edit)
         assert not has_visible_overflow(editor_add)
+        assert editor_edit.actions()[-1].text() == "원본 복원"
 
         window._tabs.setCurrentWidget(window._sequencer)
         app.processEvents()
@@ -247,7 +260,7 @@ def test_ctrl_s_routes_to_active_document_surface_only() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
+def test_toolbars_can_be_widened_to_fit_larger_accessibility_font() -> None:
     result = _run_offscreen(
         """
         from PyQt6.QtGui import QFont
@@ -260,7 +273,8 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
         app = QApplication.instance() or QApplication([])
         app.setFont(QFont(app.font().family(), 20))
         window = MainWindow()
-        window.resize(1280, 720)
+        assert window.minimumWidth() == 0
+        window.resize(1800, 720)
         window.show()
         app.processEvents()
 
@@ -287,7 +301,6 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
         window._tabs.setCurrentWidget(window._editor)
         app.processEvents()
         editor_edit = toolbar("editor-edit-toolbar")
-        assert window.minimumWidth() >= editor_edit.sizeHint().width() + 8
         assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
         assert not has_visible_overflow(toolbar("range-playback-toolbar"))
         assert not has_visible_overflow(toolbar("editor-file-toolbar"))
@@ -306,6 +319,56 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
         assert toolbar("runtime-control-toolbar").isVisible()
         assert toolbar("playback-settings-toolbar").isVisible()
         assert toolbar("range-playback-toolbar").isVisible()
+        window.close()
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_playback_spinboxes_show_their_largest_values_without_clipping() -> None:
+    result = _run_offscreen(
+        """
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QApplication, QStyle, QStyleOptionSpinBox
+
+        from macroflow.ui.main_window import MainWindow
+
+        MainWindow._restore_settings = lambda self: None
+        MainWindow._initialize_hotkeys = lambda self: None
+        app = QApplication.instance() or QApplication([])
+        app.setFont(QFont(app.font().family(), 20))
+        window = MainWindow()
+        window.resize(1800, 720)
+        window.show()
+
+        values = (
+            (window._repeat_spin, 9999),
+            (window._interval_spin, 60000),
+            (window._range_start_spin, 99999999),
+            (window._range_end_spin, 99999999),
+            (window._sequencer._gap_spin, 30000),
+        )
+        for spin, value in values:
+            spin.setMaximum(value)
+            spin.setValue(value)
+        app.processEvents()
+
+        for spin, _value in values:
+            editor = spin.lineEdit()
+            assert editor is not None
+            text_width = editor.fontMetrics().horizontalAdvance(spin.text())
+            assert text_width + 12 <= editor.contentsRect().width(), (
+                spin.text(), text_width, editor.contentsRect().width()
+            )
+            option = QStyleOptionSpinBox()
+            option.initFrom(spin)
+            up_button = spin.style().subControlRect(
+                QStyle.ComplexControl.CC_SpinBox,
+                option,
+                QStyle.SubControl.SC_SpinBoxUp,
+                spin,
+            )
+            assert up_button.width() <= 16, up_button.width()
         window.close()
         """
     )

@@ -379,7 +379,11 @@ def _strict_flow_types_valid(flow: MacroFlow) -> bool:
             ):
                 return False
         elif isinstance(node, WaitFixedNode):
-            if type(node.duration_ms) is not int or not nullable_string(node.next):
+            if (
+                type(node.duration_ms) is not int
+                or node.duration_ms < 0
+                or not nullable_string(node.next)
+            ):
                 return False
         elif isinstance(node, InlineEventsNode):
             if (

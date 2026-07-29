@@ -14,6 +14,7 @@ from macroflow.script_engine import (
     InlineEventsNode,
     MacroFlow,
     MacroNode,
+    WaitFixedNode,
     load_flow,
     save_flow,
 )
@@ -70,6 +71,37 @@ def _inline_flow() -> MacroFlow:
             ),
         },
     )
+
+
+def _wait_flow(duration_ms: int) -> MacroFlow:
+    return MacroFlow(
+        version="1.0",
+        name="wait flow",
+        created_at="2026-07-29T00:00:00",
+        start_node_id="wait",
+        nodes={
+            "wait": WaitFixedNode(
+                id="wait",
+                label="wait",
+                duration_ms=duration_ms,
+                next="end_success",
+            ),
+            "end_success": EndNode(id="end_success", label="완료"),
+        },
+    )
+
+
+def test_strict_wait_load_rejects_negative_but_keeps_general_long_waits(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "wait.macroflow"
+    save_flow(_wait_flow(-1), str(target))
+    with pytest.raises(ValueError, match="정규 형식"):
+        load_flow(str(target), strict=True)
+
+    long_wait = _wait_flow(45_000)
+    save_flow(long_wait, str(target))
+    assert load_flow(str(target), strict=True) == long_wait
 
 
 def test_inline_events_node_v11_strict_roundtrip(tmp_path: Path) -> None:

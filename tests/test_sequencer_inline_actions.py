@@ -33,7 +33,7 @@ def test_mixed_steps_save_load_duplicate_paths_and_preflight() -> None:
         from macroflow.macro_file import save as save_macro
         from macroflow.script_engine import load_flow
         from macroflow.sequence_model import InlineActionItem, MacroFileItem, WaitItem
-        from macroflow.types import MacroData, MacroMeta, MacroSettings, TextInputEvent
+        from macroflow.types import MacroData, MacroMeta, MacroSettings, TextInputEvent, WaitEvent
         from macroflow.ui.sequencer import MacroSequencerWidget
 
         app = QApplication.instance() or QApplication([])
@@ -65,8 +65,17 @@ def test_mixed_steps_save_load_duplicate_paths_and_preflight() -> None:
             assert isinstance(widget._items[4], WaitItem)
             assert isinstance(widget._items[5], MacroFileItem)
             assert widget.preflight_errors() == []
-            assert not widget._act_merge.isEnabled()
-            assert "혼합" in widget._act_merge.toolTip()
+            assert widget._act_merge.isEnabled()
+            assert not widget._gap_spin.isEnabled()
+            assert "재생 속도" in widget._act_merge.toolTip()
+            merged = []
+            widget.merge_to_editor.connect(merged.append)
+            widget._act_merge.trigger()
+            assert len(merged) == 1
+            assert len(merged[0].events) == 9
+            assert any(isinstance(item, WaitEvent) for item in merged[0].events)
+            assert len({item.id for item in merged[0].events}) == len(merged[0].events)
+            assert merged[0].events[1].source_file.startswith("시퀀서: 문구 입력")
 
             flow_path = root / "mixed.macroflow"
             assert widget._do_save_flow(flow_path)
@@ -182,7 +191,7 @@ def test_f6_capture_creates_actions_and_duplicate_gets_new_identity() -> None:
         assert widget._items[2].events == color.events
         assert started == [True, True, True]
         assert ended == [True, True, True]
-        assert widget._act_add.text() == "➕ 매크로"
+        assert widget._act_add.text() == "➕ 매크로 추가"
         widget.close()
         app.processEvents()
         """

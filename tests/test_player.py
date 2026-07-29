@@ -502,6 +502,54 @@ class TestPlaybackTiming:
         # delay_override_ms=80ms, 오차 ±20ms 허용
         assert 60 <= gap_ms <= 120
 
+    def test_zero_delay_does_not_skip_hidden_mouse_moves(self) -> None:
+        """표에서 숨긴 move도 재생하며 다음 동작의 0ms는 마지막 move 뒤에 적용한다."""
+        events: list[AnyEvent] = [
+            KeyEvent(id="first", type="key_up", timestamp_ns=0, key="a", vk_code=0x41),
+            MouseMoveEvent(
+                id="hidden-move-1",
+                type="mouse_move",
+                timestamp_ns=100_000_000,
+                x_ratio=0.2,
+                y_ratio=0.2,
+            ),
+            MouseMoveEvent(
+                id="hidden-move-2",
+                type="mouse_move",
+                timestamp_ns=200_000_000,
+                x_ratio=0.4,
+                y_ratio=0.4,
+            ),
+            KeyEvent(
+                id="second",
+                type="key_up",
+                timestamp_ns=1_000_000_000,
+                delay_override_ms=0,
+                key="b",
+                vk_code=0x42,
+            ),
+        ]
+        executed: list[tuple[str, float]] = []
+
+        player.play(
+            _make_macro(events),
+            on_event=lambda _idx, event: executed.append((event.id, time.perf_counter())),
+        )
+        deadline = time.monotonic() + 1.0
+        while len(executed) < len(events) and time.monotonic() < deadline:
+            time.sleep(0.005)
+        player.stop()
+
+        assert [event_id for event_id, _at in executed] == [
+            "first",
+            "hidden-move-1",
+            "hidden-move-2",
+            "second",
+        ]
+        timestamps = {event_id: at for event_id, at in executed}
+        assert timestamps["hidden-move-2"] - timestamps["first"] >= 0.15
+        assert timestamps["second"] - timestamps["hidden-move-2"] < 0.10
+
     def test_delay_override_is_scaled_by_playback_speed(self) -> None:
         """재생 대기 override도 녹화 타임라인과 동일하게 속도 배율을 적용한다."""
         events: list[AnyEvent] = [
