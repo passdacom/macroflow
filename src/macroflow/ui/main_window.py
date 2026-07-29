@@ -365,9 +365,14 @@ class MainWindow(QMainWindow):
         self._interval_spin.setFixedWidth(85)
         tb2.addWidget(self._interval_spin)
 
-        tb2.addSeparator()
+        self.addToolBarBreak()
 
-        tb2.addWidget(QLabel("구간:"))
+        range_tb = self.addToolBar("구간 재생")
+        range_tb.setObjectName("range-playback-toolbar")
+        range_tb.setMovable(False)
+        self._range_playback_toolbar = range_tb
+
+        range_tb.addWidget(QLabel(" 구간:"))
         self._range_start_spin = QSpinBox()
         self._range_start_spin.setMinimum(0)
         self._range_start_spin.setMaximum(0)
@@ -376,9 +381,9 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
         self._range_start_spin.editingFinished.connect(self._normalize_range_spinboxes)
         self._range_start_spin.setFixedWidth(80)
-        tb2.addWidget(self._range_start_spin)
+        range_tb.addWidget(self._range_start_spin)
 
-        tb2.addWidget(QLabel("~"))
+        range_tb.addWidget(QLabel("~"))
         self._range_end_spin = QSpinBox()
         self._range_end_spin.setMinimum(0)
         self._range_end_spin.setMaximum(0)
@@ -387,12 +392,12 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
         self._range_end_spin.editingFinished.connect(self._normalize_range_spinboxes)
         self._range_end_spin.setFixedWidth(80)
-        tb2.addWidget(self._range_end_spin)
+        range_tb.addWidget(self._range_end_spin)
 
         self._act_range_play = QAction("▶ 구간 재생", self)
         self._act_range_play.setToolTip("설정한 구간(시작~끝)만 재생합니다")
         self._act_range_play.triggered.connect(self._start_range_playback)
-        tb2.addAction(self._act_range_play)
+        range_tb.addAction(self._act_range_play)
 
         self.addToolBarBreak()
 
@@ -1870,6 +1875,7 @@ class MainWindow(QMainWindow):
         self._editor_file_toolbar.setVisible(is_editor_tab)
         self._runtime_control_toolbar.setVisible(not is_fav_tab)
         self._playback_settings_toolbar.setVisible(not is_fav_tab)
+        self._range_playback_toolbar.setVisible(not is_fav_tab)
         record_key = self._hotkey_label("runtime.record_or_capture")
         play_key = self._hotkey_label("runtime.play_or_color_capture")
         pause_key = self._hotkey_label("runtime.pause_or_resume")

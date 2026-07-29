@@ -17,6 +17,8 @@ def _run_offscreen(script: str) -> subprocess.CompletedProcess[str]:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         env=env,
     )
 
@@ -52,6 +54,7 @@ def test_contextual_two_row_toolbars_fit_supported_minimum_width() -> None:
         sequence_add = toolbar(window._sequencer, "sequencer-add-toolbar")
         sequence_manage = toolbar(window._sequencer, "sequencer-manage-toolbar")
         file_toolbar = toolbar(window, "editor-file-toolbar")
+        range_toolbar = toolbar(window, "range-playback-toolbar")
 
         assert [action.text() for action in editor_add.actions()] == [
             "📝 텍스트 입력 추가", "🖱 클릭 추가", "🎨 색 체크 삽입"
@@ -63,6 +66,7 @@ def test_contextual_two_row_toolbars_fit_supported_minimum_width() -> None:
         window._tabs.setCurrentWidget(window._editor)
         app.processEvents()
         assert file_toolbar.isVisible()
+        assert range_toolbar.isVisible()
         assert not has_visible_overflow(editor_edit)
         assert not has_visible_overflow(editor_add)
 
@@ -72,11 +76,13 @@ def test_contextual_two_row_toolbars_fit_supported_minimum_width() -> None:
         assert not window._act_new_record_menu.isEnabled()
         assert not has_visible_overflow(sequence_add)
         assert not has_visible_overflow(sequence_manage)
+        assert range_toolbar.isVisible()
 
         window._tabs.setCurrentWidget(window._favorites)
         app.processEvents()
         assert not file_toolbar.isVisible()
         assert not window._act_new_record_menu.isEnabled()
+        assert not range_toolbar.isVisible()
         window.close()
         """
     )
@@ -169,18 +175,21 @@ def test_contextual_toolbars_fit_with_larger_accessibility_font() -> None:
         window._tabs.setCurrentWidget(window._editor)
         app.processEvents()
         assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
+        assert not has_visible_overflow(toolbar("range-playback-toolbar"))
         assert not has_visible_overflow(toolbar("editor-file-toolbar"))
         assert not has_visible_overflow(toolbar("editor-edit-toolbar"))
 
         window._tabs.setCurrentWidget(window._sequencer)
         app.processEvents()
         assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
+        assert not has_visible_overflow(toolbar("range-playback-toolbar"))
         assert not has_visible_overflow(toolbar("sequencer-manage-toolbar"))
 
         window._tabs.setCurrentWidget(window._favorites)
         app.processEvents()
         assert not toolbar("runtime-control-toolbar").isVisible()
         assert not toolbar("playback-settings-toolbar").isVisible()
+        assert not toolbar("range-playback-toolbar").isVisible()
         window.close()
         """
     )
