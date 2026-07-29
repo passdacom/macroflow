@@ -137,6 +137,17 @@ def test_main_window_persists_and_updates_recorder_only_after_successful_apply()
         configure.assert_not_called()
 
         persistence.candidates.clear()
+        persistence.degraded = False
+        with patch(
+            "macroflow.ui.main_window.arm_hotkey_config_recovery", return_value=False
+        ):
+            unprotected = window._apply_hotkey_config(failed_candidate)
+        assert not unprotected.success
+        assert unprotected.failed_key == "설정 복구 준비"
+        assert unprotected.rollback_succeeded
+        assert persistence.candidates == []
+
+        persistence.candidates.clear()
         window._state = "recording"
         busy = window._apply_hotkey_config(failed_candidate)
         assert not busy.success
