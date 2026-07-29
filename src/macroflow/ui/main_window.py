@@ -409,7 +409,7 @@ class MainWindow(QMainWindow):
         self._range_start_spin.editingFinished.connect(self._normalize_range_spinboxes)
         fit_compact_spinbox(
             self._range_start_spin,
-            ("처음", "99999999"),
+            ("처음", "999999"),
             minimum_width=95,
         )
         range_tb.addWidget(self._range_start_spin)
@@ -424,7 +424,7 @@ class MainWindow(QMainWindow):
         self._range_end_spin.editingFinished.connect(self._normalize_range_spinboxes)
         fit_compact_spinbox(
             self._range_end_spin,
-            ("끝", "99999999"),
+            ("끝", "999999"),
             minimum_width=95,
         )
         range_tb.addWidget(self._range_end_spin)

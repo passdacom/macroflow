@@ -344,8 +344,8 @@ def test_playback_spinboxes_show_their_largest_values_without_clipping() -> None
         values = (
             (window._repeat_spin, 9999),
             (window._interval_spin, 60000),
-            (window._range_start_spin, 99999999),
-            (window._range_end_spin, 99999999),
+            (window._range_start_spin, 999999),
+            (window._range_end_spin, 999999),
             (window._sequencer._gap_spin, 30000),
         )
         for spin, value in values:

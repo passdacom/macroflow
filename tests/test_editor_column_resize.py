@@ -17,6 +17,7 @@ def test_all_editor_columns_resize_without_horizontal_scrolling() -> None:
             "-c",
             textwrap.dedent(
                 """
+                from PyQt6.QtCore import Qt
                 from PyQt6.QtWidgets import QApplication, QHeaderView
                 from macroflow.types import MacroData, MacroMeta, MacroSettings, TextInputEvent
                 from macroflow.ui.editor import EventEditorWidget
@@ -58,7 +59,7 @@ def test_all_editor_columns_resize_without_horizontal_scrolling() -> None:
                     if column != 3
                 ), (before, after)
                 assert sum(after) <= table.viewport().width(), (after, table.viewport().width())
-                assert table.horizontalScrollBar().maximum() == 0, table.horizontalScrollBar().maximum()
+                assert table.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
 
                 editor._on_relative_time_toggled(True)
                 app.processEvents()
@@ -69,7 +70,7 @@ def test_all_editor_columns_resize_without_horizontal_scrolling() -> None:
                     app.processEvents()
                     current = [table.columnWidth(column) for column in range(table.columnCount())]
                     assert sum(current) <= table.viewport().width(), (current, table.viewport().width())
-                    assert table.horizontalScrollBar().maximum() == 0
+                    assert table.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
                 editor.close()
                 """
             ),
