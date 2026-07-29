@@ -420,11 +420,19 @@ class MainWindow(QMainWindow):
         self._act_save_as.setToolTip("새 경로를 지정하여 저장")
         self._act_save_as.triggered.connect(self._save_file_as)
         tb3.addAction(self._act_save_as)
+        self._editor_file_toolbar = tb3
+
+        self.addToolBarBreak()
+
+        export_tb = self.addToolBar("내보내기/복구")
+        export_tb.setObjectName("editor-export-toolbar")
+        export_tb.setMovable(False)
+        export_tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
         self._act_save_seq = QAction("📋 시퀀서", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
-        tb3.addAction(self._act_save_seq)
+        export_tb.addAction(self._act_save_seq)
 
         self._act_save_fav = QAction("⭐ 즐겨찾기", self)
         self._act_save_fav.setToolTip(
@@ -432,9 +440,9 @@ class MainWindow(QMainWindow):
             "(favorites 폴더 — macros 폴더와 별도 보관)"
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
-        tb3.addAction(self._act_save_fav)
+        export_tb.addAction(self._act_save_fav)
 
-        tb3.addSeparator()
+        export_tb.addSeparator()
 
         self._act_restore_prev = QAction("↩ 이전 복원", self)
         self._act_restore_prev.setToolTip(
@@ -443,8 +451,8 @@ class MainWindow(QMainWindow):
         )
         self._act_restore_prev.triggered.connect(self._restore_prev_macro)
         self._act_restore_prev.setEnabled(False)
-        tb3.addAction(self._act_restore_prev)
-        self._editor_file_toolbar = tb3
+        export_tb.addAction(self._act_restore_prev)
+        self._editor_export_toolbar = export_tb
 
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
@@ -1873,6 +1881,7 @@ class MainWindow(QMainWindow):
             and not self._hotkey_runtime.globally_registered
         )
         self._editor_file_toolbar.setVisible(is_editor_tab)
+        self._editor_export_toolbar.setVisible(is_editor_tab)
         self._runtime_control_toolbar.setVisible(not is_fav_tab)
         self._playback_settings_toolbar.setVisible(not is_fav_tab)
         self._range_playback_toolbar.setVisible(not is_fav_tab)

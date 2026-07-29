@@ -231,29 +231,31 @@ class EventEditorWidget(QWidget):
         self._act_set_delay.setEnabled(False)
         edit_toolbar.addAction(self._act_set_delay)
 
-        edit_toolbar.addSeparator()
+        history_toolbar = QToolBar("실행 취소/표시", self)
+        history_toolbar.setObjectName("editor-history-toolbar")
+        history_toolbar.setMovable(False)
 
         self._act_undo = QAction("↩ 취소", self)
         self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
         self._act_undo.triggered.connect(self._undo)
         self._act_undo.setEnabled(False)
-        edit_toolbar.addAction(self._act_undo)
+        history_toolbar.addAction(self._act_undo)
 
         self._act_redo = QAction("↪ 재실행", self)
         self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
-        edit_toolbar.addAction(self._act_redo)
+        history_toolbar.addAction(self._act_redo)
 
-        edit_toolbar.addSeparator()
+        history_toolbar.addSeparator()
 
         self._act_reset = QAction("원본 복원", self)
         self._act_reset.setToolTip("raw_events 기준으로 events를 초기화합니다")
         self._act_reset.triggered.connect(self._reset_to_raw)
         self._act_reset.setEnabled(False)
-        edit_toolbar.addAction(self._act_reset)
+        history_toolbar.addAction(self._act_reset)
 
-        edit_toolbar.addSeparator()
+        history_toolbar.addSeparator()
 
         self._chk_relative_time = QCheckBox("⏱ 기록 간격")
         self._chk_relative_time.setToolTip(
@@ -263,9 +265,10 @@ class EventEditorWidget(QWidget):
         )
         self._chk_relative_time.setChecked(False)
         self._chk_relative_time.toggled.connect(self._on_relative_time_toggled)
-        edit_toolbar.addWidget(self._chk_relative_time)
+        history_toolbar.addWidget(self._chk_relative_time)
 
         layout.addWidget(edit_toolbar)
+        layout.addWidget(history_toolbar)
 
         # 동작 추가 도구바 — 삽입 작업을 한 행에 모아 반복 편집 흐름을 단순화한다.
         add_toolbar = QToolBar("동작 추가", self)

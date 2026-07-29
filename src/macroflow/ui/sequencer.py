@@ -420,12 +420,14 @@ class MacroSequencerWidget(QWidget):
         self._act_remove.setEnabled(False)
         manage_toolbar.addAction(self._act_remove)
 
-        manage_toolbar.addSeparator()
+        flow_toolbar = QToolBar("플로우 파일", self)
+        flow_toolbar.setObjectName("sequencer-flow-toolbar")
+        flow_toolbar.setMovable(False)
 
         self._act_open_flow = QAction("📂 플로우 열기", self)
         self._act_open_flow.setToolTip(".macroflow 파일을 불러옵니다")
         self._act_open_flow.triggered.connect(self._open_flow)
-        manage_toolbar.addAction(self._act_open_flow)
+        flow_toolbar.addAction(self._act_open_flow)
 
         self._act_save_flow = QAction("💾 저장", self)
         self._act_save_flow.setToolTip(
@@ -433,13 +435,13 @@ class MacroSequencerWidget(QWidget):
         )
         self._act_save_flow.triggered.connect(self._save_flow)
         self._act_save_flow.setEnabled(False)
-        manage_toolbar.addAction(self._act_save_flow)
+        flow_toolbar.addAction(self._act_save_flow)
 
         self._act_save_flow_as = QAction("💾 다른 이름", self)
         self._act_save_flow_as.setToolTip("새 경로를 지정하여 .macroflow 파일로 저장합니다")
         self._act_save_flow_as.triggered.connect(self._save_flow_as)
         self._act_save_flow_as.setEnabled(False)
-        manage_toolbar.addAction(self._act_save_flow_as)
+        flow_toolbar.addAction(self._act_save_flow_as)
 
         manage_toolbar.addSeparator()
 
@@ -470,6 +472,7 @@ class MacroSequencerWidget(QWidget):
         manage_toolbar.addWidget(self._gap_spin)
 
         layout.addWidget(add_toolbar)
+        layout.addWidget(flow_toolbar)
         layout.addWidget(manage_toolbar)
 
         # 본문: 목록 + 실행 버튼 + 로그
