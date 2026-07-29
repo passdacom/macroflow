@@ -216,8 +216,8 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         from macroflow import __version__
         self.setWindowTitle(f"MacroFlow v{__version__}")
-        self.setMinimumSize(860, 520)
-        self.resize(1000, 620)
+        self.setMinimumSize(1180, 520)
+        self.resize(1180, 620)
 
     def _setup_menubar(self) -> None:
         mb = self.menuBar()
@@ -367,8 +367,6 @@ class MainWindow(QMainWindow):
         self._interval_spin.setFixedWidth(85)
         tb2.addWidget(self._interval_spin)
 
-        self.addToolBarBreak()
-
         range_tb = self.addToolBar("구간 재생")
         range_tb.setObjectName("range-playback-toolbar")
         range_tb.setMovable(False)
@@ -401,40 +399,21 @@ class MainWindow(QMainWindow):
         self._act_range_play.triggered.connect(self._start_range_playback)
         range_tb.addAction(self._act_range_play)
 
-        self.addToolBarBreak()
-
-        # ── 3행: 열기 / 저장 / 시퀀서에 추가 ────────────────────────────────
-        tb3 = self.addToolBar("파일")
-        tb3.setObjectName("editor-file-toolbar")
-        tb3.setMovable(False)
-        tb3.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-
+        # 매크로 에디터 탭의 파일/내보내기 작업. 탭 내부의 고정 행에 배치한다.
         self._act_open = QAction("📂 열기", self)
         self._act_open.triggered.connect(self._open_file)
-        tb3.addAction(self._act_open)
 
         self._act_save = QAction("💾 저장", self)
         self._act_save.setToolTip("현재 파일에 덮어쓰기 저장 (파일이 없으면 다른 이름으로 저장)")
         self._act_save.triggered.connect(self._save_file)
-        tb3.addAction(self._act_save)
 
         self._act_save_as = QAction("💾 다른 이름", self)
         self._act_save_as.setToolTip("새 경로를 지정하여 저장")
         self._act_save_as.triggered.connect(self._save_file_as)
-        tb3.addAction(self._act_save_as)
-        self._editor_file_toolbar = tb3
-
-        self.addToolBarBreak()
-
-        export_tb = self.addToolBar("내보내기/복구")
-        export_tb.setObjectName("editor-export-toolbar")
-        export_tb.setMovable(False)
-        export_tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
         self._act_save_seq = QAction("📋 시퀀서", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
-        export_tb.addAction(self._act_save_seq)
 
         self._act_save_fav = QAction("⭐ 즐겨찾기", self)
         self._act_save_fav.setToolTip(
@@ -442,9 +421,6 @@ class MainWindow(QMainWindow):
             "(favorites 폴더 — macros 폴더와 별도 보관)"
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
-        export_tb.addAction(self._act_save_fav)
-
-        export_tb.addSeparator()
 
         self._act_restore_prev = QAction("↩ 이전 복원", self)
         self._act_restore_prev.setToolTip(
@@ -453,8 +429,15 @@ class MainWindow(QMainWindow):
         )
         self._act_restore_prev.triggered.connect(self._restore_prev_macro)
         self._act_restore_prev.setEnabled(False)
-        export_tb.addAction(self._act_restore_prev)
-        self._editor_export_toolbar = export_tb
+
+        self._editor.install_main_window_actions(
+            document_actions=(self._act_open, self._act_save, self._act_save_as),
+            export_actions=(
+                self._act_save_seq,
+                self._act_save_fav,
+                self._act_restore_prev,
+            ),
+        )
 
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
@@ -1908,11 +1891,6 @@ class MainWindow(QMainWindow):
             and self._hotkey_runtime is not None
             and not self._hotkey_runtime.globally_registered
         )
-        self._editor_file_toolbar.setVisible(is_editor_tab)
-        self._editor_export_toolbar.setVisible(is_editor_tab)
-        self._runtime_control_toolbar.setVisible(not is_fav_tab)
-        self._playback_settings_toolbar.setVisible(not is_fav_tab)
-        self._range_playback_toolbar.setVisible(not is_fav_tab)
         record_key = self._hotkey_label("runtime.record_or_capture")
         play_key = self._hotkey_label("runtime.play_or_color_capture")
         pause_key = self._hotkey_label("runtime.pause_or_resume")
@@ -1977,8 +1955,11 @@ class MainWindow(QMainWindow):
             else f"⏸ 일시중지 ({pause_key})"
         )
         self._act_range_play.setEnabled(
-            is_idle and not seq_running and self._macro is not None and not is_seq_tab
+            is_idle and not seq_running and self._macro is not None and is_editor_tab
         )
+        can_set_range = is_idle and not seq_running and is_editor_tab
+        self._range_start_spin.setEnabled(can_set_range)
+        self._range_end_spin.setEnabled(can_set_range)
         can_mutate_files = is_idle and not seq_running
         can_edit_macro_file = can_mutate_files and is_editor_tab
         self._act_open.setEnabled(can_edit_macro_file)
@@ -2012,11 +1993,12 @@ class MainWindow(QMainWindow):
             self._menu_save.setEnabled(can_mutate_files and self._macro is not None)
             self._menu_save_as.setEnabled(can_mutate_files and self._macro is not None)
 
-        # 시퀀서 실행 중이거나 재생/녹화 중에는 속도·반복·간격 설정 불가
-        can_change_settings = is_idle and not seq_running
-        self._speed_combo.setEnabled(can_change_settings)
-        self._repeat_spin.setEnabled(can_change_settings)
-        self._interval_spin.setEnabled(can_change_settings)
+        # 시퀀서는 속도만 소비한다. 반복·간격은 단일 매크로 재생에만 적용한다.
+        can_change_speed = is_idle and not seq_running and not is_fav_tab
+        can_change_repeat = can_change_speed and is_editor_tab
+        self._speed_combo.setEnabled(can_change_speed)
+        self._repeat_spin.setEnabled(can_change_repeat)
+        self._interval_spin.setEnabled(can_change_repeat)
         hotkeys_degraded = bool(
             self._hotkey_runtime is not None and self._hotkey_runtime.degraded
         )
@@ -2027,7 +2009,9 @@ class MainWindow(QMainWindow):
             self._act_play.setEnabled(False)
             self._act_pause.setEnabled(False)
             self._act_range_play.setEnabled(False)
-        self._act_hotkey_settings.setEnabled(can_change_settings and not hotkeys_degraded)
+        self._act_hotkey_settings.setEnabled(
+            is_idle and not seq_running and not hotkeys_degraded
+        )
 
     def _update_range_spinboxes(self) -> None:
         """매크로 로드 후 구간 SpinBox 범위를 갱신한다."""

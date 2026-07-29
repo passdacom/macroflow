@@ -471,8 +471,8 @@ class MacroSequencerWidget(QWidget):
         self._gap_spin.valueChanged.connect(self._on_gap_changed)
         manage_toolbar.addWidget(self._gap_spin)
 
-        layout.addWidget(add_toolbar)
         layout.addWidget(flow_toolbar)
+        layout.addWidget(add_toolbar)
         layout.addWidget(manage_toolbar)
 
         # 본문: 목록 + 실행 버튼 + 로그
