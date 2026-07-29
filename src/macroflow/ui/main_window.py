@@ -55,6 +55,7 @@ from macroflow.win32.hotkeys import (
 
 from .editor import EventEditorWidget
 from .favorites import FavoritesWidget
+from .help_text import PLAYBACK_DELAY_HELP
 from .hotkey_runtime import HotkeyRuntime
 from .hotkey_settings_dialog import HotkeySettingsDialog
 from .hotkey_shortcuts import QtFocusedHotkeyBindings
@@ -74,6 +75,7 @@ from .quick_text_settings import (
     quick_text_delay_override as _read_quick_text_delay_override,
 )
 from .sequencer import MacroSequencerWidget
+from .spinbox_sizing import fit_compact_spinbox
 
 logger = logging.getLogger(__name__)
 
@@ -210,14 +212,31 @@ class MainWindow(QMainWindow):
 
         self._update_toolbar()
         self._restore_settings()
+        self._allow_unconstrained_resize()
 
     # ── 창 설정 ───────────────────────────────────────────────────────────────
+
+    def minimumSizeHint(self) -> Any:  # noqa: N802
+        """Allow temporary extreme shrinking; child toolbars may clip at tiny sizes."""
+        from PyQt6.QtCore import QSize
+
+        return QSize(0, 0)
+
+    def _allow_unconstrained_resize(self) -> None:
+        """Disable QMainWindow's child-derived minimum size after UI construction."""
+        from PyQt6.QtWidgets import QLayout
+
+        layout = self.layout()
+        if layout is not None:
+            layout.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.setMinimumSize(0, 0)
 
     def _setup_window(self) -> None:
         from macroflow import __version__
         self.setWindowTitle(f"MacroFlow v{__version__}")
-        self.setMinimumSize(1280, 520)
-        self.resize(1280, 620)
+        # 사용자가 필요할 때 창을 아주 좁게 줄일 수 있도록 최소 크기를 강제하지 않는다.
+        # 초기 크기만 일반 글꼴에서 주요 도구가 한눈에 들어오는 값으로 제공한다.
+        self.resize(1180, 620)
 
     def _setup_menubar(self) -> None:
         mb = self.menuBar()
@@ -290,6 +309,10 @@ class MainWindow(QMainWindow):
 
         # 도움말 메뉴
         help_menu = mb.addMenu("도움말(&H)")
+        self._act_playback_delay_help = QAction("재생 대기 도움말...", self)
+        self._act_playback_delay_help.triggered.connect(self._show_playback_delay_help)
+        help_menu.addAction(self._act_playback_delay_help)
+        help_menu.addSeparator()
         act_about = QAction("정보", self)
         act_about.triggered.connect(self._show_about)
         help_menu.addAction(act_about)
@@ -352,7 +375,7 @@ class MainWindow(QMainWindow):
         self._repeat_spin.setValue(1)
         self._repeat_spin.setSuffix("회")
         self._repeat_spin.setToolTip("반복 재생 횟수")
-        self._repeat_spin.setFixedWidth(75)
+        fit_compact_spinbox(self._repeat_spin, ("1회", "9999회"), minimum_width=90)
         tb2.addWidget(self._repeat_spin)
 
         tb2.addWidget(QLabel("  반복 간격:"))
@@ -364,7 +387,11 @@ class MainWindow(QMainWindow):
         self._interval_spin.setToolTip(
             "한 회 재생이 완전히 끝난 뒤 실제 시간으로 대기합니다. 재생 속도는 적용되지 않습니다."
         )
-        self._interval_spin.setFixedWidth(85)
+        fit_compact_spinbox(
+            self._interval_spin,
+            ("0ms", "60000ms"),
+            minimum_width=105,
+        )
         tb2.addWidget(self._interval_spin)
 
         range_tb = self.addToolBar("구간 재생")
@@ -380,7 +407,11 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setSpecialValueText("처음")
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
         self._range_start_spin.editingFinished.connect(self._normalize_range_spinboxes)
-        self._range_start_spin.setFixedWidth(80)
+        fit_compact_spinbox(
+            self._range_start_spin,
+            ("처음", "999999"),
+            minimum_width=95,
+        )
         range_tb.addWidget(self._range_start_spin)
 
         range_tb.addWidget(QLabel("~"))
@@ -391,7 +422,11 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setSpecialValueText("끝")
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
         self._range_end_spin.editingFinished.connect(self._normalize_range_spinboxes)
-        self._range_end_spin.setFixedWidth(80)
+        fit_compact_spinbox(
+            self._range_end_spin,
+            ("끝", "999999"),
+            minimum_width=95,
+        )
         range_tb.addWidget(self._range_end_spin)
 
         self._act_range_play = QAction("▶ 구간 재생", self)
@@ -411,18 +446,18 @@ class MainWindow(QMainWindow):
         self._act_save_as.setToolTip("새 경로를 지정하여 저장")
         self._act_save_as.triggered.connect(self._save_file_as)
 
-        self._act_save_seq = QAction("📋 시퀀서", self)
+        self._act_save_seq = QAction("시퀀서", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
 
-        self._act_save_fav = QAction("⭐ 즐겨찾기", self)
+        self._act_save_fav = QAction("즐겨찾기", self)
         self._act_save_fav.setToolTip(
             "현재 매크로를 이름을 지정하여 즐겨찾기로 저장합니다\n"
             "(favorites 폴더 — macros 폴더와 별도 보관)"
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
 
-        self._act_restore_prev = QAction("↩ 이전 복원", self)
+        self._act_restore_prev = QAction("이전 복원", self)
         self._act_restore_prev.setToolTip(
             "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
             "(실수로 F6을 눌러 기존 매크로가 사라졌을 때 사용)"
@@ -438,9 +473,7 @@ class MainWindow(QMainWindow):
                 self._act_restore_prev,
             ),
         )
-        self.setMinimumWidth(
-            max(self.minimumWidth(), self._editor.required_toolbar_width())
-        )
+
 
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
@@ -2386,6 +2419,9 @@ class MainWindow(QMainWindow):
                 logger.debug(f"오래된 임시 파일 삭제: {old_file.name}")
             except OSError:
                 pass
+
+    def _show_playback_delay_help(self) -> None:
+        QMessageBox.information(self, "재생 대기 도움말", PLAYBACK_DELAY_HELP)
 
     def _show_about(self) -> None:
         from macroflow import __version__

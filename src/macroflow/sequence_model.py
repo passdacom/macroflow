@@ -13,6 +13,7 @@ from macroflow.script_engine import (
     MacroNode,
     WaitFixedNode,
 )
+from macroflow.sequence_limits import MAX_SEQUENCE_WAIT_MS, is_sequence_wait_duration
 from macroflow.types import AnyEvent, MacroSettings
 
 
@@ -63,6 +64,11 @@ def build_sequence_flow(
         raise ValueError("시퀀스 단계 ID는 비어 있지 않고 고유해야 합니다.")
     if {"end_success", "end_error"} & set(ids):
         raise ValueError("예약된 종료 노드 ID는 단계 ID로 사용할 수 없습니다.")
+    for index, item in enumerate(items, start=1):
+        if isinstance(item, WaitItem) and not is_sequence_wait_duration(item.duration_ms):
+            raise ValueError(
+                f"{index}번 대기 시간은 0~{MAX_SEQUENCE_WAIT_MS}ms 정수여야 합니다."
+            )
 
     base = Path(save_path).parent
     nodes: dict[str, AnyFlowNode] = {}
@@ -109,12 +115,13 @@ def build_sequence_flow(
         status="success",
         position={"x": 100, "y": end_y},
     )
-    nodes["end_error"] = EndNode(
-        id="end_error",
-        label="오류 종료",
-        status="error",
-        position={"x": 350, "y": end_y},
-    )
+    if any(isinstance(item, (MacroFileItem, InlineActionItem)) for item in items):
+        nodes["end_error"] = EndNode(
+            id="end_error",
+            label="오류 종료",
+            status="error",
+            position={"x": 350, "y": end_y},
+        )
     return MacroFlow(
         version="1.1",
         name="sequence",
@@ -188,6 +195,10 @@ def project_sequence_flow(
             )
             current_id = node.next_on_success
         elif isinstance(node, WaitFixedNode):
+            if not is_sequence_wait_duration(node.duration_ms):
+                raise ValueError(
+                    f"대기 시간은 0~{MAX_SEQUENCE_WAIT_MS}ms 정수여야 합니다: {node.id}"
+                )
             items.append(WaitItem(step_id=node.id, duration_ms=node.duration_ms))
             current_id = node.next
         elif isinstance(node, EndNode):

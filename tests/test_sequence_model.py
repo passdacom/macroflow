@@ -9,6 +9,7 @@ import pytest
 from macroflow.sequence_model import (
     InlineActionItem,
     MacroFileItem,
+    SequenceItem,
     WaitItem,
     build_sequence_flow,
     project_sequence_flow,
@@ -158,3 +159,59 @@ def test_projection_rejects_inline_failure_branch_that_is_not_error_end(
 
     with pytest.raises(ValueError, match="실패 경로"):
         project_sequence_flow(flow, flow_path)
+
+
+@pytest.mark.parametrize("duration", [True, 1.5, -1, 30001])
+def test_build_rejects_wait_outside_sequencer_contract(
+    tmp_path: Path,
+    duration: object,
+) -> None:
+    wait = WaitItem(step_id="wait", duration_ms=duration)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="대기 시간"):
+        build_sequence_flow(
+            [wait],
+            tmp_path / "invalid.macroflow",
+            created_at="2026-07-29T00:00:00",
+        )
+
+
+@pytest.mark.parametrize("duration", [True, 1.5, -1, 30001])
+def test_projection_rejects_wait_outside_sequencer_contract(
+    tmp_path: Path,
+    duration: object,
+) -> None:
+    from macroflow.script_engine import EndNode, MacroFlow, WaitFixedNode
+
+    flow = MacroFlow(
+        version="1.0",
+        name="invalid wait",
+        created_at="2026-07-29T00:00:00",
+        start_node_id="wait",
+        nodes={
+            "wait": WaitFixedNode(
+                id="wait",
+                label="wait",
+                duration_ms=duration,  # type: ignore[arg-type]
+                next="end_success",
+            ),
+            "end_success": EndNode(id="end_success", label="완료"),
+        },
+    )
+
+    with pytest.raises(ValueError, match="대기 시간"):
+        project_sequence_flow(flow, tmp_path / "invalid.macroflow")
+
+
+@pytest.mark.parametrize("duration", [0, 30000])
+def test_wait_contract_boundaries_roundtrip(tmp_path: Path, duration: int) -> None:
+    flow_path = tmp_path / "boundary.macroflow"
+    items: list[SequenceItem] = [WaitItem(step_id="wait", duration_ms=duration)]
+
+    flow = build_sequence_flow(
+        items,
+        flow_path,
+        created_at="2026-07-29T00:00:00",
+    )
+
+    assert project_sequence_flow(flow, flow_path) == items

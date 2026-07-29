@@ -10,7 +10,7 @@ import dataclasses
 import logging
 from collections import deque
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
@@ -150,6 +150,16 @@ _KIND_COLORS: dict[str, QColor] = {
 
 _COLUMNS = COLUMNS
 CONTENT_COLUMN_REFERENCE_TEXT = _editor_table.CONTENT_COLUMN_REFERENCE_TEXT
+_COLUMN_MIN_WIDTHS = (40, 90, 160, 100, 110, 110, 100)
+_COLUMN_SHRINK_ORDER = (
+    COL_CONTENT,
+    COL_REMARK,
+    COL_SOURCE,
+    COL_TYPE,
+    COL_TIME,
+    COL_DELAY,
+    COL_INDEX,
+)
 
 
 class EventEditorWidget(QWidget):
@@ -192,6 +202,8 @@ class EventEditorWidget(QWidget):
         # 재생 하이라이트: 마지막으로 하이라이트된 행 인덱스 (-1 = 없음).
         self._last_highlight_row: int = -1
         self._relative_time: bool = False
+        self._column_resize_guard = False
+        self._column_widths_initialized = False
         self._setup_ui()
         self.macro_changed.connect(self._advance_model_generation)
 
@@ -210,6 +222,12 @@ class EventEditorWidget(QWidget):
         edit_toolbar = QToolBar("보기/편집", self)
         edit_toolbar.setObjectName("editor-edit-toolbar")
         edit_toolbar.setMovable(False)
+        # Windows native style adds wide horizontal padding to every tool button.
+        # Keep all edit actions reachable at accessibility font sizes while
+        # preserving their order and vertical sizing.
+        edit_toolbar.setStyleSheet(
+            "QToolButton { padding: 0px; margin: 0px; }"
+        )
         self._edit_toolbar = edit_toolbar
 
         self._act_toggle_moves = QAction("이동 표시", self)
@@ -228,7 +246,7 @@ class EventEditorWidget(QWidget):
 
         edit_toolbar.addSeparator()
 
-        self._act_set_delay = QAction("재생 대기 일괄", self)
+        self._act_set_delay = QAction("재생 대기", self)
         self._act_set_delay.setToolTip(
             "현재 표에 표시된 동작의 실행 전 대기를 동일하게 덮어씁니다\n"
             "클릭/키 입력은 한 동작으로 취급하며 숨겨진 해제·이동에는 적용하지 않습니다\n"
@@ -238,14 +256,14 @@ class EventEditorWidget(QWidget):
         self._act_set_delay.setEnabled(False)
         edit_toolbar.addAction(self._act_set_delay)
 
-        self._act_undo = QAction("↩ 취소", self)
+        self._act_undo = QAction("취소", self)
         self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
         self._act_undo.triggered.connect(self._undo)
         self._act_undo.setEnabled(False)
         edit_toolbar.addSeparator()
         edit_toolbar.addAction(self._act_undo)
 
-        self._act_redo = QAction("↪ 재실행", self)
+        self._act_redo = QAction("재실행", self)
         self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
@@ -259,8 +277,6 @@ class EventEditorWidget(QWidget):
         self._act_reset.setEnabled(False)
         edit_toolbar.addAction(self._act_reset)
 
-        edit_toolbar.addSeparator()
-
         self._chk_relative_time = QCheckBox("⏱ 기록 간격")
         self._chk_relative_time.setToolTip(
             "체크: 기록 시점 열을 이전 표시 행과의 녹화 간격으로 표시\n"
@@ -269,8 +285,6 @@ class EventEditorWidget(QWidget):
         )
         self._chk_relative_time.setChecked(False)
         self._chk_relative_time.toggled.connect(self._on_relative_time_toggled)
-        edit_toolbar.addWidget(self._chk_relative_time)
-
         layout.addWidget(edit_toolbar)
 
         # 동작 추가 도구바 — 삽입 작업을 한 행에 모아 반복 편집 흐름을 단순화한다.
@@ -298,6 +312,8 @@ class EventEditorWidget(QWidget):
         self._act_insert_color.triggered.connect(self.insert_color_trigger_action)
         self._act_insert_color.setEnabled(False)
         add_toolbar.addAction(self._act_insert_color)
+        add_toolbar.addSeparator()
+        add_toolbar.addWidget(self._chk_relative_time)
 
         layout.addWidget(add_toolbar)
 
@@ -320,13 +336,11 @@ class EventEditorWidget(QWidget):
         self._table.verticalHeader().setVisible(False)
 
         hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(COL_INDEX, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(COL_TYPE, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(COL_CONTENT, QHeaderView.ResizeMode.Interactive)
-        hdr.setSectionResizeMode(COL_REMARK, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(COL_TIME, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(COL_DELAY, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(COL_SOURCE, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setMinimumSectionSize(min(_COLUMN_MIN_WIDTHS))
+        for column in range(len(_COLUMNS)):
+            hdr.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        hdr.sectionResized.connect(self._on_column_resized)
+        self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
@@ -362,13 +376,6 @@ class EventEditorWidget(QWidget):
         for action in export_actions:
             self._edit_toolbar.insertAction(before, action)
         self._edit_toolbar.insertSeparator(before)
-
-    def required_toolbar_width(self) -> int:
-        """Return the tab-local width needed to keep every action directly visible."""
-        return max(
-            self._document_toolbar.sizeHint().width(),
-            self._edit_toolbar.sizeHint().width(),
-        ) + 8
 
     # ── 공개 인터페이스 ───────────────────────────────────────────────────────
 
@@ -612,9 +619,77 @@ class EventEditorWidget(QWidget):
 
     def _fit_content_column(self) -> None:
         """내용 열을 대표 색상 행 정도로 줄이되, 더 긴 내용은 자동으로 맞춘다."""
+        if getattr(self, "_column_widths_initialized", False):
+            return
+        if hasattr(self, "_column_resize_guard"):
+            self._column_resize_guard = True
         self._table.resizeColumnToContents(COL_CONTENT)
         if self._table.columnWidth(COL_CONTENT) < CONTENT_COLUMN_MIN_WIDTH:
             self._table.setColumnWidth(COL_CONTENT, CONTENT_COLUMN_MIN_WIDTH)
+        if hasattr(self, "_column_resize_guard"):
+            self._column_resize_guard = False
+            self._column_widths_initialized = True
+            self._rebalance_columns()
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "_table"):
+            # Run after child layouts have published the table viewport's final width.
+            from PyQt6.QtCore import QTimer
+
+            QTimer.singleShot(0, self._rebalance_columns)
+
+    def _on_column_resized(self, _column: int, _old_size: int, _new_size: int) -> None:
+        if not self._column_resize_guard:
+            self._rebalance_columns(changed_column=_column)
+
+    def _rebalance_columns(self, *, changed_column: int | None = None) -> None:
+        """Keep user-resizable columns inside the viewport by redistributing width."""
+        if self._column_resize_guard:
+            return
+        available = self._table.viewport().width()
+        if available <= 0:
+            return
+
+        widths = [self._table.columnWidth(column) for column in range(len(_COLUMNS))]
+        for column, minimum in enumerate(_COLUMN_MIN_WIDTHS):
+            widths[column] = max(widths[column], minimum)
+
+        overflow = sum(widths) - available
+        if overflow > 0:
+            candidates = [
+                column for column in _COLUMN_SHRINK_ORDER if column != changed_column
+            ]
+            if changed_column is not None:
+                candidates.append(changed_column)
+            for column in candidates:
+                reducible = max(0, widths[column] - _COLUMN_MIN_WIDTHS[column])
+                reduction = min(reducible, overflow)
+                widths[column] -= reduction
+                overflow -= reduction
+                if overflow == 0:
+                    break
+        elif overflow < 0:
+            surplus = -overflow
+            grow_columns = [
+                column
+                for column in (COL_CONTENT, COL_REMARK, COL_SOURCE)
+                if column != changed_column
+            ]
+            if not grow_columns:
+                grow_columns = [COL_CONTENT]
+            share, remainder = divmod(surplus, len(grow_columns))
+            for position, column in enumerate(grow_columns):
+                widths[column] += share + (1 if position < remainder else 0)
+
+        self._column_resize_guard = True
+        try:
+            header = self._table.horizontalHeader()
+            for column, width in enumerate(widths):
+                if self._table.columnWidth(column) != width:
+                    header.resizeSection(column, width)
+        finally:
+            self._column_resize_guard = False
 
     # ── Undo / Redo ───────────────────────────────────────────────────────────
 

@@ -55,6 +55,8 @@ from macroflow.script_engine import (
     load_flow,
     save_flow,
 )
+from macroflow.sequence_limits import MAX_SEQUENCE_WAIT_MS
+from macroflow.sequence_merge import merge_sequence_items
 from macroflow.sequence_model import (
     InlineActionItem,
     MacroFileItem,
@@ -70,9 +72,11 @@ from macroflow.types import (
     TextInputEvent,
 )
 
+from .spinbox_sizing import fit_compact_spinbox
+
 logger = logging.getLogger(__name__)
 
-_MAX_GAP_MS = 30_000
+_MAX_GAP_MS = MAX_SEQUENCE_WAIT_MS
 
 # ── 상태 색상 ─────────────────────────────────────────────────────────────────
 _STATUS_COLORS: dict[str, QColor] = {
@@ -380,26 +384,26 @@ class MacroSequencerWidget(QWidget):
         add_toolbar.setObjectName("sequencer-add-toolbar")
         add_toolbar.setMovable(False)
 
-        self._act_add = QAction("➕ 매크로", self)
+        self._act_add = QAction("➕ 매크로 추가", self)
         self._act_add.setToolTip("매크로 JSON 파일을 선택 행 다음에 추가합니다")
         self._act_add.triggered.connect(self._add_files)
         add_toolbar.addAction(self._act_add)
 
-        self._act_add_text = QAction("📝 문구", self)
+        self._act_add_text = QAction("📝 문구 추가", self)
         self._act_add_text.triggered.connect(self._prompt_text_action)
         add_toolbar.addAction(self._act_add_text)
 
-        self._act_add_click = QAction("🖱 클릭", self)
+        self._act_add_click = QAction("🖱 클릭 추가", self)
         self._act_add_click.setToolTip("클릭 종류를 선택한 뒤 F6으로 좌표를 지정합니다")
         self._act_add_click.triggered.connect(self._prompt_click_capture)
         add_toolbar.addAction(self._act_add_click)
 
-        self._act_add_color = QAction("🎨 색상 대기", self)
+        self._act_add_color = QAction("🎨 색상 대기 추가", self)
         self._act_add_color.setToolTip("F6으로 좌표와 목표 색상을 지정합니다")
         self._act_add_color.triggered.connect(self._prompt_color_capture)
         add_toolbar.addAction(self._act_add_color)
 
-        self._act_add_wait = QAction("⏱ 대기", self)
+        self._act_add_wait = QAction("⏱ 대기 추가", self)
         self._act_add_wait.triggered.connect(self._prompt_wait_action)
         add_toolbar.addAction(self._act_add_wait)
 
@@ -467,7 +471,11 @@ class MacroSequencerWidget(QWidget):
             "에디터 병합: 같은 숫자를 기록 타임라인 간격으로 삽입하므로 "
             "병합 후 재생 속도가 적용됩니다."
         )
-        self._gap_spin.setFixedWidth(95)
+        fit_compact_spinbox(
+            self._gap_spin,
+            ("0ms", f"{_MAX_GAP_MS}ms"),
+            minimum_width=95,
+        )
         self._gap_spin.valueChanged.connect(self._on_gap_changed)
         manage_toolbar.addWidget(self._gap_spin)
 
@@ -1404,44 +1412,25 @@ class MacroSequencerWidget(QWidget):
     # ── 병합 ──────────────────────────────────────────────────────────────────
 
     def _merge_to_editor(self) -> None:
-        """시퀀서의 모든 매크로를 하나로 병합하여 에디터에 전달한다.
-
-        각 매크로 파일을 순서대로 로드하고, macro_file.merge_macros()를 사용하여
-        하나의 MacroData로 병합한 뒤 merge_to_editor 신호를 방출한다.
-        이벤트의 source_file 필드에 원본 파일명이 기록되어 에디터 '출처' 열에 표시된다.
-        """
-        if (
-            self._engine is not None
-            or len(self._items) < 2
-            or not all(isinstance(item, MacroFileItem) for item in self._items)
-        ):
+        """시퀀서의 파일·인라인·대기 단계를 하나의 편집 매크로로 변환한다."""
+        if self._engine is not None or len(self._items) < 2:
             return
 
-        from macroflow.macro_file import load, merge_macros
-        from macroflow.types import MacroData
-
-        macro_tuples: list[tuple[MacroData, str]] = []
-        for item in self._items:
-            assert isinstance(item, MacroFileItem)
-            try:
-                macro = load(str(item.path))
-            except Exception as exc:
-                QMessageBox.critical(
-                    self, "로드 오류",
-                    f"파일을 읽을 수 없습니다:\n{item.path.name}\n\n{exc}",
-                )
-                return
-            macro_tuples.append((macro, item.path.name))
+        from macroflow.macro_file import load
 
         try:
-            merged = merge_macros(macro_tuples, gap_ms=self._gap_spin.value())
+            merged = merge_sequence_items(
+                self._items,
+                load_macro=lambda path: load(str(path)),
+                macro_gap_ms=self._gap_spin.value(),
+            )
         except Exception as exc:
             QMessageBox.critical(self, "병합 오류", str(exc))
             return
 
         self.merge_to_editor.emit(merged)
         self._log_message(
-            f"에디터로 병합 완료: {len(self._items)}개 파일 → {len(merged.events)}개 이벤트"
+            f"에디터로 병합 완료: {len(self._items)}개 단계 → {len(merged.events)}개 이벤트"
         )
 
     # ── 버튼 활성화 관리 ──────────────────────────────────────────────────────
@@ -1460,11 +1449,13 @@ class MacroSequencerWidget(QWidget):
         self._act_save_flow.setEnabled(editable and has_items)
         self._act_save_flow_as.setEnabled(editable and has_items)
         macro_only = all(isinstance(item, MacroFileItem) for item in self._items)
-        self._act_merge.setEnabled(editable and macro_only and len(self._items) >= 2)
+        has_macro = any(isinstance(item, MacroFileItem) for item in self._items)
+        self._act_merge.setEnabled(editable and has_macro and len(self._items) >= 2)
         self._act_merge.setToolTip(
-            "목록의 모든 매크로를 순서대로 이어 붙여 에디터로 보냅니다."
-            if macro_only
-            else "혼합 단계의 에디터 병합은 아직 지원하지 않습니다."
+            "목록의 매크로·문구·클릭·색상 대기·대기를 순서대로 에디터로 병합합니다.\n"
+            "혼합 병합의 대기 단계는 매크로 대기로 변환되어 재생 속도의 영향을 받습니다."
+            if has_macro
+            else "에디터 병합에는 매크로 파일이 하나 이상 필요합니다."
         )
         self._gap_spin.setEnabled(editable and macro_only)
         self._list.setDragEnabled(editable)
