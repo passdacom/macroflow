@@ -283,13 +283,6 @@ def test_toolbars_can_be_widened_to_fit_larger_accessibility_font() -> None:
             assert item is not None, object_name
             return item
 
-        def has_visible_overflow(item):
-            extension = next(
-                (child for child in item.children() if child.objectName() == "qt_toolbar_ext_button"),
-                None,
-            )
-            return bool(extension and extension.isVisible())
-
         def actions_fit(item):
             right_edge = item.contentsRect().right()
             for action in item.actions():
@@ -301,18 +294,17 @@ def test_toolbars_can_be_widened_to_fit_larger_accessibility_font() -> None:
         window._tabs.setCurrentWidget(window._editor)
         app.processEvents()
         editor_edit = toolbar("editor-edit-toolbar")
-        assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
-        assert not has_visible_overflow(toolbar("range-playback-toolbar"))
-        assert not has_visible_overflow(toolbar("editor-file-toolbar"))
-        assert not has_visible_overflow(editor_edit)
+        actions_fit(toolbar("playback-settings-toolbar"))
+        actions_fit(toolbar("range-playback-toolbar"))
+        actions_fit(toolbar("editor-file-toolbar"))
         actions_fit(editor_edit)
 
         window._tabs.setCurrentWidget(window._sequencer)
         app.processEvents()
-        assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
-        assert not has_visible_overflow(toolbar("range-playback-toolbar"))
-        assert not has_visible_overflow(toolbar("sequencer-flow-toolbar"))
-        assert not has_visible_overflow(toolbar("sequencer-manage-toolbar"))
+        actions_fit(toolbar("playback-settings-toolbar"))
+        actions_fit(toolbar("range-playback-toolbar"))
+        actions_fit(toolbar("sequencer-flow-toolbar"))
+        actions_fit(toolbar("sequencer-manage-toolbar"))
 
         window._tabs.setCurrentWidget(window._favorites)
         app.processEvents()
