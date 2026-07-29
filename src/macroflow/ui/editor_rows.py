@@ -96,6 +96,19 @@ class _DisplayRow:
     remark: str = ""                          # 비고 열에 표시할 사용자 메모.
 
 
+def _find_row_for_event_ids(
+    rows: list[_DisplayRow],
+    event_ids: set[str],
+) -> int | None:
+    """Return the first display row containing one of ``event_ids``."""
+    if not event_ids:
+        return None
+    for row_idx, row in enumerate(rows):
+        if event_ids.intersection(row.event_ids):
+            return row_idx
+    return None
+
+
 def _delay_str(event: AnyEvent) -> str:
     return str(event.delay_override_ms) if event.delay_override_ms is not None else ""
 

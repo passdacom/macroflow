@@ -21,37 +21,34 @@ def _run_offscreen(script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_main_window_shortcut_fallback_uses_real_pyqt_shortcut() -> None:
+def test_main_window_focused_fallback_uses_configured_real_pyqt_shortcuts() -> None:
     result = _run_offscreen(
         """
         from PyQt6.QtGui import QShortcut
-        from PyQt6.QtWidgets import QApplication, QWidget
+        from PyQt6.QtWidgets import QApplication
         from macroflow.ui.main_window import MainWindow
 
         app = QApplication.instance() or QApplication([])
-
-        class ShortcutHost(QWidget):
-            def _handle_f6(self):
-                pass
-
-            def _toggle_recording(self):
-                pass
-
-            def _toggle_playback(self):
-                pass
-
-            def _toggle_pause(self):
-                pass
-
-            def _capture_quick_text(self):
-                pass
-
-        host = ShortcutHost()
-        MainWindow._register_shortcut_fallback(host)
-        MainWindow._register_shortcut_fallback(host)
-        shortcuts = host.findChildren(QShortcut)
-        assert len(shortcuts) == 4
-        assert {item.key().toString() for item in shortcuts} == {"F6", "F7", "F8", "F9"}
+        MainWindow._restore_settings = lambda self: None
+        window = MainWindow()
+        window.show()
+        app.processEvents()
+        expected = {
+            "F6", "F7", "F8", "F9",
+            "Ctrl+Shift+T", "Ctrl+Shift+L", "Ctrl+Shift+G",
+        }
+        shortcuts = [item for item in window.findChildren(QShortcut) if item.isEnabled()]
+        assert {item.key().toString() for item in shortcuts} >= expected
+        window.hide()
+        window.show()
+        app.processEvents()
+        active_keys = [
+            item.key().toString()
+            for item in window.findChildren(QShortcut)
+            if item.isEnabled() and item.key().toString() in expected
+        ]
+        assert len(active_keys) == 7
+        window.close()
         """
     )
 

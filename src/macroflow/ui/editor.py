@@ -37,6 +37,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.event_insertions import (
+    _insert_click_events,
+    _insert_color_trigger_event,
+    _insert_text_input_event,
+    _selected_insert_after_event_idx,
+)
 from macroflow.macro_file import (
     delete_mouse_moves,
     edit_key_value,
@@ -65,12 +71,6 @@ from macroflow.ui.editor_dialogs import (
     create_percentage_spin,
 )
 from macroflow.ui.editor_history import copy_events, macro_with_events
-from macroflow.ui.editor_insertions import (
-    _insert_click_events,
-    _insert_color_trigger_event,
-    _insert_text_input_event,
-    _selected_insert_after_event_idx,
-)
 from macroflow.ui.editor_keys import key_name_to_vk
 from macroflow.ui.editor_rows import (
     COLOR_CHECK_CLICK_KINDS,
@@ -97,6 +97,7 @@ from macroflow.ui.editor_rows import (
     POSITION_EDIT_KINDS,
     _build_rows,
     _DisplayRow,
+    _find_row_for_event_ids,
     delay_input_to_override,
     delay_override_to_input,
 )
@@ -174,6 +175,8 @@ class EventEditorWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._macro: MacroData | None = None
+        self._model_generation: int = 0
+        self._capture_hotkey_label = "F6"
         self._rows: list[_DisplayRow] = []
         self._show_moves: bool = False
         self._undo_stack: deque[list[AnyEvent]] = deque(maxlen=_MAX_UNDO)
@@ -185,15 +188,17 @@ class EventEditorWidget(QWidget):
         self._last_highlight_row: int = -1
         self._relative_time: bool = False
         self._setup_ui()
+        self.macro_changed.connect(self._advance_model_generation)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 편집 도구바
-        toolbar = QToolBar("편집 도구", self)
-        toolbar.setMovable(False)
+        # 보기/편집 도구바
+        edit_toolbar = QToolBar("보기/편집", self)
+        edit_toolbar.setObjectName("editor-edit-toolbar")
+        edit_toolbar.setMovable(False)
 
         self._act_toggle_moves = QAction("이동 표시", self)
         self._act_toggle_moves.setToolTip("마우스 이동 이벤트 표시/숨김 (비파괴)")
@@ -201,15 +206,15 @@ class EventEditorWidget(QWidget):
         self._act_toggle_moves.setChecked(False)
         self._act_toggle_moves.triggered.connect(self._toggle_moves)
         self._act_toggle_moves.setEnabled(False)
-        toolbar.addAction(self._act_toggle_moves)
+        edit_toolbar.addAction(self._act_toggle_moves)
 
         self._act_del_moves = QAction("이동 삭제", self)
         self._act_del_moves.setToolTip("mouse_move 이벤트를 events에서 영구 삭제합니다")
         self._act_del_moves.triggered.connect(self._delete_mouse_moves)
         self._act_del_moves.setEnabled(False)
-        toolbar.addAction(self._act_del_moves)
+        edit_toolbar.addAction(self._act_del_moves)
 
-        toolbar.addSeparator()
+        edit_toolbar.addSeparator()
 
         self._act_set_delay = QAction("표시 동작 재생 대기 일괄", self)
         self._act_set_delay.setToolTip(
@@ -219,42 +224,31 @@ class EventEditorWidget(QWidget):
         )
         self._act_set_delay.triggered.connect(self._set_delay_all)
         self._act_set_delay.setEnabled(False)
-        toolbar.addAction(self._act_set_delay)
+        edit_toolbar.addAction(self._act_set_delay)
 
-        toolbar.addSeparator()
+        edit_toolbar.addSeparator()
 
         self._act_undo = QAction("↩ 취소", self)
         self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
         self._act_undo.triggered.connect(self._undo)
         self._act_undo.setEnabled(False)
-        toolbar.addAction(self._act_undo)
+        edit_toolbar.addAction(self._act_undo)
 
         self._act_redo = QAction("↪ 재실행", self)
         self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
-        toolbar.addAction(self._act_redo)
+        edit_toolbar.addAction(self._act_redo)
 
-        toolbar.addSeparator()
-
-        self._act_insert_color = QAction("🎨 색 체크 삽입", self)
-        self._act_insert_color.setToolTip(
-            "선택 행 다음에 ColorTriggerEvent를 삽입합니다\n"
-            "클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요"
-        )
-        self._act_insert_color.triggered.connect(self._start_color_trigger_insert)
-        self._act_insert_color.setEnabled(False)
-        toolbar.addAction(self._act_insert_color)
-
-        toolbar.addSeparator()
+        edit_toolbar.addSeparator()
 
         self._act_reset = QAction("원본 복원", self)
         self._act_reset.setToolTip("raw_events 기준으로 events를 초기화합니다")
         self._act_reset.triggered.connect(self._reset_to_raw)
         self._act_reset.setEnabled(False)
-        toolbar.addAction(self._act_reset)
+        edit_toolbar.addAction(self._act_reset)
 
-        toolbar.addSeparator()
+        edit_toolbar.addSeparator()
 
         self._chk_relative_time = QCheckBox("⏱ 기록 간격")
         self._chk_relative_time.setToolTip(
@@ -264,9 +258,37 @@ class EventEditorWidget(QWidget):
         )
         self._chk_relative_time.setChecked(False)
         self._chk_relative_time.toggled.connect(self._on_relative_time_toggled)
-        toolbar.addWidget(self._chk_relative_time)
+        edit_toolbar.addWidget(self._chk_relative_time)
 
-        layout.addWidget(toolbar)
+        layout.addWidget(edit_toolbar)
+
+        # 동작 추가 도구바 — 삽입 작업을 한 행에 모아 반복 편집 흐름을 단순화한다.
+        add_toolbar = QToolBar("동작 추가", self)
+        add_toolbar.setObjectName("editor-add-toolbar")
+        add_toolbar.setMovable(False)
+
+        self._act_insert_text = QAction("📝 텍스트 입력 추가", self)
+        self._act_insert_text.setToolTip("선택 행 다음에 텍스트 입력 동작을 추가합니다")
+        self._act_insert_text.triggered.connect(self.insert_text_action)
+        self._act_insert_text.setEnabled(False)
+        add_toolbar.addAction(self._act_insert_text)
+
+        self._act_insert_click = QAction("🖱 클릭 추가", self)
+        self._act_insert_click.setToolTip("선택 행 다음에 클릭 동작을 추가합니다")
+        self._act_insert_click.triggered.connect(self.insert_click_action)
+        self._act_insert_click.setEnabled(False)
+        add_toolbar.addAction(self._act_insert_click)
+
+        self._act_insert_color = QAction("🎨 색 체크 삽입", self)
+        self._act_insert_color.setToolTip(
+            "선택 행 다음에 ColorTriggerEvent를 삽입합니다\n"
+            "클릭 후 원하는 위치로 마우스를 이동하고 F6을 누르세요"
+        )
+        self._act_insert_color.triggered.connect(self.insert_color_trigger_action)
+        self._act_insert_color.setEnabled(False)
+        add_toolbar.addAction(self._act_insert_color)
+
+        layout.addWidget(add_toolbar)
 
         # 이벤트 테이블
         self._table = QTableWidget(0, len(_COLUMNS))
@@ -320,6 +342,7 @@ class EventEditorWidget(QWidget):
     def load_macro(self, macro: MacroData) -> None:
         """MacroData를 테이블에 로드한다."""
         self._macro = macro
+        self._model_generation += 1
         self._undo_stack.clear()
         self._redo_stack.clear()
         self._last_highlight_row = -1
@@ -327,6 +350,8 @@ class EventEditorWidget(QWidget):
         self._act_toggle_moves.setEnabled(True)
         self._act_del_moves.setEnabled(True)
         self._act_set_delay.setEnabled(True)
+        self._act_insert_text.setEnabled(True)
+        self._act_insert_click.setEnabled(True)
         self._act_insert_color.setEnabled(True)
         self._act_reset.setEnabled(True)
         self._act_undo.setEnabled(False)
@@ -335,6 +360,25 @@ class EventEditorWidget(QWidget):
     def current_macro(self) -> MacroData | None:
         """현재 로드된 MacroData를 반환한다."""
         return self._macro
+
+    def insert_text_action(self) -> None:
+        self._insert_text_input(-1)
+
+    def insert_click_action(self) -> None:
+        self._insert_click(-1)
+
+    def insert_color_trigger_action(self) -> None:
+        self._start_color_trigger_insert()
+
+    def set_capture_hotkey_label(self, label: str) -> None:
+        self._capture_hotkey_label = label
+        self._act_insert_color.setToolTip(
+            "선택 행 다음에 ColorTriggerEvent를 삽입합니다\n"
+            f"클릭 후 원하는 위치로 마우스를 이동하고 {label}을 누르세요"
+        )
+
+    def _advance_model_generation(self, _macro: MacroData) -> None:
+        self._model_generation += 1
 
     def highlight_event(self, event_idx: int) -> None:
         """재생 중 해당 이벤트 인덱스에 대응하는 행을 하이라이트한다.
@@ -401,7 +445,8 @@ class EventEditorWidget(QWidget):
         if button is not None:
             button.setEnabled(False)
         if label is not None:
-            label.setText("⏳ F6을 눌러 위치를 지정하세요...")
+            hotkey_label = getattr(self, "_capture_hotkey_label", "F6")
+            label.setText(f"⏳ {hotkey_label}을 눌러 위치를 지정하세요...")
         self._f6_capture_cb = callback
         self.f6_capture_started.emit()
         if dialog is not None:
@@ -538,6 +583,28 @@ class EventEditorWidget(QWidget):
         self._refresh()
         self.macro_changed.emit(self._macro)
 
+    def _apply_inserted_events(
+        self,
+        events: list[AnyEvent],
+        *,
+        previous_event_ids: set[str],
+    ) -> None:
+        """Apply an insertion and focus the display row containing the new event."""
+        inserted_ids = {event.id for event in events} - previous_event_ids
+        self._apply_events(events)
+        row_idx = _find_row_for_event_ids(self._rows, inserted_ids)
+        if row_idx is None:
+            return
+        self._table.setCurrentCell(row_idx, COL_INDEX)
+        self._table.selectRow(row_idx)
+        item = self._table.item(row_idx, COL_INDEX)
+        if item is not None:
+            self._table.scrollToItem(
+                item,
+                QAbstractItemView.ScrollHint.PositionAtCenter,
+            )
+        self._table.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
     def _undo(self) -> None:
         if not self._undo_stack or self._macro is None:
             return
@@ -630,8 +697,23 @@ class EventEditorWidget(QWidget):
         if row.kind == KIND_TEXT_INPUT and isinstance(primary, TextInputEvent):
             self._add_context_action(menu, "💬 텍스트 편집(&E)...", lambda: self._edit_text_input(row_idx))
 
-        self._add_context_action(menu, "💬 텍스트 입력 추가(&T)...", lambda: self._insert_text_input(row_idx))
-        self._add_context_action(menu, "🖱 클릭 추가(&L)...", lambda: self._insert_click(row_idx))
+        menu.addSeparator()
+        self._add_context_action(
+            menu,
+            "💬 텍스트 입력 추가(&T)...",
+            self.insert_text_action,
+        )
+        self._add_context_action(
+            menu,
+            "🖱 클릭 추가(&L)...",
+            self.insert_click_action,
+        )
+        self._add_context_action(
+            menu,
+            "🎨 색 체크 삽입(&G)",
+            self.insert_color_trigger_action,
+        )
+        menu.addSeparator()
         self._add_context_action(menu, "📝 비고 편집(&N)...", lambda: self._edit_remark(row_idx))
         menu.addSeparator()
         self._add_context_action(
@@ -803,7 +885,7 @@ class EventEditorWidget(QWidget):
         )
         form.addRow("Y 위치:", y_spin)
 
-        capture_label, btn_capture = create_capture_controls()
+        capture_label, btn_capture = create_capture_controls(self._capture_hotkey_label)
 
         captured_color: list[str] = []
 
@@ -1006,23 +1088,58 @@ class EventEditorWidget(QWidget):
             return
 
         insert_after_event_idx = self._selected_insert_after_event_idx()
+        anchor_event_id = (
+            self._macro.events[insert_after_event_idx].id
+            if insert_after_event_idx >= 0
+            else None
+        )
+        capture_generation = self._model_generation
 
         def _on_color_captured(x_r: float, y_r: float, color_hex: str) -> None:
             """F6 콜백 — ColorTriggerEvent 삽입."""
             if self._macro is None:
                 return
+            if self._model_generation != capture_generation:
+                QMessageBox.warning(
+                    self,
+                    "삽입 위치 변경",
+                    "캡처 중 매크로가 변경되어 색 체크 삽입을 취소했습니다.",
+                )
+                return
 
+            current_insert_idx = -1
+            if anchor_event_id is not None:
+                current_insert_idx = next(
+                    (
+                        index
+                        for index, event in enumerate(self._macro.events)
+                        if event.id == anchor_event_id
+                    ),
+                    -1,
+                )
+                if current_insert_idx < 0:
+                    QMessageBox.warning(
+                        self,
+                        "삽입 위치 변경",
+                        "기준 동작을 찾을 수 없어 색 체크 삽입을 취소했습니다.",
+                    )
+                    return
+
+            previous_event_ids = {event.id for event in self._macro.events}
             self._push_undo()
             events = _insert_color_trigger_event(
                 self._macro.events,
-                insert_after_event_idx,
+                current_insert_idx,
                 x_ratio=x_r,
                 y_ratio=y_r,
                 target_color=color_hex,
                 timeout_ms=self._macro.settings.color_trigger_default_timeout_ms,
                 check_interval_ms=self._macro.settings.color_trigger_check_interval_ms,
             )
-            self._apply_events(events)
+            self._apply_inserted_events(
+                events,
+                previous_event_ids=previous_event_ids,
+            )
 
         self._start_f6_capture(_on_color_captured)
 
@@ -1264,6 +1381,7 @@ class EventEditorWidget(QWidget):
         delay_ms = delay_spin.value()
         insert_after_event_idx = self._selected_insert_after_event_idx()
 
+        previous_event_ids = {event.id for event in self._macro.events}
         self._push_undo()
         events = _insert_text_input_event(
             self._macro.events,
@@ -1271,7 +1389,10 @@ class EventEditorWidget(QWidget):
             text=text,
             delay_ms=delay_ms,
         )
-        self._apply_events(events)
+        self._apply_inserted_events(
+            events,
+            previous_event_ids=previous_event_ids,
+        )
 
     def _insert_click(self, row_idx: int) -> None:
         """선택 행 다음에 MouseButtonEvent (클릭/더블클릭)를 삽입한다.
@@ -1300,7 +1421,7 @@ class EventEditorWidget(QWidget):
         layout_v.addLayout(form)
 
         # ── F6 직접 지정 ────────────────────────────────────────────────────
-        capture_label, btn_capture = create_capture_controls()
+        capture_label, btn_capture = create_capture_controls(self._capture_hotkey_label)
 
         captured_color: list[str] = []
 
@@ -1370,6 +1491,7 @@ class EventEditorWidget(QWidget):
         is_double = radio_double.isChecked()
         insert_after_event_idx = self._selected_insert_after_event_idx()
 
+        previous_event_ids = {event.id for event in self._macro.events}
         self._push_undo()
         events = _insert_click_events(
             self._macro.events,
@@ -1381,7 +1503,10 @@ class EventEditorWidget(QWidget):
             delay_ms=delay_ms,
             recorded_color=rec_color,
         )
-        self._apply_events(events)
+        self._apply_inserted_events(
+            events,
+            previous_event_ids=previous_event_ids,
+        )
 
     def _edit_text_input(self, row_idx: int) -> None:
         """TextInputEvent의 텍스트를 수정한다."""

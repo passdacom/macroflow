@@ -152,6 +152,19 @@ class TestConvertRaw:
         assert _convert_raw(("k", 100_000_000, 0x0100, (0x77, 0, 0))) is None
         assert _convert_raw(("k", 110_000_000, 0x0101, (0x77, 0, 0))) is None
 
+    def test_configured_runtime_hotkeys_replace_default_recording_filter(self) -> None:
+        from macroflow import recorder
+
+        original = recorder.filtered_hotkey_vk_codes()
+        try:
+            recorder.configure_filtered_hotkey_vk_codes({0x79, 0x7A, 0x7B, 0x7C})
+            assert _convert_raw(("k", 100_000_000, 0x0100, (0x79, 0, 0))) is None
+            recorded = _convert_raw(("k", 110_000_000, 0x0100, (0x75, 0, 0)))
+            assert isinstance(recorded, KeyEvent)
+            assert recorded.vk_code == 0x75
+        finally:
+            recorder.configure_filtered_hotkey_vk_codes(original)
+
     def test_event_id_is_8hex(self) -> None:
         """생성된 이벤트 id는 8자리 hex 문자열이어야 한다."""
         with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.0, 0.0)):

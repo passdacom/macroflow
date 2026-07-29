@@ -33,12 +33,14 @@ def create_delay_spin(value_ms: int, *, maximum_ms: int = 30000) -> QSpinBox:
     return spin
 
 
-def create_capture_controls() -> tuple[QLabel, QPushButton]:
-    """Create the standard F6 capture label/button pair used in editor dialogs."""
+def create_capture_controls(hotkey_label: str = "F6") -> tuple[QLabel, QPushButton]:
+    """Create the standard capture label/button pair used in editor dialogs."""
     label = QLabel("")
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setStyleSheet(CAPTURE_LABEL_STYLE)
 
-    button = QPushButton(CAPTURE_BUTTON_TEXT)
-    button.setToolTip(CAPTURE_BUTTON_TOOLTIP)
+    button = QPushButton(f"📍 화면에서 직접 지정 ({hotkey_label}으로 지정)")
+    button.setToolTip(
+        f"버튼 클릭 후 원하는 위치로 마우스를 이동하고 {hotkey_label}을 누르세요."
+    )
     return label, button
