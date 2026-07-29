@@ -216,8 +216,8 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         from macroflow import __version__
         self.setWindowTitle(f"MacroFlow v{__version__}")
-        self.setMinimumSize(1180, 520)
-        self.resize(1180, 620)
+        self.setMinimumSize(1280, 520)
+        self.resize(1280, 620)
 
     def _setup_menubar(self) -> None:
         mb = self.menuBar()

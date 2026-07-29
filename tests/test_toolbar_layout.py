@@ -127,8 +127,8 @@ def test_fixed_toolbar_rows_fit_supported_minimum_width() -> None:
         MainWindow._restore_settings = lambda self: None
         app = QApplication.instance() or QApplication([])
         window = MainWindow()
-        assert window.minimumWidth() == 1180
-        window.resize(1180, 620)
+        assert window.minimumWidth() == 1280
+        window.resize(1280, 620)
         window.show()
         app.processEvents()
 
@@ -254,9 +254,9 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
 
         MainWindow._restore_settings = lambda self: None
         app = QApplication.instance() or QApplication([])
-        app.setFont(QFont(app.font().family(), 14))
+        app.setFont(QFont(app.font().family(), 16))
         window = MainWindow()
-        window.resize(1360, 720)
+        window.resize(1280, 720)
         window.show()
         app.processEvents()
 
@@ -272,12 +272,21 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
             )
             return bool(extension and extension.isVisible())
 
+        def actions_fit(item):
+            right_edge = item.contentsRect().right()
+            for action in item.actions():
+                widget = item.widgetForAction(action)
+                if widget is not None:
+                    assert widget.isVisible(), action.text()
+                    assert widget.geometry().right() <= right_edge, action.text()
+
         window._tabs.setCurrentWidget(window._editor)
         app.processEvents()
         assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
         assert not has_visible_overflow(toolbar("range-playback-toolbar"))
         assert not has_visible_overflow(toolbar("editor-file-toolbar"))
         assert not has_visible_overflow(toolbar("editor-edit-toolbar"))
+        actions_fit(toolbar("editor-edit-toolbar"))
 
         window._tabs.setCurrentWidget(window._sequencer)
         app.processEvents()
