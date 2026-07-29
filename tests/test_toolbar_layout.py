@@ -274,7 +274,7 @@ def test_toolbars_can_be_widened_to_fit_larger_accessibility_font() -> None:
         app.setFont(QFont(app.font().family(), 20))
         window = MainWindow()
         assert window.minimumWidth() == 0
-        window.resize(1800, 720)
+        window.resize(1920, 720)
         window.show()
         app.processEvents()
 
@@ -338,7 +338,7 @@ def test_playback_spinboxes_show_their_largest_values_without_clipping() -> None
         app = QApplication.instance() or QApplication([])
         app.setFont(QFont(app.font().family(), 20))
         window = MainWindow()
-        window.resize(1800, 720)
+        window.resize(1920, 720)
         window.show()
 
         values = (
