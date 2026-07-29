@@ -438,6 +438,9 @@ class MainWindow(QMainWindow):
                 self._act_restore_prev,
             ),
         )
+        self.setMinimumWidth(
+            max(self.minimumWidth(), self._editor.required_toolbar_width())
+        )
 
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")

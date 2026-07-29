@@ -426,6 +426,14 @@ def inline_event_block_valid(events: list[AnyEvent]) -> bool:
 # ── 공개 I/O ─────────────────────────────────────────────────────────────────
 
 
+def _fsync_path(path: Path) -> None:
+    """Flush a completed temp file through a writable descriptor on every OS."""
+    # Windows' ``os.fsync`` delegates to ``_commit`` and rejects read-only
+    # descriptors with EBADF. Reopen as rb+ after the writer/copy handle closes.
+    with path.open("rb+") as file:
+        os.fsync(file.fileno())
+
+
 def _atomic_backup(source: Path, destination: Path) -> None:
     temp_path: Path | None = None
     try:
@@ -437,8 +445,7 @@ def _atomic_backup(source: Path, destination: Path) -> None:
         ) as temp_file:
             temp_path = Path(temp_file.name)
         shutil.copy2(source, temp_path)
-        with temp_path.open("rb") as backup_file:
-            os.fsync(backup_file.fileno())
+        _fsync_path(temp_path)
         os.replace(temp_path, destination)
     except Exception:
         if temp_path is not None:
@@ -547,7 +554,7 @@ def save(macro: MacroData, path: str) -> None:
                 temp_path = Path(temp_file.name)
                 json.dump(data, temp_file, ensure_ascii=False, indent=2, allow_nan=False)
                 temp_file.flush()
-                os.fsync(temp_file.fileno())
+            _fsync_path(temp_path)
             os.replace(temp_path, p)
         except Exception:
             if temp_path is not None:

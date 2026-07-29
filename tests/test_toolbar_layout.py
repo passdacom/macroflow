@@ -31,6 +31,7 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
         from macroflow.ui.main_window import MainWindow
 
         MainWindow._restore_settings = lambda self: None
+        MainWindow._initialize_hotkeys = lambda self: None
         app = QApplication.instance() or QApplication([])
         window = MainWindow()
         window.resize(1280, 720)
@@ -125,6 +126,7 @@ def test_fixed_toolbar_rows_fit_supported_minimum_width() -> None:
         from macroflow.ui.main_window import MainWindow
 
         MainWindow._restore_settings = lambda self: None
+        MainWindow._initialize_hotkeys = lambda self: None
         app = QApplication.instance() or QApplication([])
         window = MainWindow()
         assert window.minimumWidth() == 1280
@@ -203,6 +205,7 @@ def test_ctrl_s_routes_to_active_document_surface_only() -> None:
 
         calls = []
         MainWindow._restore_settings = lambda self: None
+        MainWindow._initialize_hotkeys = lambda self: None
         MacroSequencerWidget.save_flow = lambda self: calls.append("sequence")
         app = QApplication.instance() or QApplication([])
         window = MainWindow()
@@ -253,8 +256,9 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
         from macroflow.ui.main_window import MainWindow
 
         MainWindow._restore_settings = lambda self: None
+        MainWindow._initialize_hotkeys = lambda self: None
         app = QApplication.instance() or QApplication([])
-        app.setFont(QFont(app.font().family(), 16))
+        app.setFont(QFont(app.font().family(), 20))
         window = MainWindow()
         window.resize(1280, 720)
         window.show()
@@ -282,11 +286,13 @@ def test_fixed_toolbars_fit_with_larger_accessibility_font() -> None:
 
         window._tabs.setCurrentWidget(window._editor)
         app.processEvents()
+        editor_edit = toolbar("editor-edit-toolbar")
+        assert window.minimumWidth() >= editor_edit.sizeHint().width() + 8
         assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
         assert not has_visible_overflow(toolbar("range-playback-toolbar"))
         assert not has_visible_overflow(toolbar("editor-file-toolbar"))
-        assert not has_visible_overflow(toolbar("editor-edit-toolbar"))
-        actions_fit(toolbar("editor-edit-toolbar"))
+        assert not has_visible_overflow(editor_edit)
+        actions_fit(editor_edit)
 
         window._tabs.setCurrentWidget(window._sequencer)
         app.processEvents()

@@ -323,10 +323,10 @@ def _message_pump() -> None:
         _hook_ready.set()
         if _mouse_hook_id:
             _user32.UnhookWindowsHookEx(_mouse_hook_id)
-            _mouse_hook_id = None
+        _mouse_hook_id = None
         if _keyboard_hook_id:
             _user32.UnhookWindowsHookEx(_keyboard_hook_id)
-            _keyboard_hook_id = None
+        _keyboard_hook_id = None
         _pump_tid = 0
 
 
@@ -388,7 +388,7 @@ def _emg_pump() -> None:
         _emg_hook_ready.set()
         if _emg_hook_id:
             _user32.UnhookWindowsHookEx(_emg_hook_id)
-            _emg_hook_id = None
+        _emg_hook_id = None
         _emg_pump_tid = 0
 
 

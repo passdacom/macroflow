@@ -363,6 +363,13 @@ class EventEditorWidget(QWidget):
             self._edit_toolbar.insertAction(before, action)
         self._edit_toolbar.insertSeparator(before)
 
+    def required_toolbar_width(self) -> int:
+        """Return the tab-local width needed to keep every action directly visible."""
+        return max(
+            self._document_toolbar.sizeHint().width(),
+            self._edit_toolbar.sizeHint().width(),
+        ) + 8
+
     # ── 공개 인터페이스 ───────────────────────────────────────────────────────
 
     def load_macro(self, macro: MacroData) -> None:
