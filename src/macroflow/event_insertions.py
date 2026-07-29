@@ -23,7 +23,7 @@ _COLOR_TRIGGER_BUDGET_NS = _MIN_INSERT_BUDGET_NS
 
 
 def _default_id() -> str:
-    return secrets.token_hex(4)
+    return secrets.token_hex(8)
 
 
 def _selected_insert_after_event_idx(

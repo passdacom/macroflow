@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
 
     # 워커 스레드 → 메인 스레드 신호
     _sig_recording_done = pyqtSignal(object)  # MacroData
+    _sig_recording_save_warning = pyqtSignal(str)
     _sig_play_complete = pyqtSignal()
     _sig_play_error = pyqtSignal(str)
     _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
@@ -171,6 +172,7 @@ class MainWindow(QMainWindow):
 
         # ── 신호 연결 ─────────────────────────────────────────────────────────
         self._sig_recording_done.connect(self._on_recording_done)
+        self._sig_recording_save_warning.connect(self._on_recording_save_warning)
         self._sig_play_complete.connect(self._on_play_complete)
         self._sig_play_error.connect(self._on_play_error)
         self._sig_emergency_stop.connect(self._emergency_stop)
@@ -736,7 +738,7 @@ class MainWindow(QMainWindow):
 
     def _handle_f6(self) -> None:
         """Shared native/fallback F6 router with lifecycle-safe precedence."""
-        if self._state == "recording":
+        if self._state in {"recording", "stopping"}:
             self._editor.cancel_f6_capture()
             self._sequencer.cancel_f6_capture()
             self._toggle_recording()
@@ -983,7 +985,7 @@ class MainWindow(QMainWindow):
                 )
                 return
             self._start_recording()
-        elif self._state == "recording":
+        elif self._state in {"recording", "stopping"}:
             self._do_stop_recording()
 
     def _start_append_recording(self) -> None:
@@ -1014,7 +1016,14 @@ class MainWindow(QMainWindow):
             logger.info("이전 매크로 백업 완료 (복원 버튼으로 되돌릴 수 있음)")
 
         from macroflow import recorder
-        recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
+        try:
+            recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
+        except Exception as exc:
+            self._append_recording_mode = False
+            self._append_base_macro = None
+            logger.exception("녹화 시작 오류")
+            QMessageBox.critical(self, "녹화 시작 오류", f"녹화를 시작할 수 없습니다.\n\n{exc}")
+            return
         self._paused = False
         self._state = "recording"
         self._overlay.start_recording()
@@ -1063,11 +1072,19 @@ class MainWindow(QMainWindow):
         from macroflow import recorder
         try:
             macro = recorder.stop_recording()
-            self._auto_save_temp(macro)
-            self._sig_recording_done.emit(macro)
         except Exception as exc:
             logger.exception("녹화 중지 오류")
             self._sig_play_error.emit(f"녹화 중지 오류: {exc}")
+            return
+        warning: str | None = None
+        try:
+            self._auto_save_temp(macro)
+        except Exception as exc:
+            logger.exception("최근 녹화 임시 저장 오류")
+            warning = f"녹화 내용은 에디터에 보존했지만 최근 녹화 임시 저장에 실패했습니다: {exc}"
+        self._sig_recording_done.emit(macro)
+        if warning is not None:
+            self._sig_recording_save_warning.emit(warning)
 
     def _on_recording_done(self, macro: object) -> None:
         self._recording_stop_thread = None
@@ -1107,6 +1124,10 @@ class MainWindow(QMainWindow):
         self._sb_count.setText(f"이벤트: {count}")
         self._refresh_recent_menu()
         logger.info(f"녹화 완료: {count}개 이벤트")
+
+    def _on_recording_save_warning(self, message: str) -> None:
+        QMessageBox.warning(self, "최근 녹화 저장 오류", message)
+        logger.warning(message)
 
     def _stop_sequencer(self) -> bool:
         """시퀀서 worker와 관련 overlay/hook/UI 상태를 함께 정리한다."""
@@ -1415,6 +1436,13 @@ class MainWindow(QMainWindow):
     def _on_play_error(self, msg: str) -> None:
         if self._state == "stopping":
             self._recording_stop_thread = None
+            from macroflow import recorder
+            if recorder.is_recording():
+                self._update_toolbar()
+                self._sb_state.setText("녹화 중지 오류 — 중지 버튼으로 다시 시도하세요")
+                QMessageBox.warning(self, "녹화 중지 오류", msg)
+                logger.error(f"녹화 중지 오류: {msg}")
+                return
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
         if self._repeat_session is not None:
@@ -1834,7 +1862,7 @@ class MainWindow(QMainWindow):
             self._update_toolbar()
             if not stopped:
                 self._sb_state.setText("긴급 중지 요청됨 — 시퀀스 worker 종료 대기 중")
-        if self._state == "recording":
+        if self._state in {"recording", "stopping"}:
             self._do_stop_recording()
         elif self._state == "playing":
             self._stop_playback()
@@ -1891,19 +1919,21 @@ class MainWindow(QMainWindow):
 
         # 녹화: 시퀀서·즐겨찾기 탭에서는 항상 비활성화
         self._act_record.setEnabled(
-            (is_idle or is_rec)
+            (is_idle or is_rec or is_stop)
             and not seq_running
             and not is_seq_tab
             and not is_fav_tab
             and runtime_recording_available
         )
         self._act_record.setChecked(is_rec)
-        if is_rec and self._append_recording_mode:
+        if is_stop:
+            self._act_record.setText(f"■ 중지 재시도 ({record_key})")
+        elif is_rec and self._append_recording_mode:
             self._act_record.setText(f"■ 이어서 녹화 중지 ({record_key})")
+        elif is_rec:
+            self._act_record.setText(f"■ 중지 ({record_key})")
         else:
-            self._act_record.setText(
-                f"■ 중지 ({record_key})" if is_rec else f"● 녹화 ({record_key})"
-            )
+            self._act_record.setText(f"● 녹화 ({record_key})")
         can_append_record = (
             is_idle
             and not seq_running

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 import time
+from collections import deque
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +17,7 @@ from macroflow.types import (
     MouseButtonEvent,
     MouseMoveEvent,
     MouseWheelEvent,
+    WaitEvent,
 )
 
 # ── _convert_raw 단위 테스트 ──────────────────────────────────────────────────
@@ -165,14 +168,14 @@ class TestConvertRaw:
         finally:
             recorder.configure_filtered_hotkey_vk_codes(original)
 
-    def test_event_id_is_8hex(self) -> None:
-        """생성된 이벤트 id는 8자리 hex 문자열이어야 한다."""
+    def test_event_id_is_16hex(self) -> None:
+        """새 이벤트 id는 충돌 위험을 낮춘 64비트 hex 문자열이어야 한다."""
         with patch("macroflow.recorder.pixel_to_ratio", return_value=(0.0, 0.0)):
             raw = ("m", 0, 0x0200, (0, 0, 0))
             event = _convert_raw(raw)
 
         assert event is not None
-        assert len(event.id) == 8
+        assert len(event.id) == 16
         assert all(c in "0123456789abcdef" for c in event.id)
 
     def test_wheel_vertical_up(self) -> None:
@@ -277,6 +280,20 @@ def test_process_raw_suppresses_auto_repeat_until_pause_key_is_released() -> Non
 
 # ── start/stop 통합 테스트 ────────────────────────────────────────────────────
 
+
+def test_consumer_drains_queued_events_after_stop_is_requested() -> None:
+    queued = WaitEvent(id="queued", type="wait", timestamp_ns=0, duration_ms=1)
+    rec._raw_queue = deque([queued])
+    rec._event_buffer = []
+    rec._stop_consumer = threading.Event()
+    rec._stop_consumer.set()
+
+    rec._consumer_loop()
+
+    assert rec._event_buffer == [queued]
+    rec._raw_queue = None
+
+
 class TestRecorderIntegration:
     """start_recording / stop_recording 흐름 테스트."""
 
@@ -300,6 +317,83 @@ class TestRecorderIntegration:
         assert macro.meta.screen_width == 1920
         assert macro.meta.screen_height == 1080
         assert macro.is_edited is False
+
+    def test_hook_start_failure_does_not_enter_recording_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_start_hook(_queue: object) -> None:
+            raise RuntimeError("keyboard hook registration failed")
+
+        monkeypatch.setattr(rec, "start_hook", fail_start_hook)
+        monkeypatch.setattr(rec, "get_logical_screen_size", lambda: (1920, 1080))
+
+        with pytest.raises(RuntimeError, match="keyboard hook registration failed"):
+            rec.start_recording()
+
+        assert not rec.is_recording()
+        assert rec._consumer_thread is None
+        assert rec._raw_queue is None
+
+    def test_stop_timeout_keeps_consumer_and_recording_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class DelayedConsumer:
+            def __init__(self) -> None:
+                self.alive = True
+                self.join_timeouts: list[float | None] = []
+
+            def join(self, timeout: float | None = None) -> None:
+                self.join_timeouts.append(timeout)
+
+            def is_alive(self) -> bool:
+                return self.alive
+
+        consumer = DelayedConsumer()
+        monkeypatch.setattr(rec, "stop_hook", lambda: None)
+        rec._recording = True
+        rec._consumer_thread = consumer  # type: ignore[assignment]
+        rec._event_buffer = []
+        rec._screen_w, rec._screen_h = 1920, 1080
+
+        try:
+            with pytest.raises(RuntimeError, match="consumer.*did not stop"):
+                rec.stop_recording()
+            assert consumer.join_timeouts == [3.0]
+            assert consumer.is_alive()
+            assert rec._consumer_thread is consumer
+            assert rec.is_recording()
+
+            consumer.alive = False
+            macro = rec.stop_recording()
+            assert macro.events == []
+            assert consumer.join_timeouts == [3.0, 3.0]
+            assert rec._consumer_thread is None
+            assert not rec.is_recording()
+        finally:
+            rec._recording = False
+            rec._consumer_thread = None
+
+    def test_stale_consumer_blocks_a_new_recording(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        class AliveConsumer:
+            def is_alive(self) -> bool:
+                return True
+
+        start_hook_calls: list[object] = []
+        monkeypatch.setattr(rec, "start_hook", lambda queue: start_hook_calls.append(queue))
+        rec._recording = False
+        rec._consumer_thread = AliveConsumer()  # type: ignore[assignment]
+
+        try:
+            with pytest.raises(RuntimeError, match="consumer.*running"):
+                rec.start_recording()
+            assert start_hook_calls == []
+        finally:
+            rec._consumer_thread = None
 
     def test_pause_resume_state_and_stop_while_paused(
         self,

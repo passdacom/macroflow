@@ -43,6 +43,9 @@ WM_SYSKEYDOWN: int = 0x0104
 WM_SYSKEYUP: int = 0x0105
 
 WM_QUIT: int = 0x0012
+WM_NULL: int = 0x0000
+PM_NOREMOVE: int = 0x0000
+_HOOK_START_TIMEOUT_S: float = 2.0
 
 # ── Win32 타입 — 64비트 호환 ──────────────────────────────────────────────────
 # LRESULT = LONG_PTR: 64비트에서 8바이트, 32비트에서 4바이트
@@ -134,6 +137,16 @@ _user32.GetMessageW.argtypes = [
 _user32.TranslateMessage.argtypes = [ctypes.POINTER(ctypes.wintypes.MSG)]
 _user32.DispatchMessageW.argtypes = [ctypes.POINTER(ctypes.wintypes.MSG)]
 
+# PeekMessageW — PostThreadMessageW 수신용 메시지 큐를 readiness 전에 생성한다.
+_user32.PeekMessageW.restype = ctypes.wintypes.BOOL
+_user32.PeekMessageW.argtypes = [
+    ctypes.POINTER(ctypes.wintypes.MSG),
+    ctypes.wintypes.HWND,
+    ctypes.wintypes.UINT,
+    ctypes.wintypes.UINT,
+    ctypes.wintypes.UINT,
+]
+
 # PostThreadMessageW
 _user32.PostThreadMessageW.restype = ctypes.wintypes.BOOL
 _user32.PostThreadMessageW.argtypes = [
@@ -166,11 +179,17 @@ _mouse_hook_id: ctypes.c_void_p | None = None
 _keyboard_hook_id: ctypes.c_void_p | None = None
 _pump_thread: threading.Thread | None = None
 _pump_tid: int = 0
+_hook_ready: threading.Event = threading.Event()
+_hook_start_error: str | None = None
+_hook_cancel_start: threading.Event = threading.Event()
 
 # ── 내부 상태 (긴급 중지 전용 Hook) ──────────────────────────────────────────
 _emg_hook_id: ctypes.c_void_p | None = None
 _emg_pump_thread: threading.Thread | None = None
 _emg_pump_tid: int = 0
+_emg_hook_ready: threading.Event = threading.Event()
+_emg_hook_start_error: str | None = None
+_emg_hook_cancel_start: threading.Event = threading.Event()
 _emg_esc_times: deque[float] = deque(maxlen=3)
 _emg_callback: Callable[[], None] | None = None
 
@@ -243,57 +262,134 @@ def _message_pump() -> None:
     WM_QUIT 수신 시 Hook 해제 후 종료.
     GetMessageW 기반이므로 OS가 Hook 콜백을 이 스레드에서 호출한다.
     """
-    global _mouse_hook_id, _keyboard_hook_id, _pump_tid
+    global _mouse_hook_id, _keyboard_hook_id, _pump_tid, _hook_start_error
 
-    _pump_tid = _kernel32.GetCurrentThreadId()
+    try:
+        _pump_tid = _kernel32.GetCurrentThreadId()
+        msg = ctypes.wintypes.MSG()
+        _user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_NOREMOVE)
+        if _hook_cancel_start.is_set():
+            return
 
-    # hMod에 현재 프로세스 모듈 핸들 전달 (일부 Windows 버전에서 NULL 시 실패)
-    hmod = _kernel32.GetModuleHandleW(None)
+        # hMod에 현재 프로세스 모듈 핸들 전달 (일부 Windows 버전에서 NULL 시 실패)
+        hmod = _kernel32.GetModuleHandleW(None)
+        _mouse_hook_id = _user32.SetWindowsHookExW(WH_MOUSE_LL, _mouse_cb, hmod, 0)
+        if _hook_cancel_start.is_set():
+            return
+        _keyboard_hook_id = _user32.SetWindowsHookExW(WH_KEYBOARD_LL, _keyboard_cb, hmod, 0)
+        if _hook_cancel_start.is_set():
+            return
 
-    _mouse_hook_id = _user32.SetWindowsHookExW(WH_MOUSE_LL, _mouse_cb, hmod, 0)
-    _keyboard_hook_id = _user32.SetWindowsHookExW(WH_KEYBOARD_LL, _keyboard_cb, hmod, 0)
+        failed_hooks = []
+        if not _mouse_hook_id:
+            failed_hooks.append("mouse")
+        if not _keyboard_hook_id:
+            failed_hooks.append("keyboard")
+        if failed_hooks:
+            _hook_start_error = f"Hook registration failed: {', '.join(failed_hooks)}"
+            logger.error(_hook_start_error)
+            return
 
-    if not _mouse_hook_id:
-        logger.error("SetWindowsHookExW(WH_MOUSE_LL) failed")
-    if not _keyboard_hook_id:
-        logger.error("SetWindowsHookExW(WH_KEYBOARD_LL) failed")
-
-    msg = ctypes.wintypes.MSG()
-    while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+        if not _user32.PostThreadMessageW(_pump_tid, WM_NULL, 0, 0):
+            _hook_start_error = "Hook message queue readiness probe failed"
+            logger.error(_hook_start_error)
+            return
+        first_result = _user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+        if first_result <= 0:
+            _hook_start_error = (
+                "Hook message pump failed during readiness probe"
+                if first_result == -1
+                else "Hook message pump stopped during readiness probe"
+            )
+            logger.error(_hook_start_error)
+            return
         _user32.TranslateMessage(ctypes.byref(msg))
         _user32.DispatchMessageW(ctypes.byref(msg))
 
-    if _mouse_hook_id:
-        _user32.UnhookWindowsHookEx(_mouse_hook_id)
-        _mouse_hook_id = None
-    if _keyboard_hook_id:
-        _user32.UnhookWindowsHookEx(_keyboard_hook_id)
-        _keyboard_hook_id = None
-    _pump_tid = 0
+        _hook_ready.set()
+        while True:
+            result = _user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+            if result <= 0:
+                if result == -1:
+                    _hook_start_error = "Hook message pump failed after startup"
+                    logger.error(_hook_start_error)
+                break
+            _user32.TranslateMessage(ctypes.byref(msg))
+            _user32.DispatchMessageW(ctypes.byref(msg))
+    except Exception as exc:
+        _hook_start_error = f"Hook message pump failed: {exc}"
+        logger.exception(_hook_start_error)
+    finally:
+        _hook_ready.set()
+        if _mouse_hook_id:
+            _user32.UnhookWindowsHookEx(_mouse_hook_id)
+            _mouse_hook_id = None
+        if _keyboard_hook_id:
+            _user32.UnhookWindowsHookEx(_keyboard_hook_id)
+            _keyboard_hook_id = None
+        _pump_tid = 0
 
 
 # ── 긴급 중지 Hook 메시지 펌프 ───────────────────────────────────────────────
 
 def _emg_pump() -> None:
     """WH_KEYBOARD_LL (긴급 중지 전용) 메시지 펌프."""
-    global _emg_hook_id, _emg_pump_tid
+    global _emg_hook_id, _emg_pump_tid, _emg_hook_start_error
 
-    _emg_pump_tid = _kernel32.GetCurrentThreadId()
-    hmod = _kernel32.GetModuleHandleW(None)
-    _emg_hook_id = _user32.SetWindowsHookExW(WH_KEYBOARD_LL, _emg_kb_cb, hmod, 0)
+    try:
+        _emg_pump_tid = _kernel32.GetCurrentThreadId()
+        msg = ctypes.wintypes.MSG()
+        _user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_NOREMOVE)
+        if _emg_hook_cancel_start.is_set():
+            return
+        hmod = _kernel32.GetModuleHandleW(None)
+        _emg_hook_id = _user32.SetWindowsHookExW(
+            WH_KEYBOARD_LL, _emg_kb_cb, hmod, 0
+        )
+        if _emg_hook_cancel_start.is_set():
+            return
+        if not _emg_hook_id:
+            _emg_hook_start_error = "Emergency keyboard hook registration failed"
+            logger.error(_emg_hook_start_error)
+            return
 
-    if not _emg_hook_id:
-        logger.error("SetWindowsHookExW(WH_KEYBOARD_LL, emergency) failed")
-
-    msg = ctypes.wintypes.MSG()
-    while _user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+        if not _user32.PostThreadMessageW(_emg_pump_tid, WM_NULL, 0, 0):
+            _emg_hook_start_error = "Emergency hook message queue readiness probe failed"
+            logger.error(_emg_hook_start_error)
+            return
+        first_result = _user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+        if first_result <= 0:
+            _emg_hook_start_error = (
+                "Emergency hook message pump failed during readiness probe"
+                if first_result == -1
+                else "Emergency hook message pump stopped during readiness probe"
+            )
+            logger.error(_emg_hook_start_error)
+            return
         _user32.TranslateMessage(ctypes.byref(msg))
         _user32.DispatchMessageW(ctypes.byref(msg))
 
-    if _emg_hook_id:
-        _user32.UnhookWindowsHookEx(_emg_hook_id)
-        _emg_hook_id = None
-    _emg_pump_tid = 0
+        _emg_hook_ready.set()
+        while True:
+            result = _user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+            if result <= 0:
+                if result == -1:
+                    _emg_hook_start_error = (
+                        "Emergency hook message pump failed after startup"
+                    )
+                    logger.error(_emg_hook_start_error)
+                break
+            _user32.TranslateMessage(ctypes.byref(msg))
+            _user32.DispatchMessageW(ctypes.byref(msg))
+    except Exception as exc:
+        _emg_hook_start_error = f"Emergency HookPump failed: {exc}"
+        logger.exception(_emg_hook_start_error)
+    finally:
+        _emg_hook_ready.set()
+        if _emg_hook_id:
+            _user32.UnhookWindowsHookEx(_emg_hook_id)
+            _emg_hook_id = None
+        _emg_pump_tid = 0
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -305,15 +401,51 @@ def start_hook(queue: deque[tuple[str, int, int, tuple[int, int, int]]]) -> None
         queue: 캡처된 원시 이벤트를 쌓을 deque.
             recorder.py의 소비자 스레드가 이 큐를 읽는다.
     """
-    global _event_queue, _pump_thread
+    global _event_queue, _pump_thread, _hook_ready, _hook_start_error
+    global _hook_cancel_start
+
+    if _pump_thread is not None:
+        if _pump_thread.is_alive():
+            raise RuntimeError("Previous HookPump is still running")
+        _pump_thread = None
+        _event_queue = None
 
     _event_queue = queue
+    _hook_ready = threading.Event()
+    _hook_start_error = None
+    _hook_cancel_start = threading.Event()
     _pump_thread = threading.Thread(
         target=_message_pump, daemon=True, name="HookPump"
     )
     _pump_thread.start()
-    # Hook 등록이 완료될 때까지 잠깐 대기
-    time.sleep(0.05)
+    if not _hook_ready.wait(timeout=_HOOK_START_TIMEOUT_S):
+        _hook_cancel_start.set()
+        shutdown_requested = False
+        if _pump_tid:
+            shutdown_requested = bool(
+                _user32.PostThreadMessageW(_pump_tid, WM_QUIT, 0, 0)
+            )
+        _pump_thread.join(timeout=2.0)
+        if not _pump_thread.is_alive():
+            _pump_thread = None
+            _event_queue = None
+            raise RuntimeError("Hook registration timed out")
+        if not shutdown_requested:
+            raise RuntimeError(
+                "Hook registration timed out and shutdown request failed; "
+                "HookPump is still running"
+            )
+        raise RuntimeError(
+            "Hook registration timed out; HookPump shutdown is still pending"
+        )
+    if _hook_start_error is not None:
+        start_error = _hook_start_error
+        _pump_thread.join(timeout=2.0)
+        if _pump_thread.is_alive():
+            raise RuntimeError(f"{start_error}; HookPump cleanup is still pending")
+        _pump_thread = None
+        _event_queue = None
+        raise RuntimeError(start_error)
 
 
 def stop_hook() -> None:
@@ -321,10 +453,15 @@ def stop_hook() -> None:
     global _pump_thread, _event_queue
 
     if _pump_tid:
-        _user32.PostThreadMessageW(_pump_tid, WM_QUIT, 0, 0)
+        if not _user32.PostThreadMessageW(_pump_tid, WM_QUIT, 0, 0):
+            raise RuntimeError("Failed to request HookPump shutdown")
 
     if _pump_thread is not None:
+        if _pump_thread.is_alive() and not _pump_tid:
+            raise RuntimeError("HookPump is alive without a message queue")
         _pump_thread.join(timeout=2.0)
+        if _pump_thread.is_alive():
+            raise RuntimeError("HookPump did not stop within 2 seconds")
         _pump_thread = None
 
     _event_queue = None
@@ -340,14 +477,49 @@ def start_emergency_hook(callback: Callable[[], None]) -> None:
         callback: ESC×3 감지 시 호출할 콜백 (스레드 안전해야 함).
     """
     global _emg_callback, _emg_pump_thread
+    global _emg_hook_ready, _emg_hook_start_error, _emg_hook_cancel_start
+
+    if _emg_pump_thread is not None:
+        if _emg_pump_thread.is_alive():
+            raise RuntimeError("Previous EmergencyHookPump is still running")
+        _emg_pump_thread = None
 
     _emg_callback = callback
     _emg_esc_times.clear()
+    _emg_hook_ready = threading.Event()
+    _emg_hook_start_error = None
+    _emg_hook_cancel_start = threading.Event()
     _emg_pump_thread = threading.Thread(
         target=_emg_pump, daemon=True, name="EmergencyHookPump"
     )
     _emg_pump_thread.start()
-    time.sleep(0.05)  # Hook 등록 완료 대기
+    if not _emg_hook_ready.wait(timeout=_HOOK_START_TIMEOUT_S):
+        _emg_hook_cancel_start.set()
+        shutdown_requested = False
+        if _emg_pump_tid:
+            shutdown_requested = bool(
+                _user32.PostThreadMessageW(_emg_pump_tid, WM_QUIT, 0, 0)
+            )
+        _emg_pump_thread.join(timeout=2.0)
+        if not _emg_pump_thread.is_alive():
+            _emg_pump_thread = None
+            _emg_callback = None
+            raise RuntimeError("Emergency hook registration timed out")
+        if not shutdown_requested:
+            raise RuntimeError(
+                "Emergency hook registration timed out and shutdown request failed"
+            )
+        raise RuntimeError("Emergency HookPump shutdown is still pending")
+    if _emg_hook_start_error is not None:
+        start_error = _emg_hook_start_error
+        _emg_pump_thread.join(timeout=2.0)
+        if _emg_pump_thread.is_alive():
+            raise RuntimeError(
+                f"{start_error}; EmergencyHookPump cleanup is still pending"
+            )
+        _emg_pump_thread = None
+        _emg_callback = None
+        raise RuntimeError(start_error)
 
 
 def stop_emergency_hook() -> None:
@@ -355,10 +527,15 @@ def stop_emergency_hook() -> None:
     global _emg_pump_thread, _emg_callback
 
     if _emg_pump_tid:
-        _user32.PostThreadMessageW(_emg_pump_tid, WM_QUIT, 0, 0)
+        if not _user32.PostThreadMessageW(_emg_pump_tid, WM_QUIT, 0, 0):
+            raise RuntimeError("Failed to request EmergencyHookPump shutdown")
 
     if _emg_pump_thread is not None:
+        if _emg_pump_thread.is_alive() and not _emg_pump_tid:
+            raise RuntimeError("EmergencyHookPump is alive without a message queue")
         _emg_pump_thread.join(timeout=2.0)
+        if _emg_pump_thread.is_alive():
+            raise RuntimeError("EmergencyHookPump did not stop within 2 seconds")
         _emg_pump_thread = None
 
     _emg_callback = None

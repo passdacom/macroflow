@@ -1,5 +1,15 @@
 # 변경 내역
 
+## v1.5.1 — 2026-07-29
+
+### 안정성
+
+- 마우스·키보드 녹화 Hook이 모두 준비된 뒤에만 녹화를 시작하고 부분 등록 실패를 rollback
+- Hook·recorder consumer 종료가 완료될 때까지 lifecycle 소유권을 유지하고 새 녹화 중복 시작 차단
+- 일반 매크로 JSON을 같은 디렉터리 임시 파일에 `flush`·`fsync` 후 원자 교체
+- 지원하지 않는 schema, 잘못된 event field type, 한 이벤트 스트림 안의 중복 ID를 load 시 거부
+- 신규 event·sequencer step ID를 64비트로 확대하면서 기존 8자리 event ID 로드 호환 유지
+
 ## v1.5.0 — 2026-07-29
 
 ### 추가

@@ -204,7 +204,7 @@ def test_main_window_routes_f6_to_sequencer_capture_owner() -> None:
     handle_start = source.index("def _handle_f6")
     handle_end = source.index("def nativeEvent", handle_start)
     handle_source = source[handle_start:handle_end]
-    assert handle_source.index('self._state == "recording"') < handle_source.index(
+    assert handle_source.index('self._state in {"recording", "stopping"}') < handle_source.index(
         "is_f6_capture_active()"
     )
 

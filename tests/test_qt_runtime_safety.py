@@ -98,6 +98,92 @@ def test_recording_f6_stops_recording_before_capture() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_recording_hook_failure_is_shown_without_entering_recording_ui() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._macro = None
+        host._state = "idle"
+        host._append_recording_mode = True
+        host._append_base_macro = object()
+
+        with patch(
+            "macroflow.recorder.start_recording",
+            side_effect=RuntimeError("keyboard hook registration failed"),
+        ), patch("macroflow.ui.main_window.QMessageBox.critical") as critical:
+            MainWindow._start_recording(host)
+
+        assert host._state == "idle"
+        assert host._append_recording_mode is False
+        assert host._append_base_macro is None
+        host._overlay.start_recording.assert_not_called()
+        host._poll_timer.start.assert_not_called()
+        assert "keyboard hook registration failed" in critical.call_args.args[2]
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_recording_stop_failure_keeps_stopping_state_and_allows_retry() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "stopping"
+        host._recording_stop_thread = Mock()
+        host._repeat_session = None
+
+        with patch("macroflow.recorder.is_recording", return_value=True), \
+             patch("macroflow.ui.main_window.QMessageBox.warning") as warning:
+            MainWindow._on_play_error(host, "녹화 중지 오류: hook shutdown failed")
+
+        assert host._state == "stopping"
+        assert host._recording_stop_thread is None
+        host._overlay.stop.assert_not_called()
+        assert "hook shutdown failed" in warning.call_args.args[2]
+
+        host._sequencer.is_running.return_value = False
+        host._toggle_recording.side_effect = lambda: MainWindow._toggle_recording(host)
+        MainWindow._handle_f6(host)
+        host._toggle_recording.assert_called_once_with()
+        host._do_stop_recording.assert_called_once_with()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_recording_temp_save_failure_still_delivers_captured_macro() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        macro = object()
+        host._auto_save_temp.side_effect = OSError("disk full")
+
+        with patch("macroflow.recorder.stop_recording", return_value=macro):
+            MainWindow._stop_recording_worker(host)
+
+        host._sig_recording_done.emit.assert_called_once_with(macro)
+        warning = host._sig_recording_save_warning.emit.call_args.args[0]
+        assert "disk full" in warning
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_f9_quick_text_pauses_during_dialog_and_resumes_after_target_input() -> None:
     result = _run_offscreen(
         """
