@@ -446,18 +446,18 @@ class MainWindow(QMainWindow):
         self._act_save_as.setToolTip("새 경로를 지정하여 저장")
         self._act_save_as.triggered.connect(self._save_file_as)
 
-        self._act_save_seq = QAction("📋 시퀀서", self)
+        self._act_save_seq = QAction("시퀀서", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
 
-        self._act_save_fav = QAction("⭐ 즐겨찾기", self)
+        self._act_save_fav = QAction("즐겨찾기", self)
         self._act_save_fav.setToolTip(
             "현재 매크로를 이름을 지정하여 즐겨찾기로 저장합니다\n"
             "(favorites 폴더 — macros 폴더와 별도 보관)"
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
 
-        self._act_restore_prev = QAction("↩ 이전 복원", self)
+        self._act_restore_prev = QAction("이전 복원", self)
         self._act_restore_prev.setToolTip(
             "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
             "(실수로 F6을 눌러 기존 매크로가 사라졌을 때 사용)"

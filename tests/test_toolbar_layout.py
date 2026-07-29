@@ -74,9 +74,9 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
             for left, right in zip(edit_actions, edit_actions[1:], strict=False)
         )
         assert [action.text() for action in edit_actions if action.text()] == [
-            "이동 표시", "이동 삭제", "재생 대기 일괄",
-            "📋 시퀀서", "⭐ 즐겨찾기", "↩ 이전 복원",
-            "↩ 취소", "↪ 재실행", "원본 복원",
+            "이동 표시", "이동 삭제", "재생 대기",
+            "시퀀서", "즐겨찾기", "이전 복원",
+            "취소", "재실행", "원본 복원",
         ]
         interval = window._editor.findChild(QCheckBox)
         editor_add = toolbar(window._editor, "editor-add-toolbar")

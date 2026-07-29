@@ -222,6 +222,12 @@ class EventEditorWidget(QWidget):
         edit_toolbar = QToolBar("보기/편집", self)
         edit_toolbar.setObjectName("editor-edit-toolbar")
         edit_toolbar.setMovable(False)
+        # Windows native style adds wide horizontal padding to every tool button.
+        # Keep all edit actions reachable at accessibility font sizes while
+        # preserving their order and vertical sizing.
+        edit_toolbar.setStyleSheet(
+            "QToolButton { padding: 0px; margin: 0px; }"
+        )
         self._edit_toolbar = edit_toolbar
 
         self._act_toggle_moves = QAction("이동 표시", self)
@@ -240,7 +246,7 @@ class EventEditorWidget(QWidget):
 
         edit_toolbar.addSeparator()
 
-        self._act_set_delay = QAction("재생 대기 일괄", self)
+        self._act_set_delay = QAction("재생 대기", self)
         self._act_set_delay.setToolTip(
             "현재 표에 표시된 동작의 실행 전 대기를 동일하게 덮어씁니다\n"
             "클릭/키 입력은 한 동작으로 취급하며 숨겨진 해제·이동에는 적용하지 않습니다\n"
@@ -250,14 +256,14 @@ class EventEditorWidget(QWidget):
         self._act_set_delay.setEnabled(False)
         edit_toolbar.addAction(self._act_set_delay)
 
-        self._act_undo = QAction("↩ 취소", self)
+        self._act_undo = QAction("취소", self)
         self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
         self._act_undo.triggered.connect(self._undo)
         self._act_undo.setEnabled(False)
         edit_toolbar.addSeparator()
         edit_toolbar.addAction(self._act_undo)
 
-        self._act_redo = QAction("↪ 재실행", self)
+        self._act_redo = QAction("재실행", self)
         self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
