@@ -39,6 +39,8 @@ from PyQt6.QtWidgets import (
 
 from macroflow.hotkey_config import (
     HotkeyConfig,
+    arm_hotkey_config_recovery,
+    disarm_hotkey_config_recovery,
     load_hotkey_config,
     save_hotkey_config,
 )
@@ -1504,7 +1506,10 @@ class MainWindow(QMainWindow):
                     "Windows에 등록할 수 없습니다. 기존 단축키 설정을 유지합니다."
                 )
             if not result.rollback_succeeded:
-                detail += "\n\n기존 글로벌 단축키 복구도 완료되지 않았습니다. 앱을 재시작해 주세요."
+                detail += (
+                    "\n\n기존 단축키 또는 설정 파일 복구도 완료되지 않았습니다. "
+                    "자동화 명령을 비활성화했습니다. 앱을 재시작해 주세요."
+                )
             QMessageBox.warning(self, title, detail)
             self._hotkeys_registered = self._hotkey_runtime.globally_registered
             return
@@ -1521,28 +1526,41 @@ class MainWindow(QMainWindow):
             )
         if self._hotkey_runtime is None:
             return RegistrationResult(success=False, rollback_succeeded=True)
+        settings = QSettings("MacroFlow", "MacroFlow")
+        old_config = self._hotkey_config
+        if not arm_hotkey_config_recovery(settings, old_config):
+            return RegistrationResult(
+                success=False,
+                failed_key="설정 복구 준비",
+                rollback_succeeded=True,
+            )
         result = self._hotkey_runtime.apply(candidate)
         self._hotkeys_registered = self._hotkey_runtime.globally_registered
         if not result.success:
+            disarm_hotkey_config_recovery(settings)
             if self._hotkey_runtime.degraded:
                 self._update_toolbar()
             return result
 
         from macroflow import recorder
 
-        settings = QSettings("MacroFlow", "MacroFlow")
-        if not save_hotkey_config(settings, candidate):
-            old_config = self._hotkey_config
+        candidate_persisted = save_hotkey_config(settings, candidate)
+        recovery_disarmed = (
+            candidate_persisted and disarm_hotkey_config_recovery(settings)
+        )
+        if not candidate_persisted or not recovery_disarmed:
             rollback = self._hotkey_runtime.apply(old_config)
             self._hotkeys_registered = self._hotkey_runtime.globally_registered
-            save_hotkey_config(settings, old_config)
-            if not rollback.success:
+            old_persisted = save_hotkey_config(settings, old_config)
+            recovery_cleared = old_persisted and disarm_hotkey_config_recovery(settings)
+            rollback_succeeded = rollback.success and old_persisted and recovery_cleared
+            if not rollback_succeeded:
                 self._hotkey_runtime.degraded = True
             self._update_toolbar()
             return RegistrationResult(
                 success=False,
                 failed_key="설정 저장",
-                rollback_succeeded=rollback.success,
+                rollback_succeeded=rollback_succeeded,
             )
         self._hotkey_config = candidate
         recorder.configure_filtered_hotkey_vk_codes(self._hotkey_runtime.active_runtime_vks)

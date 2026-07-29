@@ -7,6 +7,8 @@ import pytest
 from macroflow.hotkey_config import (
     DEFAULT_HOTKEY_CONFIG,
     HotkeyConfig,
+    arm_hotkey_config_recovery,
+    disarm_hotkey_config_recovery,
     load_hotkey_config,
     runtime_virtual_keys,
     save_hotkey_config,
@@ -17,12 +19,12 @@ from macroflow.hotkey_config import (
 class FakeSettings:
     def __init__(self, values: dict[str, Any] | None = None) -> None:
         self.values = dict(values or {})
-        self.writes: list[tuple[str, str]] = []
+        self.writes: list[tuple[str, object]] = []
 
     def value(self, key: str, default: Any = None) -> Any:
         return self.values.get(key, default)
 
-    def setValue(self, key: str, value: str) -> None:  # noqa: N802 - QSettings API
+    def setValue(self, key: str, value: object) -> None:  # noqa: N802 - QSettings API
         self.values[key] = value
         self.writes.append((key, value))
 
@@ -58,6 +60,25 @@ def test_load_supports_mapping_like_settings() -> None:
     loaded = load_hotkey_config({"hotkeys/editor.insert_text": " alt + t "})
 
     assert loaded.binding_for("editor.insert_text") == "Alt+T"
+
+
+def test_armed_recovery_snapshot_wins_over_partially_persisted_candidate() -> None:
+    settings = FakeSettings()
+    old_config = DEFAULT_HOTKEY_CONFIG
+    candidate = _config(**{"runtime.record_or_capture": "F10"})
+
+    assert arm_hotkey_config_recovery(settings, old_config)
+    assert save_hotkey_config(settings, candidate)
+    assert load_hotkey_config(settings) == old_config
+
+    assert disarm_hotkey_config_recovery(settings)
+    assert load_hotkey_config(settings) == candidate
+
+
+def test_corrupt_armed_recovery_fails_closed_to_defaults() -> None:
+    settings = FakeSettings({"hotkeys/recovery_armed": True})
+
+    assert load_hotkey_config(settings) == DEFAULT_HOTKEY_CONFIG
 
 
 def test_corrupt_persisted_config_falls_back_to_defaults_without_mutating_settings() -> None:
@@ -98,7 +119,7 @@ def test_save_writes_only_canonical_configurable_bindings() -> None:
 
 def test_save_reports_readback_failure() -> None:
     class UnwritableSettings(FakeSettings):
-        def setValue(self, key: str, value: str) -> None:  # noqa: N802
+        def setValue(self, key: str, value: object) -> None:  # noqa: N802
             self.writes.append((key, value))
 
     settings = UnwritableSettings()

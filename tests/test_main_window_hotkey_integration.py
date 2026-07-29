@@ -59,6 +59,8 @@ def test_main_window_persists_and_updates_recorder_only_after_successful_apply()
         success = FakeRuntime(RegistrationResult(success=True))
         window._hotkey_runtime = success
         with (
+            patch("macroflow.ui.main_window.arm_hotkey_config_recovery", return_value=True),
+            patch("macroflow.ui.main_window.disarm_hotkey_config_recovery", return_value=True),
             patch("macroflow.ui.main_window.save_hotkey_config") as save,
             patch("macroflow.recorder.configure_filtered_hotkey_vk_codes") as configure,
         ):
@@ -82,6 +84,8 @@ def test_main_window_persists_and_updates_recorder_only_after_successful_apply()
         failure.degraded = True
         window._hotkey_runtime = failure
         with (
+            patch("macroflow.ui.main_window.arm_hotkey_config_recovery", return_value=True),
+            patch("macroflow.ui.main_window.disarm_hotkey_config_recovery", return_value=True),
             patch("macroflow.ui.main_window.save_hotkey_config") as save,
             patch("macroflow.recorder.configure_filtered_hotkey_vk_codes") as configure,
         ):
@@ -103,13 +107,31 @@ def test_main_window_persists_and_updates_recorder_only_after_successful_apply()
         window._hotkey_config = candidate
         failed_candidate = candidate.with_bindings({"runtime.record_or_capture": "F15"})
         with (
-            patch("macroflow.ui.main_window.save_hotkey_config", return_value=False),
+            patch("macroflow.ui.main_window.arm_hotkey_config_recovery", return_value=True),
+            patch("macroflow.ui.main_window.disarm_hotkey_config_recovery", return_value=True),
+            patch("macroflow.ui.main_window.save_hotkey_config", side_effect=[False, True]),
             patch("macroflow.recorder.configure_filtered_hotkey_vk_codes") as configure,
         ):
             rejected = window._apply_hotkey_config(failed_candidate)
         assert not rejected.success
         assert rejected.failed_key == "설정 저장"
         assert rejected.rollback_succeeded
+        assert persistence.candidates == [failed_candidate, candidate]
+        assert window._hotkey_config == candidate
+        configure.assert_not_called()
+
+        persistence.candidates.clear()
+        persistence.degraded = False
+        with (
+            patch("macroflow.ui.main_window.arm_hotkey_config_recovery", return_value=True),
+            patch("macroflow.ui.main_window.disarm_hotkey_config_recovery", return_value=True),
+            patch("macroflow.ui.main_window.save_hotkey_config", side_effect=[False, False]),
+            patch("macroflow.recorder.configure_filtered_hotkey_vk_codes") as configure,
+        ):
+            incomplete = window._apply_hotkey_config(failed_candidate)
+        assert not incomplete.success
+        assert not incomplete.rollback_succeeded
+        assert persistence.degraded
         assert persistence.candidates == [failed_candidate, candidate]
         assert window._hotkey_config == candidate
         configure.assert_not_called()

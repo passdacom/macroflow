@@ -15,7 +15,7 @@ class SettingsReader(Protocol):
 
 
 class SettingsWriter(Protocol):
-    def setValue(self, key: str, value: str) -> None: ...  # noqa: N802 - QSettings API
+    def setValue(self, key: str, value: object) -> None: ...  # noqa: N802 - QSettings API
 
 
 class SettingsStore(SettingsReader, SettingsWriter, Protocol):
@@ -53,6 +53,8 @@ RUNTIME_ACTION_IDS: Final = tuple(
     spec.action_id for spec in HOTKEY_SPECS if spec.scope == "runtime"
 )
 EDITOR_ACTION_IDS: Final = tuple(spec.action_id for spec in HOTKEY_SPECS if spec.scope == "editor")
+_RECOVERY_PREFIX: Final = "hotkeys/recovery/"
+_RECOVERY_ARMED_KEY: Final = "hotkeys/recovery_armed"
 
 _MODIFIER_NAMES: Final = {
     "ctrl": "Ctrl",
@@ -278,8 +280,90 @@ def _settings_value(
     return settings.value(key, default)
 
 
+def _settings_set(
+    settings: MutableMapping[str, object] | SettingsWriter,
+    key: str,
+    value: object,
+) -> None:
+    if isinstance(settings, MutableMapping):
+        settings[key] = value
+    else:
+        settings.setValue(key, value)
+
+
+def _settings_sync_succeeded(settings: object) -> bool:
+    try:
+        sync = getattr(settings, "sync", None)
+        if callable(sync):
+            sync()
+        status = getattr(settings, "status", None)
+        if callable(status):
+            raw_status = status()
+            if int(cast(Any, getattr(raw_status, "value", raw_status))) != 0:
+                return False
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _recovery_key(action_id: str) -> str:
+    return f"{_RECOVERY_PREFIX}{action_id}"
+
+
+def _recovery_is_armed(settings: Mapping[str, object] | SettingsReader) -> bool:
+    raw = _settings_value(settings, _RECOVERY_ARMED_KEY, "false")
+    if isinstance(raw, str):
+        return raw.strip().casefold() in {"1", "true", "yes", "on"}
+    return bool(raw)
+
+
+def arm_hotkey_config_recovery(
+    settings: MutableMapping[str, object] | SettingsStore,
+    config: HotkeyConfig,
+) -> bool:
+    """Durably arm a last-known-good snapshot before changing active settings."""
+    try:
+        for spec in HOTKEY_SPECS:
+            _settings_set(
+                settings,
+                _recovery_key(spec.action_id),
+                config.binding_for(spec.action_id),
+            )
+        _settings_set(settings, _RECOVERY_ARMED_KEY, True)
+        if not _settings_sync_succeeded(settings) or not _recovery_is_armed(settings):
+            return False
+        return all(
+            _settings_value(settings, _recovery_key(spec.action_id), "")
+            == config.binding_for(spec.action_id)
+            for spec in HOTKEY_SPECS
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def disarm_hotkey_config_recovery(
+    settings: MutableMapping[str, object] | SettingsStore,
+) -> bool:
+    """Commit active settings by durably clearing the recovery marker."""
+    try:
+        _settings_set(settings, _RECOVERY_ARMED_KEY, False)
+        return _settings_sync_succeeded(settings) and not _recovery_is_armed(settings)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
 def load_hotkey_config(settings: Mapping[str, object] | SettingsReader) -> HotkeyConfig:
     """Load a valid config, returning defaults for any corrupt persisted set."""
+    if _recovery_is_armed(settings):
+        recovered_values = {
+            spec.action_id: _canonicalize_if_possible(
+                str(_settings_value(settings, _recovery_key(spec.action_id), ""))
+            )
+            for spec in HOTKEY_SPECS
+        }
+        recovered = HotkeyConfig(recovered_values)
+        return recovered if validate_hotkey_config(recovered).is_valid else DEFAULT_HOTKEY_CONFIG
+
     values = {
         spec.action_id: _canonicalize_if_possible(
             str(_settings_value(settings, spec.settings_key, spec.default))
@@ -291,7 +375,7 @@ def load_hotkey_config(settings: Mapping[str, object] | SettingsReader) -> Hotke
 
 
 def save_hotkey_config(
-    settings: MutableMapping[str, str] | SettingsStore, config: HotkeyConfig
+    settings: MutableMapping[str, object] | SettingsStore, config: HotkeyConfig
 ) -> bool:
     """Persist and read back a valid config; return False on storage failure."""
     result = validate_hotkey_config(config)
@@ -303,19 +387,10 @@ def save_hotkey_config(
     }
     try:
         for key, value in expected.items():
-            if isinstance(settings, MutableMapping):
-                settings[key] = value
-            else:
-                settings.setValue(key, value)
-        sync = getattr(settings, "sync", None)
-        if callable(sync):
-            sync()
-        status = getattr(settings, "status", None)
-        if callable(status):
-            raw_status = status()
-            if int(cast(Any, getattr(raw_status, "value", raw_status))) != 0:
-                return False
-    except (OSError, RuntimeError):
+            _settings_set(settings, key, value)
+        if not _settings_sync_succeeded(settings):
+            return False
+    except (OSError, RuntimeError, TypeError, ValueError):
         return False
     return all(
         str(_settings_value(settings, key, "")) == value

@@ -123,6 +123,8 @@ def test_qsettings_hotkey_config_round_trip_is_durable() -> None:
 
         from macroflow.hotkey_config import (
             DEFAULT_HOTKEY_CONFIG,
+            arm_hotkey_config_recovery,
+            disarm_hotkey_config_recovery,
             load_hotkey_config,
             save_hotkey_config,
         )
@@ -134,11 +136,18 @@ def test_qsettings_hotkey_config_round_trip_is_durable() -> None:
                 "editor.insert_text": "Alt+T",
             })
             settings = QSettings(path, QSettings.Format.IniFormat)
+            assert save_hotkey_config(settings, DEFAULT_HOTKEY_CONFIG)
+            assert arm_hotkey_config_recovery(settings, DEFAULT_HOTKEY_CONFIG)
             assert save_hotkey_config(settings, candidate)
             del settings
 
-            restored = load_hotkey_config(QSettings(path, QSettings.Format.IniFormat))
-            assert restored == candidate
+            restarted = QSettings(path, QSettings.Format.IniFormat)
+            assert load_hotkey_config(restarted) == DEFAULT_HOTKEY_CONFIG
+            assert disarm_hotkey_config_recovery(restarted)
+            del restarted
+
+            committed = load_hotkey_config(QSettings(path, QSettings.Format.IniFormat))
+            assert committed == candidate
         """
     )
     assert result.returncode == 0, result.stderr
