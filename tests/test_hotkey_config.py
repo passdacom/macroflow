@@ -45,11 +45,11 @@ def test_defaults_are_canonical_and_expose_runtime_virtual_keys() -> None:
 
 
 def test_load_uses_stable_settings_keys_and_does_not_write() -> None:
-    settings = FakeSettings({"hotkeys/runtime.record_or_capture": "f12"})
+    settings = FakeSettings({"hotkeys/runtime.record_or_capture": "f13"})
 
     loaded = load_hotkey_config(settings)
 
-    assert loaded.binding_for("runtime.record_or_capture") == "F12"
+    assert loaded.binding_for("runtime.record_or_capture") == "F13"
     assert loaded.binding_for("runtime.play_or_color_capture") == "F7"
     assert settings.writes == []
 
@@ -83,7 +83,7 @@ def test_save_writes_only_canonical_configurable_bindings() -> None:
         }
     )
 
-    save_hotkey_config(settings, config)
+    assert save_hotkey_config(settings, config) is True
 
     assert settings == {
         "hotkeys/runtime.record_or_capture": "F10",
@@ -94,6 +94,16 @@ def test_save_writes_only_canonical_configurable_bindings() -> None:
         "hotkeys/editor.insert_click": "Ctrl+Shift+L",
         "hotkeys/editor.insert_color_trigger": "Ctrl+Shift+G",
     }
+
+
+def test_save_reports_readback_failure() -> None:
+    class UnwritableSettings(FakeSettings):
+        def setValue(self, key: str, value: str) -> None:  # noqa: N802
+            self.writes.append((key, value))
+
+    settings = UnwritableSettings()
+
+    assert save_hotkey_config(settings, DEFAULT_HOTKEY_CONFIG) is False
 
 
 @pytest.mark.parametrize(
@@ -149,3 +159,29 @@ def test_local_binding_may_be_cleared_and_function_keys_may_be_bare() -> None:
 def test_unknown_action_is_not_accepted() -> None:
     with pytest.raises(KeyError):
         DEFAULT_HOTKEY_CONFIG.with_bindings({"unknown.action": "F10"})
+
+
+def test_windows_debugger_reserved_f12_is_rejected_for_runtime_hotkeys() -> None:
+    config = _config(**{"runtime.record_or_capture": "F12"})
+
+    result = validate_hotkey_config(config)
+
+    assert not result.is_valid
+    assert any(
+        error.action_id == "runtime.record_or_capture"
+        and error.message == "F12 is reserved by Windows"
+        for error in result.errors
+    )
+
+
+def test_unknown_key_name_is_rejected_instead_of_creating_dead_qshortcut() -> None:
+    config = _config(**{"editor.insert_text": "Ctrl+NotARealKey"})
+
+    result = validate_hotkey_config(config)
+
+    assert not result.is_valid
+    assert any(
+        error.action_id == "editor.insert_text"
+        and error.message == "unsupported key"
+        for error in result.errors
+    )

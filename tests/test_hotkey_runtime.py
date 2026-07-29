@@ -118,6 +118,37 @@ def test_failed_replace_removes_partial_candidate_and_restores_exact_old_set() -
     ]
 
 
+def test_failed_candidate_cleanup_tracks_ghost_and_reports_incomplete_rollback() -> None:
+    backend = FakeBackend(fail_ids={2}, fail_unregister_ids={1})
+    registrar = NativeHotkeySet(backend)
+    candidate = native_hotkeys(DEFAULT_HOTKEY_CONFIG)
+
+    result = registrar.replace(candidate)
+
+    assert not result.success
+    assert not result.rollback_succeeded
+    assert registrar.current == (candidate[0],)
+    assert backend.registered == {
+        candidate[0].registration_id: (candidate[0].modifiers, candidate[0].vk)
+    }
+
+    assert registrar.replace(()).success
+    assert registrar.current == ()
+    assert backend.registered == {}
+
+
+def test_identical_native_set_is_a_noop() -> None:
+    backend = FakeBackend()
+    registrar = NativeHotkeySet(backend)
+    bindings = native_hotkeys(DEFAULT_HOTKEY_CONFIG)
+    assert registrar.replace(bindings).success
+    backend.calls.clear()
+
+    assert registrar.replace(bindings).success
+
+    assert backend.calls == []
+
+
 def test_failed_old_set_unregistration_reports_an_incomplete_rollback() -> None:
     backend = FakeBackend()
     registrar = NativeHotkeySet(backend)
@@ -155,6 +186,24 @@ def test_initialization_attempts_native_registration_only_once() -> None:
     assert fallbacks.replacements == 1
 
 
+def test_incomplete_initial_cleanup_enters_degraded_mode_without_focused_duplicates() -> None:
+    backend = FakeBackend(fail_ids={2}, fail_unregister_ids={1})
+    registrar = NativeHotkeySet(backend)
+    fallbacks = FakeFallbacks()
+    dispatched: list[str] = []
+    runtime = HotkeyRuntime(registrar, fallbacks, dispatched.append)
+
+    result = runtime.initialize(DEFAULT_HOTKEY_CONFIG)
+
+    assert not result.success
+    assert not result.rollback_succeeded
+    assert runtime.degraded
+    assert fallbacks.bindings == {}
+    assert not runtime.dispatch_native(1)
+    assert runtime.shutdown().success
+    assert backend.registered == {}
+
+
 def test_successful_apply_replaces_native_and_focused_bindings_together() -> None:
     backend = FakeBackend()
     registrar = NativeHotkeySet(backend)
@@ -172,12 +221,50 @@ def test_successful_apply_replaces_native_and_focused_bindings_together() -> Non
     result = runtime.apply(candidate)
 
     assert result.success
-    assert runtime.config == candidate
     assert runtime.globally_registered
-    assert "runtime.record_or_capture" not in fallbacks.bindings
-    assert fallbacks.bindings["editor.insert_text"] == "Alt+T"
-    assert fallbacks.replacements == 2
+    assert runtime.config == candidate
     assert runtime.active_runtime_vks == frozenset({0x79, 0x76, 0x77, 0x78})
+    assert fallbacks.bindings == {
+        "editor.insert_text": "Alt+T",
+        "editor.insert_click": "Ctrl+Shift+L",
+        "editor.insert_color_trigger": "Ctrl+Shift+G",
+    }
+
+
+def test_editor_only_apply_does_not_release_native_hotkeys() -> None:
+    backend = FakeBackend()
+    registrar = NativeHotkeySet(backend)
+    fallbacks = FakeFallbacks()
+    runtime = HotkeyRuntime(registrar, fallbacks, lambda _action: None)
+    assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
+    backend.calls.clear()
+    candidate = DEFAULT_HOTKEY_CONFIG.with_bindings(
+        {"editor.insert_text": "Alt+T"}
+    )
+
+    assert runtime.apply(candidate).success
+
+    assert backend.calls == []
+    assert runtime.config == candidate
+    assert fallbacks.bindings["editor.insert_text"] == "Alt+T"
+
+
+def test_failed_shutdown_retains_ownership_for_retry() -> None:
+    backend = FakeBackend()
+    registrar = NativeHotkeySet(backend)
+    runtime = HotkeyRuntime(registrar, FakeFallbacks(), lambda _action: None)
+    assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
+    backend.fail_unregister_ids.add(2)
+
+    first = runtime.shutdown()
+
+    assert not first.success
+    assert runtime.initialized
+    assert runtime.degraded
+    assert registrar.current
+    assert runtime.shutdown().success
+    assert not runtime.initialized
+    assert registrar.current == ()
 
 
 def test_failed_apply_keeps_old_config_and_focused_bindings() -> None:
@@ -268,3 +355,30 @@ def test_runtime_accepts_a_registrar_protocol_not_real_user32() -> None:
 
     assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
     assert len(registrar.current) == 4
+
+
+def test_incomplete_rollback_marks_runtime_degraded_and_blocks_partial_native_dispatch() -> None:
+    backend = FakeBackend()
+    registrar = NativeHotkeySet(backend)
+    fallbacks = FakeFallbacks()
+    dispatched: list[str] = []
+    runtime = HotkeyRuntime(registrar, fallbacks, dispatched.append)
+    assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
+
+    # Candidate id=2 fails, then restoring old id=3 also fails.
+    backend.fail_ids.update({2, 3})
+    candidate = _runtime_config(
+        **{
+            "runtime.record_or_capture": "F10",
+            "runtime.play_or_color_capture": "F11",
+        }
+    )
+
+    result = runtime.apply(candidate)
+
+    assert not result.success
+    assert not result.rollback_succeeded
+    assert runtime.degraded
+    assert not runtime.globally_registered
+    assert not runtime.dispatch_native(1)
+    assert fallbacks.bindings == {}

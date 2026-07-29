@@ -435,7 +435,7 @@ class MacroSequencerWidget(QWidget):
         self._act_save_flow.setEnabled(False)
         manage_toolbar.addAction(self._act_save_flow)
 
-        self._act_save_flow_as = QAction("💾 다른 이름으로 저장", self)
+        self._act_save_flow_as = QAction("💾 다른 이름", self)
         self._act_save_flow_as.setToolTip("새 경로를 지정하여 .macroflow 파일로 저장합니다")
         self._act_save_flow_as.triggered.connect(self._save_flow_as)
         self._act_save_flow_as.setEnabled(False)
@@ -443,7 +443,7 @@ class MacroSequencerWidget(QWidget):
 
         manage_toolbar.addSeparator()
 
-        self._act_merge = QAction("🔗 에디터로 병합", self)
+        self._act_merge = QAction("🔗 병합", self)
         self._act_merge.setToolTip(
             "목록의 모든 매크로를 순서대로 이어 붙여 하나의 매크로로 만든 뒤\n"
             "매크로 에디터 탭으로 보냅니다 (저장 후 수정 가능)"
@@ -453,7 +453,7 @@ class MacroSequencerWidget(QWidget):
         manage_toolbar.addAction(self._act_merge)
 
         manage_toolbar.addSeparator()
-        manage_toolbar.addWidget(QLabel(" 매크로 사이 대기:"))
+        manage_toolbar.addWidget(QLabel(" 매크로 간격:"))
         self._gap_spin = QSpinBox()
         self._gap_spin.setMinimum(0)
         self._gap_spin.setMaximum(_MAX_GAP_MS)

@@ -16,9 +16,9 @@ from PyQt6.QtWidgets import (
 class QuickTextDialog(QDialog):
     """Large paste-friendly editor; ordinary Enter remains a newline."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, trigger_label: str = "F9") -> None:
         super().__init__(parent)
-        self.setWindowTitle("F9 빠른 텍스트 기록")
+        self.setWindowTitle(f"{trigger_label} 빠른 텍스트 기록")
         self.resize(720, 480)
 
         layout = QVBoxLayout(self)

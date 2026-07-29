@@ -35,6 +35,8 @@ _ERROR_TRANSLATIONS = {
     "shortcut is reserved for safety": "안전 또는 시스템 예약 단축키이므로 사용할 수 없습니다.",
     "function key must be F1..F24": "기능 키는 F1부터 F24까지만 사용할 수 있습니다.",
     "runtime binding must be a bare F1..F24 key": "글로벌 운영 단축키는 수정 키 없는 F1~F24만 지원합니다.",
+    "F12 is reserved by Windows": "F12는 Windows 디버거 예약 키이므로 글로벌 단축키로 사용할 수 없습니다.",
+    "unsupported key": "지원하지 않는 키 이름입니다.",
     "shortcut conflicts with a fixed shortcut": "MacroFlow의 고정 편집 단축키와 충돌합니다.",
     "non-function editor keys require a modifier": "일반 키는 Ctrl, Alt 또는 Shift와 함께 지정해야 합니다.",
 }
@@ -97,6 +99,11 @@ class HotkeySettingsDialog(QDialog):
         self._buttons.addButton(reset, QDialogButtonBox.ButtonRole.ResetRole)
         self._buttons.accepted.connect(self.accept)
         self._buttons.rejected.connect(self.reject)
+        ok_button = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
+        cancel_button = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        assert ok_button is not None and cancel_button is not None
+        ok_button.setText("확인")
+        cancel_button.setText("취소")
         root.addWidget(self._buttons)
 
     def _restore_defaults(self) -> None:

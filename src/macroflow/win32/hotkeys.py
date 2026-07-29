@@ -99,6 +99,8 @@ class NativeHotkeySet:
         """Replace the complete set, restoring the exact old set on failure."""
         candidate_set = tuple(candidate)
         old_set = self._current
+        if candidate_set == old_set:
+            return RegistrationResult(success=True)
         removed_old: list[NativeHotkey] = []
         for binding in old_set:
             if self._backend.unregister_hotkey(binding.registration_id):
@@ -134,9 +136,27 @@ class NativeHotkeySet:
             if self._register(binding):
                 registered_candidate.append(binding)
                 continue
-            for partial in registered_candidate:
-                self._backend.unregister_hotkey(partial.registration_id)
-            rollback_succeeded = self._restore(old_set)
+            leaked_candidate = [
+                partial
+                for partial in registered_candidate
+                if not self._backend.unregister_hotkey(partial.registration_id)
+            ]
+            leaked_ids = {item.registration_id for item in leaked_candidate}
+            restored_after_candidate: list[NativeHotkey] = []
+            rollback_succeeded = not leaked_candidate
+            for old_binding in old_set:
+                if old_binding.registration_id in leaked_ids:
+                    rollback_succeeded = False
+                elif self._register(old_binding):
+                    restored_after_candidate.append(old_binding)
+                else:
+                    rollback_succeeded = False
+            self._current = tuple(
+                sorted(
+                    (*leaked_candidate, *restored_after_candidate),
+                    key=lambda item: item.registration_id,
+                )
+            )
             return RegistrationResult(
                 success=False,
                 failed_action_id=binding.action_id,
@@ -156,8 +176,18 @@ class User32HotkeyBackend:
             if sys.platform != "win32":
                 raise OSError("global hotkeys are available only on Windows")
             import ctypes
+            import ctypes.wintypes
 
             user32 = ctypes.windll.user32
+            user32.RegisterHotKey.argtypes = [
+                ctypes.wintypes.HWND,
+                ctypes.c_int,
+                ctypes.wintypes.UINT,
+                ctypes.wintypes.UINT,
+            ]
+            user32.RegisterHotKey.restype = ctypes.wintypes.BOOL
+            user32.UnregisterHotKey.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+            user32.UnregisterHotKey.restype = ctypes.wintypes.BOOL
         self._hwnd = hwnd
         self._user32 = user32
 
@@ -185,7 +215,10 @@ def registration_id_from_native_message(
     message: object,
 ) -> int | None:
     """Decode a Qt Windows native event without leaking ctypes into the UI layer."""
-    if sys.platform != "win32" or event_type != b"windows_generic_MSG":
+    if sys.platform != "win32" or event_type not in (
+        b"windows_generic_MSG",
+        b"windows_dispatcher_MSG",
+    ):
         return None
     import ctypes
     import ctypes.wintypes

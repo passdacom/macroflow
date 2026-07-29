@@ -69,12 +69,14 @@ def test_contextual_two_row_toolbars_fit_supported_minimum_width() -> None:
         window._tabs.setCurrentWidget(window._sequencer)
         app.processEvents()
         assert not file_toolbar.isVisible()
+        assert not window._act_new_record_menu.isEnabled()
         assert not has_visible_overflow(sequence_add)
         assert not has_visible_overflow(sequence_manage)
 
         window._tabs.setCurrentWidget(window._favorites)
         app.processEvents()
         assert not file_toolbar.isVisible()
+        assert not window._act_new_record_menu.isEnabled()
         window.close()
         """
     )
@@ -133,4 +135,53 @@ def test_ctrl_s_routes_to_active_document_surface_only() -> None:
         """
     )
 
+    assert result.returncode == 0, result.stderr
+
+
+def test_contextual_toolbars_fit_with_larger_accessibility_font() -> None:
+    result = _run_offscreen(
+        """
+        from PyQt6.QtGui import QFont
+        from PyQt6.QtWidgets import QApplication, QToolBar
+
+        from macroflow.ui.main_window import MainWindow
+
+        MainWindow._restore_settings = lambda self: None
+        app = QApplication.instance() or QApplication([])
+        app.setFont(QFont(app.font().family(), 14))
+        window = MainWindow()
+        window.resize(860, 620)
+        window.show()
+        app.processEvents()
+
+        def toolbar(object_name):
+            item = window.findChild(QToolBar, object_name)
+            assert item is not None, object_name
+            return item
+
+        def has_visible_overflow(item):
+            extension = next(
+                (child for child in item.children() if child.objectName() == "qt_toolbar_ext_button"),
+                None,
+            )
+            return bool(extension and extension.isVisible())
+
+        window._tabs.setCurrentWidget(window._editor)
+        app.processEvents()
+        assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
+        assert not has_visible_overflow(toolbar("editor-file-toolbar"))
+        assert not has_visible_overflow(toolbar("editor-edit-toolbar"))
+
+        window._tabs.setCurrentWidget(window._sequencer)
+        app.processEvents()
+        assert not has_visible_overflow(toolbar("playback-settings-toolbar"))
+        assert not has_visible_overflow(toolbar("sequencer-manage-toolbar"))
+
+        window._tabs.setCurrentWidget(window._favorites)
+        app.processEvents()
+        assert not toolbar("runtime-control-toolbar").isVisible()
+        assert not toolbar("playback-settings-toolbar").isVisible()
+        window.close()
+        """
+    )
     assert result.returncode == 0, result.stderr

@@ -78,3 +78,67 @@ def test_hotkey_dialog_rejects_duplicate_candidate_and_restores_defaults() -> No
         """
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_hotkey_dialog_uses_localized_confirmation_buttons() -> None:
+    result = _run_offscreen(
+        """
+        from PyQt6.QtWidgets import QApplication, QDialogButtonBox
+
+        from macroflow.hotkey_config import DEFAULT_HOTKEY_CONFIG
+        from macroflow.ui.hotkey_settings_dialog import HotkeySettingsDialog
+
+        app = QApplication.instance() or QApplication([])
+        dialog = HotkeySettingsDialog(DEFAULT_HOTKEY_CONFIG)
+        assert dialog._buttons.button(QDialogButtonBox.StandardButton.Ok).text() == "확인"
+        assert dialog._buttons.button(QDialogButtonBox.StandardButton.Cancel).text() == "취소"
+        dialog.close()
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_quick_text_dialog_title_uses_configured_trigger_key() -> None:
+    result = _run_offscreen(
+        """
+        from PyQt6.QtWidgets import QApplication
+
+        from macroflow.ui.quick_text_dialog import QuickTextDialog
+
+        app = QApplication.instance() or QApplication([])
+        dialog = QuickTextDialog(trigger_label="F13")
+        assert dialog.windowTitle() == "F13 빠른 텍스트 기록"
+        dialog.close()
+        """
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_qsettings_hotkey_config_round_trip_is_durable() -> None:
+    result = _run_offscreen(
+        """
+        import tempfile
+
+        from PyQt6.QtCore import QSettings
+
+        from macroflow.hotkey_config import (
+            DEFAULT_HOTKEY_CONFIG,
+            load_hotkey_config,
+            save_hotkey_config,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/hotkeys.ini"
+            candidate = DEFAULT_HOTKEY_CONFIG.with_bindings({
+                "runtime.record_or_capture": "F10",
+                "editor.insert_text": "Alt+T",
+            })
+            settings = QSettings(path, QSettings.Format.IniFormat)
+            assert save_hotkey_config(settings, candidate)
+            del settings
+
+            restored = load_hotkey_config(QSettings(path, QSettings.Format.IniFormat))
+            assert restored == candidate
+        """
+    )
+    assert result.returncode == 0, result.stderr

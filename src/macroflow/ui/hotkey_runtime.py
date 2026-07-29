@@ -45,6 +45,7 @@ class HotkeyRuntime:
         self._native_actions: dict[int, str] = {}
         self.initialized = False
         self.globally_registered = False
+        self.degraded = False
 
     @property
     def config(self) -> HotkeyConfig:
@@ -92,7 +93,10 @@ class HotkeyRuntime:
         self._initial_result = result
         self.initialized = True
         self.globally_registered = result.success
+        self.degraded = not result.rollback_succeeded
         self._refresh_native_actions()
+        if self.degraded:
+            self._focused_bindings.clear()
         return result
 
     def apply(self, candidate: HotkeyConfig) -> RegistrationResult:
@@ -110,8 +114,15 @@ class HotkeyRuntime:
         was_globally_registered = self.globally_registered
         result = self._registrar.replace(native_hotkeys(candidate))
         if not result.success:
-            self.globally_registered = was_globally_registered and result.rollback_succeeded
-            self._refresh_native_actions()
+            self.degraded = not result.rollback_succeeded
+            self.globally_registered = (
+                was_globally_registered and result.rollback_succeeded
+            )
+            if self.degraded:
+                self._focused_bindings.clear()
+                self._native_actions.clear()
+            else:
+                self._refresh_native_actions()
             return result
 
         self._focused_bindings.replace(
@@ -120,11 +131,14 @@ class HotkeyRuntime:
         )
         self._config = candidate
         self.globally_registered = True
+        self.degraded = False
         self._refresh_native_actions()
         return result
 
     def dispatch_native(self, registration_id: int) -> bool:
-        """Dispatch a WM_HOTKEY registration ID; return whether it was known."""
+        """Dispatch an incoming WM_HOTKEY registration id exactly once."""
+        if self.degraded:
+            return False
         action_id = self._native_actions.get(registration_id)
         if action_id is None:
             return False
@@ -133,17 +147,24 @@ class HotkeyRuntime:
 
     def dispatch_focused(self, action_id: str) -> None:
         """Dispatch a logical action from the focused QShortcut path."""
+        if self.degraded:
+            return
         if self._config is None or action_id not in self._config.bindings:
             raise KeyError(action_id)
         self._dispatch(action_id)
 
     def shutdown(self) -> RegistrationResult:
-        """Release native and focused registrations."""
+        """Release every owned shortcut; retain ownership state when release fails."""
         result = self._registrar.replace(())
         self._focused_bindings.clear()
         self._native_actions.clear()
+        if not result.success:
+            self.globally_registered = False
+            self.degraded = True
+            return result
         self.initialized = False
         self.globally_registered = False
+        self.degraded = False
         self._config = None
         self._initial_result = None
         return result

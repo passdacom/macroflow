@@ -90,6 +90,11 @@ def _quick_text_delay_override() -> int | None:
     return _read_quick_text_delay_override(QSettings("MacroFlow", "MacroFlow"))
 
 
+def _configured_hotkey_label(window: object, action_id: str, default: str) -> str:
+    config = getattr(window, "_hotkey_config", None)
+    return config.binding_for(action_id) if isinstance(config, HotkeyConfig) else default
+
+
 _MAX_RECENT_SAVES = 10
 _CLOSE_WORKER_TIMEOUT_S = 3.0
 
@@ -123,6 +128,7 @@ class MainWindow(QMainWindow):
         self._hotkey_runtime: HotkeyRuntime | None = None
         self._paused: bool = False
         self._quick_text_session_active: bool = False
+        self._hotkey_settings_active: bool = False
         self._playback_pause_event = threading.Event()
         self._recording_stop_thread: threading.Thread | None = None
 
@@ -254,12 +260,6 @@ class MainWindow(QMainWindow):
         act_exit.triggered.connect(self.close)
         file_menu.addAction(act_exit)
 
-        # 도움말 메뉴
-        help_menu = mb.addMenu("도움말(&H)")
-        act_about = QAction("정보", self)
-        act_about.triggered.connect(self._show_about)
-        help_menu.addAction(act_about)
-
         # 설정 메뉴
         settings_menu = mb.addMenu("설정(&S)")
         self._act_hotkey_settings = QAction("단축키 설정...", self)
@@ -284,11 +284,19 @@ class MainWindow(QMainWindow):
         self._act_quick_text_delay.triggered.connect(self._show_quick_text_delay_settings)
         settings_menu.addAction(self._act_quick_text_delay)
 
+        # 도움말 메뉴
+        help_menu = mb.addMenu("도움말(&H)")
+        act_about = QAction("정보", self)
+        act_about.triggered.connect(self._show_about)
+        help_menu.addAction(act_about)
+
     def _setup_toolbar(self) -> None:
         # ── 1행: 녹화 / 재생 / 중지 ──────────────────────────────────────────
         tb1 = self.addToolBar("제어")
+        tb1.setObjectName("runtime-control-toolbar")
         tb1.setMovable(False)
         tb1.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._runtime_control_toolbar = tb1
 
         self._act_record = QAction("● 녹화 (F6)", self)
         self._act_record.setToolTip("F6  —  녹화 시작/중지")
@@ -320,14 +328,16 @@ class MainWindow(QMainWindow):
 
         # ── 2행: 속도 / 반복 / 간격 / 구간 ──────────────────────────────────
         tb2 = self.addToolBar("재생 설정")
+        tb2.setObjectName("playback-settings-toolbar")
         tb2.setMovable(False)
+        self._playback_settings_toolbar = tb2
 
         tb2.addWidget(QLabel(" 속도:"))
         self._speed_combo = QComboBox()
         self._speed_combo.addItems(["0.5x", "1.0x", "2.0x", "3.0x", "4.0x", "5.0x", "직접 입력..."])
         self._speed_combo.setCurrentIndex(1)
         self._speed_combo.setToolTip("재생 속도 배율 (직접 입력 선택 시 수동 입력 가능)")
-        self._speed_combo.setFixedWidth(110)
+        self._speed_combo.setFixedWidth(95)
         self._speed_combo.currentIndexChanged.connect(self._on_speed_combo_changed)
         tb2.addWidget(self._speed_combo)
 
@@ -338,10 +348,10 @@ class MainWindow(QMainWindow):
         self._repeat_spin.setValue(1)
         self._repeat_spin.setSuffix("회")
         self._repeat_spin.setToolTip("반복 재생 횟수")
-        self._repeat_spin.setFixedWidth(90)
+        self._repeat_spin.setFixedWidth(75)
         tb2.addWidget(self._repeat_spin)
 
-        tb2.addWidget(QLabel("  반복 사이 대기:"))
+        tb2.addWidget(QLabel("  반복 간격:"))
         self._interval_spin = QSpinBox()
         self._interval_spin.setMinimum(0)
         self._interval_spin.setMaximum(60000)
@@ -350,7 +360,7 @@ class MainWindow(QMainWindow):
         self._interval_spin.setToolTip(
             "한 회 재생이 완전히 끝난 뒤 실제 시간으로 대기합니다. 재생 속도는 적용되지 않습니다."
         )
-        self._interval_spin.setFixedWidth(95)
+        self._interval_spin.setFixedWidth(85)
         tb2.addWidget(self._interval_spin)
 
         tb2.addSeparator()
@@ -363,7 +373,7 @@ class MainWindow(QMainWindow):
         self._range_start_spin.setSpecialValueText("처음")
         self._range_start_spin.setToolTip("구간 재생 시작 행 (0=처음부터)")
         self._range_start_spin.editingFinished.connect(self._normalize_range_spinboxes)
-        self._range_start_spin.setFixedWidth(95)
+        self._range_start_spin.setFixedWidth(80)
         tb2.addWidget(self._range_start_spin)
 
         tb2.addWidget(QLabel("~"))
@@ -374,7 +384,7 @@ class MainWindow(QMainWindow):
         self._range_end_spin.setSpecialValueText("끝")
         self._range_end_spin.setToolTip("구간 재생 끝 행 (0=끝까지)")
         self._range_end_spin.editingFinished.connect(self._normalize_range_spinboxes)
-        self._range_end_spin.setFixedWidth(95)
+        self._range_end_spin.setFixedWidth(80)
         tb2.addWidget(self._range_end_spin)
 
         self._act_range_play = QAction("▶ 구간 재생", self)
@@ -394,22 +404,22 @@ class MainWindow(QMainWindow):
         self._act_open.triggered.connect(self._open_file)
         tb3.addAction(self._act_open)
 
-        self._act_save = QAction("💾 저장  Ctrl+S", self)
+        self._act_save = QAction("💾 저장", self)
         self._act_save.setToolTip("현재 파일에 덮어쓰기 저장 (파일이 없으면 다른 이름으로 저장)")
         self._act_save.triggered.connect(self._save_file)
         tb3.addAction(self._act_save)
 
-        self._act_save_as = QAction("💾 다른 이름으로 저장", self)
+        self._act_save_as = QAction("💾 다른 이름", self)
         self._act_save_as.setToolTip("새 경로를 지정하여 저장")
         self._act_save_as.triggered.connect(self._save_file_as)
         tb3.addAction(self._act_save_as)
 
-        self._act_save_seq = QAction("📋 시퀀서에 추가", self)
+        self._act_save_seq = QAction("📋 시퀀서", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
         tb3.addAction(self._act_save_seq)
 
-        self._act_save_fav = QAction("⭐ 즐겨찾기에 추가", self)
+        self._act_save_fav = QAction("⭐ 즐겨찾기", self)
         self._act_save_fav.setToolTip(
             "현재 매크로를 이름을 지정하여 즐겨찾기로 저장합니다\n"
             "(favorites 폴더 — macros 폴더와 별도 보관)"
@@ -419,7 +429,7 @@ class MainWindow(QMainWindow):
 
         tb3.addSeparator()
 
-        self._act_restore_prev = QAction("↩ 이전 매크로 복원", self)
+        self._act_restore_prev = QAction("↩ 이전 복원", self)
         self._act_restore_prev.setToolTip(
             "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
             "(실수로 F6을 눌러 기존 매크로가 사라졌을 때 사용)"
@@ -450,8 +460,6 @@ class MainWindow(QMainWindow):
             self._initialize_hotkeys()
 
     def closeEvent(self, event: QCloseEvent | None) -> None:  # noqa: N802
-        self._editor.cancel_f6_capture()
-        self._sequencer.cancel_f6_capture()
         if self._state in {"recording", "stopping"}:
             if not self._stop_recording_before_close():
                 QMessageBox.warning(
@@ -485,8 +493,15 @@ class MainWindow(QMainWindow):
             if event is not None:
                 event.ignore()
             return
+        self._editor.cancel_f6_capture()
+        self._sequencer.cancel_f6_capture()
         if self._hotkey_runtime is not None:
-            self._hotkey_runtime.shutdown()
+            shutdown = self._hotkey_runtime.shutdown()
+            if not shutdown.success:
+                logger.error("글로벌 단축키 해제 실패; 종료 전에 한 번 더 시도합니다")
+                shutdown = self._hotkey_runtime.shutdown()
+            if not shutdown.success:
+                logger.critical("글로벌 단축키 해제를 완료하지 못했습니다")
             self._hotkey_runtime = None
             self._hotkeys_registered = False
         self._save_settings()
@@ -634,6 +649,11 @@ class MainWindow(QMainWindow):
         recorder.configure_filtered_hotkey_vk_codes(runtime.active_runtime_vks)
         if result.success:
             logger.info("글로벌 핫키 등록 완료: %s", dict(self._hotkey_config.bindings))
+        elif sys.platform == "win32" and runtime.degraded:
+            logger.error("글로벌 핫키 등록 정리가 불완전해 단축키를 비활성화했습니다")
+            self._sb_state.setText(
+                "글로벌 단축키 초기화가 불완전합니다. MacroFlow를 재시작하세요"
+            )
         elif sys.platform == "win32":
             logger.warning(
                 "글로벌 핫키 등록 실패 (%s: %s) — 앱 포커스 단축키 사용",
@@ -641,13 +661,20 @@ class MainWindow(QMainWindow):
                 result.failed_key,
             )
             self._sb_state.setText(
-                f"글로벌 단축키 {result.failed_key or ''} 충돌 — 앱 활성 상태에서만 작동"
+                f"글로벌 단축키 {result.failed_key or ''} 충돌 — 설정에서 다른 키를 선택하세요"
             )
         self._refresh_hotkey_labels()
         self._on_tab_changed(self._tabs.currentIndex())
 
     def _dispatch_hotkey_action(self, action_id: str) -> None:
         """Route native and focused shortcuts through one logical command boundary."""
+        if self._hotkey_settings_active:
+            return
+        if self._hotkey_runtime is not None and self._hotkey_runtime.degraded:
+            self._sb_state.setText(
+                "단축키 복구가 불완전합니다. 작업을 저장하고 MacroFlow를 재시작하세요"
+            )
+            return
         if action_id == "runtime.record_or_capture":
             self._handle_f6()
         elif action_id == "runtime.play_or_color_capture":
@@ -784,10 +811,11 @@ class MainWindow(QMainWindow):
 
     def _capture_quick_text(self) -> None:
         """F9: composer 전체 구간을 제외하고 semantic text event를 기록·적용한다."""
+        quick_text_key = _configured_hotkey_label(self, "recording.quick_text", "F9")
         if self._state != "recording":
             return
         if self._quick_text_session_active:
-            self._sb_state.setText("F9 텍스트 입력이 이미 열려 있습니다")
+            self._sb_state.setText(f"{quick_text_key} 텍스트 입력이 이미 열려 있습니다")
             return
         from macroflow import recorder, win32
 
@@ -803,7 +831,7 @@ class MainWindow(QMainWindow):
             target_hwnd = win32.get_foreground_window()
             self._set_recording_paused_ui(True)
 
-            dialog = QuickTextDialog(self)
+            dialog = QuickTextDialog(self, trigger_label=quick_text_key)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
             text = dialog.text()
@@ -887,8 +915,11 @@ class MainWindow(QMainWindow):
         """F8: 현재 녹화 또는 일반 재생을 일시중지/재개한다."""
         if self._state == "recording":
             if self._quick_text_session_active:
+                quick_text_key = _configured_hotkey_label(
+                    self, "recording.quick_text", "F9"
+                )
                 self._sb_state.setText(
-                    "F9 텍스트 입력 중에는 일시정지를 해제할 수 없습니다"
+                    f"{quick_text_key} 텍스트 입력 중에는 일시정지를 해제할 수 없습니다"
                 )
                 return
             from macroflow import recorder
@@ -924,6 +955,18 @@ class MainWindow(QMainWindow):
             self._sb_state.setText("시퀀스 실행 중에는 녹화할 수 없습니다")
             return
         if self._state == "idle":
+            if self._tabs.currentWidget() is not self._editor:
+                self._sb_state.setText("녹화는 매크로 에디터 탭에서 시작할 수 있습니다")
+                return
+            if (
+                sys.platform == "win32"
+                and self._hotkey_runtime is not None
+                and not self._hotkey_runtime.globally_registered
+            ):
+                self._sb_state.setText(
+                    "녹화 전에 설정에서 사용 가능한 글로벌 단축키를 선택하세요"
+                )
+                return
             self._start_recording()
         elif self._state == "recording":
             self._do_stop_recording()
@@ -936,7 +979,8 @@ class MainWindow(QMainWindow):
             self,
             "이어서 녹화",
             "현재 매크로 끝에 새 녹화를 이어붙입니다.\n\n"
-            "F6 또는 중지 버튼으로 녹화를 끝내면 새 이벤트가 뒤에 추가됩니다.\n"
+            f"{self._hotkey_label('runtime.record_or_capture')} 또는 중지 버튼으로 "
+            "녹화를 끝내면 새 이벤트가 뒤에 추가됩니다.\n"
             "계속하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
@@ -1421,13 +1465,7 @@ class MainWindow(QMainWindow):
 
     def _show_hotkey_settings(self) -> None:
         """Validate, transactionally register, then persist a new hotkey set."""
-        if (
-            self._state != "idle"
-            or self._sequencer.is_running()
-            or self._quick_text_session_active
-            or self._editor.is_f6_capture_active()
-            or self._sequencer.is_f6_capture_active()
-        ):
+        if self._hotkey_change_blocked():
             QMessageBox.information(
                 self,
                 "단축키 변경 불가",
@@ -1439,18 +1477,35 @@ class MainWindow(QMainWindow):
             return
 
         dialog = HotkeySettingsDialog(self._hotkey_config, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        self._hotkey_settings_active = True
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            self._hotkey_settings_active = False
+        if not accepted:
+            return
+        if self._hotkey_change_blocked():
+            QMessageBox.information(
+                self,
+                "단축키 변경 취소",
+                "설정 중 앱 상태가 변경되어 단축키를 적용하지 않았습니다.",
+            )
             return
         candidate = dialog.candidate_config()
         result = self._apply_hotkey_config(candidate)
         if not result.success:
-            detail = (
-                f"{result.failed_key or '선택한 키'}는 다른 프로그램에서 사용 중이거나 "
-                "Windows에 등록할 수 없습니다. 기존 단축키 설정을 유지합니다."
-            )
+            if result.failed_key == "설정 저장":
+                title = "단축키 설정 저장 실패"
+                detail = "설정 파일에 저장하지 못해 이전 단축키 설정으로 되돌렸습니다."
+            else:
+                title = "글로벌 단축키 충돌"
+                detail = (
+                    f"{result.failed_key or '선택한 키'}는 다른 프로그램에서 사용 중이거나 "
+                    "Windows에 등록할 수 없습니다. 기존 단축키 설정을 유지합니다."
+                )
             if not result.rollback_succeeded:
                 detail += "\n\n기존 글로벌 단축키 복구도 완료되지 않았습니다. 앱을 재시작해 주세요."
-            QMessageBox.warning(self, "글로벌 단축키 충돌", detail)
+            QMessageBox.warning(self, title, detail)
             self._hotkeys_registered = self._hotkey_runtime.globally_registered
             return
 
@@ -1458,22 +1513,52 @@ class MainWindow(QMainWindow):
 
     def _apply_hotkey_config(self, candidate: HotkeyConfig) -> RegistrationResult:
         """Apply atomically; persist and update recorder only after registration succeeds."""
+        if self._hotkey_change_blocked():
+            return RegistrationResult(
+                success=False,
+                failed_key="앱 사용 중",
+                rollback_succeeded=True,
+            )
         if self._hotkey_runtime is None:
             return RegistrationResult(success=False, rollback_succeeded=True)
         result = self._hotkey_runtime.apply(candidate)
         self._hotkeys_registered = self._hotkey_runtime.globally_registered
         if not result.success:
+            if self._hotkey_runtime.degraded:
+                self._update_toolbar()
             return result
 
         from macroflow import recorder
 
-        save_hotkey_config(QSettings("MacroFlow", "MacroFlow"), candidate)
+        settings = QSettings("MacroFlow", "MacroFlow")
+        if not save_hotkey_config(settings, candidate):
+            old_config = self._hotkey_config
+            rollback = self._hotkey_runtime.apply(old_config)
+            self._hotkeys_registered = self._hotkey_runtime.globally_registered
+            save_hotkey_config(settings, old_config)
+            if not rollback.success:
+                self._hotkey_runtime.degraded = True
+            self._update_toolbar()
+            return RegistrationResult(
+                success=False,
+                failed_key="설정 저장",
+                rollback_succeeded=rollback.success,
+            )
         self._hotkey_config = candidate
         recorder.configure_filtered_hotkey_vk_codes(self._hotkey_runtime.active_runtime_vks)
         self._refresh_hotkey_labels()
         self._update_toolbar()
         self._on_tab_changed(self._tabs.currentIndex())
         return result
+
+    def _hotkey_change_blocked(self) -> bool:
+        return (
+            self._state != "idle"
+            or self._sequencer.is_running()
+            or self._quick_text_session_active
+            or self._editor.is_f6_capture_active()
+            or self._sequencer.is_f6_capture_active()
+        )
 
     def _hotkey_label(self, action_id: str) -> str:
         return self._hotkey_config.binding_for(action_id)
@@ -1487,8 +1572,17 @@ class MainWindow(QMainWindow):
         self._act_play.setToolTip(f"{play}  —  재생/시퀀스 시작·중지 또는 색상 캡처")
         self._act_pause.setToolTip(f"{pause}  —  녹화/재생 일시정지 또는 계속")
         self._editor.set_capture_hotkey_label(record)
+        self._editor.set_insertion_shortcut_labels(
+            self._hotkey_label("editor.insert_text"),
+            self._hotkey_label("editor.insert_click"),
+            self._hotkey_label("editor.insert_color_trigger"),
+        )
         self._sequencer.set_capture_hotkey_label(record)
         self._act_new_record_menu.setText(f"새 녹화 시작 ({record})")
+        self._act_restore_prev.setToolTip(
+            "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
+            f"(실수로 {record}을 눌러 기존 매크로가 사라졌을 때 사용)"
+        )
         self._act_quick_text_delay.setText(f"{quick_text} 텍스트 재생 대기...")
         self._act_quick_text_delay.setToolTip(
             f"녹화 중 {quick_text}로 삽입하는 텍스트 동작의 기본 재생 대기를 설정합니다"
@@ -1498,12 +1592,13 @@ class MainWindow(QMainWindow):
         """새 F9 TextInputEvent에 적용할 앱 공통 재생 대기 기본값을 편집한다."""
         from PyQt6.QtCore import QSettings
 
+        quick_text_key = _configured_hotkey_label(self, "recording.quick_text", "F9")
         settings = QSettings("MacroFlow", "MacroFlow")
         current = quick_text_delay_input(settings)
         value, ok = QInputDialog.getInt(
             self,
-            "F9 텍스트 재생 대기",
-            "새로 녹화하는 F9 텍스트 동작의 실행 전 대기 (ms):\n"
+            f"{quick_text_key} 텍스트 재생 대기",
+            f"새로 녹화하는 {quick_text_key} 텍스트 동작의 실행 전 대기 (ms):\n"
             "-1 = 녹화 타이밍 사용\n"
             " 0 = 직전 이벤트 종료 뒤 즉시 실행\n"
             "양수 = 지정 시간 대기 (재생 속도 배율 적용)\n"
@@ -1517,7 +1612,7 @@ class MainWindow(QMainWindow):
             return
         settings.setValue(QUICK_TEXT_DELAY_KEY, value)
         label = "녹화 타이밍" if value < 0 else f"{value} ms"
-        self._sb_state.setText(f"F9 텍스트 기본 재생 대기: {label}")
+        self._sb_state.setText(f"{quick_text_key} 텍스트 기본 재생 대기: {label}")
 
     def _show_color_check_settings(self) -> None:
         """현재 매크로와 앱 공통 색 체크 timeout/폴링 기본값을 편집한다."""
@@ -1749,7 +1844,14 @@ class MainWindow(QMainWindow):
         is_fav_tab = self._is_favorites_tab()
         is_editor_tab = not is_seq_tab and not is_fav_tab
         seq_running = self._sequencer.is_running()
+        runtime_recording_available = not (
+            sys.platform == "win32"
+            and self._hotkey_runtime is not None
+            and not self._hotkey_runtime.globally_registered
+        )
         self._editor_file_toolbar.setVisible(is_editor_tab)
+        self._runtime_control_toolbar.setVisible(not is_fav_tab)
+        self._playback_settings_toolbar.setVisible(not is_fav_tab)
         record_key = self._hotkey_label("runtime.record_or_capture")
         play_key = self._hotkey_label("runtime.play_or_color_capture")
         pause_key = self._hotkey_label("runtime.pause_or_resume")
@@ -1760,6 +1862,7 @@ class MainWindow(QMainWindow):
             and not seq_running
             and not is_seq_tab
             and not is_fav_tab
+            and runtime_recording_available
         )
         self._act_record.setChecked(is_rec)
         if is_rec and self._append_recording_mode:
@@ -1774,9 +1877,13 @@ class MainWindow(QMainWindow):
             and self._macro is not None
             and not is_seq_tab
             and not is_fav_tab
+            and runtime_recording_available
         )
         self._act_append_record.setEnabled(can_append_record)
         self._act_append_record_menu.setEnabled(can_append_record)
+        self._act_new_record_menu.setEnabled(
+            is_idle and not seq_running and is_editor_tab and runtime_recording_available
+        )
 
         # 재생: 탭에 따라 텍스트와 활성화 조건이 달라짐
         if is_seq_tab:
@@ -1847,7 +1954,17 @@ class MainWindow(QMainWindow):
         self._speed_combo.setEnabled(can_change_settings)
         self._repeat_spin.setEnabled(can_change_settings)
         self._interval_spin.setEnabled(can_change_settings)
-        self._act_hotkey_settings.setEnabled(can_change_settings)
+        hotkeys_degraded = bool(
+            self._hotkey_runtime is not None and self._hotkey_runtime.degraded
+        )
+        if hotkeys_degraded:
+            self._act_record.setEnabled(False)
+            self._act_append_record.setEnabled(False)
+            self._act_append_record_menu.setEnabled(False)
+            self._act_play.setEnabled(False)
+            self._act_pause.setEnabled(False)
+            self._act_range_play.setEnabled(False)
+        self._act_hotkey_settings.setEnabled(can_change_settings and not hotkeys_degraded)
 
     def _update_range_spinboxes(self) -> None:
         """매크로 로드 후 구간 SpinBox 범위를 갱신한다."""
@@ -2222,12 +2339,18 @@ class MainWindow(QMainWindow):
 
     def _show_about(self) -> None:
         from macroflow import __version__
+        record = self._hotkey_label("runtime.record_or_capture")
+        play = self._hotkey_label("runtime.play_or_color_capture")
+        pause = self._hotkey_label("runtime.pause_or_resume")
+        quick_text = self._hotkey_label("recording.quick_text")
         QMessageBox.about(
             self, "MacroFlow 정보",
             f"<b>MacroFlow v{__version__}</b><br><br>"
             "Windows 전용 마우스·키보드 매크로 녹화·재생 도구<br><br>"
-            "F6: 녹화 시작/중지<br>"
-            "F7: 재생 시작/중지 (녹화 중: 색상 체크 삽입)<br>"
+            f"{record}: 녹화 시작/중지 또는 위치 캡처<br>"
+            f"{play}: 재생 시작/중지 (녹화 중: 색상 체크 삽입)<br>"
+            f"{pause}: 일시중지/계속<br>"
+            f"{quick_text}: 빠른 텍스트 기록<br>"
             "ESC×3: 긴급 중지<br><br>"
             "구간 재생: 시작/끝 행 번호 설정 (0=전체)",
         )

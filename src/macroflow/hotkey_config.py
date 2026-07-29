@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Literal, Protocol
+from typing import Any, Final, Literal, Protocol, cast
 
 HotkeyScope = Literal["runtime", "editor"]
 
@@ -16,6 +16,10 @@ class SettingsReader(Protocol):
 
 class SettingsWriter(Protocol):
     def setValue(self, key: str, value: str) -> None: ...  # noqa: N802 - QSettings API
+
+
+class SettingsStore(SettingsReader, SettingsWriter, Protocol):
+    pass
 
 
 @dataclass(frozen=True)
@@ -164,10 +168,12 @@ def _parse_chord(value: str) -> tuple[tuple[str, ...], str]:
         if folded.startswith("f") and folded[1:].isdigit():
             number = int(folded[1:])
             key = f"F{number}" if 1 <= number <= 24 else part.upper()
-        elif len(part) == 1 and part.isalnum():
+        elif len(part) == 1 and part.isprintable():
             key = part.upper()
+        elif folded in _NAMED_KEYS:
+            key = _NAMED_KEYS[folded]
         else:
-            key = _NAMED_KEYS.get(folded, part)
+            raise ValueError("unsupported key")
         keys.append(key)
 
     if len(keys) != 1:
@@ -222,7 +228,11 @@ def validate_hotkey_config(config: HotkeyConfig) -> HotkeyValidationResult:
             errors.append(HotkeyValidationError(spec.action_id, "function key must be F1..F24"))
             continue
         if spec.scope == "runtime":
-            if modifiers or function_number is None:
+            if function_number == 12:
+                errors.append(
+                    HotkeyValidationError(spec.action_id, "F12 is reserved by Windows")
+                )
+            elif modifiers or function_number is None:
                 errors.append(
                     HotkeyValidationError(spec.action_id, "runtime binding must be a bare F1..F24 key")
                 )
@@ -281,15 +291,33 @@ def load_hotkey_config(settings: Mapping[str, object] | SettingsReader) -> Hotke
 
 
 def save_hotkey_config(
-    settings: MutableMapping[str, str] | SettingsWriter, config: HotkeyConfig
-) -> None:
-    """Persist a valid config to QSettings or a mutable mapping."""
+    settings: MutableMapping[str, str] | SettingsStore, config: HotkeyConfig
+) -> bool:
+    """Persist and read back a valid config; return False on storage failure."""
     result = validate_hotkey_config(config)
     if not result.is_valid:
         raise ValueError("cannot save invalid hotkey config")
-    for spec in HOTKEY_SPECS:
-        value = canonicalize_hotkey(config.binding_for(spec.action_id))
-        if isinstance(settings, MutableMapping):
-            settings[spec.settings_key] = value
-        else:
-            settings.setValue(spec.settings_key, value)
+    expected = {
+        spec.settings_key: canonicalize_hotkey(config.binding_for(spec.action_id))
+        for spec in HOTKEY_SPECS
+    }
+    try:
+        for key, value in expected.items():
+            if isinstance(settings, MutableMapping):
+                settings[key] = value
+            else:
+                settings.setValue(key, value)
+        sync = getattr(settings, "sync", None)
+        if callable(sync):
+            sync()
+        status = getattr(settings, "status", None)
+        if callable(status):
+            raw_status = status()
+            if int(cast(Any, getattr(raw_status, "value", raw_status))) != 0:
+                return False
+    except (OSError, RuntimeError):
+        return False
+    return all(
+        str(_settings_value(settings, key, "")) == value
+        for key, value in expected.items()
+    )

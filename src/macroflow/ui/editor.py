@@ -177,6 +177,11 @@ class EventEditorWidget(QWidget):
         self._macro: MacroData | None = None
         self._model_generation: int = 0
         self._capture_hotkey_label = "F6"
+        self._insertion_shortcut_labels = (
+            "Ctrl+Shift+T",
+            "Ctrl+Shift+L",
+            "Ctrl+Shift+G",
+        )
         self._rows: list[_DisplayRow] = []
         self._show_moves: bool = False
         self._undo_stack: deque[list[AnyEvent]] = deque(maxlen=_MAX_UNDO)
@@ -216,7 +221,7 @@ class EventEditorWidget(QWidget):
 
         edit_toolbar.addSeparator()
 
-        self._act_set_delay = QAction("표시 동작 재생 대기 일괄", self)
+        self._act_set_delay = QAction("재생 대기 일괄", self)
         self._act_set_delay.setToolTip(
             "현재 표에 표시된 동작의 실행 전 대기를 동일하게 덮어씁니다\n"
             "클릭/키 입력은 한 동작으로 취급하며 숨겨진 해제·이동에는 적용하지 않습니다\n"
@@ -372,9 +377,25 @@ class EventEditorWidget(QWidget):
 
     def set_capture_hotkey_label(self, label: str) -> None:
         self._capture_hotkey_label = label
+        self.set_insertion_shortcut_labels(*self._insertion_shortcut_labels)
+
+    def set_insertion_shortcut_labels(
+        self, text_key: str, click_key: str, color_key: str
+    ) -> None:
+        self._insertion_shortcut_labels = (text_key, click_key, color_key)
+        text_suffix = f"\n단축키: {text_key}" if text_key else ""
+        click_suffix = f"\n단축키: {click_key}" if click_key else ""
+        color_suffix = f"\n단축키: {color_key}" if color_key else ""
+        self._act_insert_text.setToolTip(
+            f"선택 행 다음에 텍스트 입력 동작을 추가합니다{text_suffix}"
+        )
+        self._act_insert_click.setToolTip(
+            f"선택 행 다음에 클릭 동작을 추가합니다{click_suffix}"
+        )
         self._act_insert_color.setToolTip(
             "선택 행 다음에 ColorTriggerEvent를 삽입합니다\n"
-            f"클릭 후 원하는 위치로 마우스를 이동하고 {label}을 누르세요"
+            f"클릭 후 원하는 위치로 마우스를 이동하고 {self._capture_hotkey_label}을 누르세요"
+            f"{color_suffix}"
         )
 
     def _advance_model_generation(self, _macro: MacroData) -> None:
