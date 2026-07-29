@@ -108,6 +108,7 @@ class MainWindow(QMainWindow):
 
     # 워커 스레드 → 메인 스레드 신호
     _sig_recording_done = pyqtSignal(object)  # MacroData
+    _sig_recording_save_warning = pyqtSignal(str)
     _sig_play_complete = pyqtSignal()
     _sig_play_error = pyqtSignal(str)
     _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
@@ -171,6 +172,7 @@ class MainWindow(QMainWindow):
 
         # ── 신호 연결 ─────────────────────────────────────────────────────────
         self._sig_recording_done.connect(self._on_recording_done)
+        self._sig_recording_save_warning.connect(self._on_recording_save_warning)
         self._sig_play_complete.connect(self._on_play_complete)
         self._sig_play_error.connect(self._on_play_error)
         self._sig_emergency_stop.connect(self._emergency_stop)
@@ -214,8 +216,8 @@ class MainWindow(QMainWindow):
     def _setup_window(self) -> None:
         from macroflow import __version__
         self.setWindowTitle(f"MacroFlow v{__version__}")
-        self.setMinimumSize(860, 520)
-        self.resize(1000, 620)
+        self.setMinimumSize(1280, 520)
+        self.resize(1280, 620)
 
     def _setup_menubar(self) -> None:
         mb = self.menuBar()
@@ -365,8 +367,6 @@ class MainWindow(QMainWindow):
         self._interval_spin.setFixedWidth(85)
         tb2.addWidget(self._interval_spin)
 
-        self.addToolBarBreak()
-
         range_tb = self.addToolBar("구간 재생")
         range_tb.setObjectName("range-playback-toolbar")
         range_tb.setMovable(False)
@@ -399,40 +399,21 @@ class MainWindow(QMainWindow):
         self._act_range_play.triggered.connect(self._start_range_playback)
         range_tb.addAction(self._act_range_play)
 
-        self.addToolBarBreak()
-
-        # ── 3행: 열기 / 저장 / 시퀀서에 추가 ────────────────────────────────
-        tb3 = self.addToolBar("파일")
-        tb3.setObjectName("editor-file-toolbar")
-        tb3.setMovable(False)
-        tb3.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-
+        # 매크로 에디터 탭의 파일/내보내기 작업. 탭 내부의 고정 행에 배치한다.
         self._act_open = QAction("📂 열기", self)
         self._act_open.triggered.connect(self._open_file)
-        tb3.addAction(self._act_open)
 
         self._act_save = QAction("💾 저장", self)
         self._act_save.setToolTip("현재 파일에 덮어쓰기 저장 (파일이 없으면 다른 이름으로 저장)")
         self._act_save.triggered.connect(self._save_file)
-        tb3.addAction(self._act_save)
 
         self._act_save_as = QAction("💾 다른 이름", self)
         self._act_save_as.setToolTip("새 경로를 지정하여 저장")
         self._act_save_as.triggered.connect(self._save_file_as)
-        tb3.addAction(self._act_save_as)
-        self._editor_file_toolbar = tb3
-
-        self.addToolBarBreak()
-
-        export_tb = self.addToolBar("내보내기/복구")
-        export_tb.setObjectName("editor-export-toolbar")
-        export_tb.setMovable(False)
-        export_tb.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
         self._act_save_seq = QAction("📋 시퀀서", self)
         self._act_save_seq.setToolTip("macros 폴더에 자동 저장 후 시퀀서에 추가")
         self._act_save_seq.triggered.connect(self._save_and_add_to_sequencer)
-        export_tb.addAction(self._act_save_seq)
 
         self._act_save_fav = QAction("⭐ 즐겨찾기", self)
         self._act_save_fav.setToolTip(
@@ -440,9 +421,6 @@ class MainWindow(QMainWindow):
             "(favorites 폴더 — macros 폴더와 별도 보관)"
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
-        export_tb.addAction(self._act_save_fav)
-
-        export_tb.addSeparator()
 
         self._act_restore_prev = QAction("↩ 이전 복원", self)
         self._act_restore_prev.setToolTip(
@@ -451,8 +429,18 @@ class MainWindow(QMainWindow):
         )
         self._act_restore_prev.triggered.connect(self._restore_prev_macro)
         self._act_restore_prev.setEnabled(False)
-        export_tb.addAction(self._act_restore_prev)
-        self._editor_export_toolbar = export_tb
+
+        self._editor.install_main_window_actions(
+            document_actions=(self._act_open, self._act_save, self._act_save_as),
+            export_actions=(
+                self._act_save_seq,
+                self._act_save_fav,
+                self._act_restore_prev,
+            ),
+        )
+        self.setMinimumWidth(
+            max(self.minimumWidth(), self._editor.required_toolbar_width())
+        )
 
     def _setup_statusbar(self) -> None:
         self._sb_state = QLabel("대기 중")
@@ -736,7 +724,7 @@ class MainWindow(QMainWindow):
 
     def _handle_f6(self) -> None:
         """Shared native/fallback F6 router with lifecycle-safe precedence."""
-        if self._state == "recording":
+        if self._state in {"recording", "stopping"}:
             self._editor.cancel_f6_capture()
             self._sequencer.cancel_f6_capture()
             self._toggle_recording()
@@ -983,7 +971,7 @@ class MainWindow(QMainWindow):
                 )
                 return
             self._start_recording()
-        elif self._state == "recording":
+        elif self._state in {"recording", "stopping"}:
             self._do_stop_recording()
 
     def _start_append_recording(self) -> None:
@@ -1014,7 +1002,14 @@ class MainWindow(QMainWindow):
             logger.info("이전 매크로 백업 완료 (복원 버튼으로 되돌릴 수 있음)")
 
         from macroflow import recorder
-        recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
+        try:
+            recorder.start_recording(on_emergency_stop=self._sig_emergency_stop.emit)
+        except Exception as exc:
+            self._append_recording_mode = False
+            self._append_base_macro = None
+            logger.exception("녹화 시작 오류")
+            QMessageBox.critical(self, "녹화 시작 오류", f"녹화를 시작할 수 없습니다.\n\n{exc}")
+            return
         self._paused = False
         self._state = "recording"
         self._overlay.start_recording()
@@ -1063,11 +1058,19 @@ class MainWindow(QMainWindow):
         from macroflow import recorder
         try:
             macro = recorder.stop_recording()
-            self._auto_save_temp(macro)
-            self._sig_recording_done.emit(macro)
         except Exception as exc:
             logger.exception("녹화 중지 오류")
             self._sig_play_error.emit(f"녹화 중지 오류: {exc}")
+            return
+        warning: str | None = None
+        try:
+            self._auto_save_temp(macro)
+        except Exception as exc:
+            logger.exception("최근 녹화 임시 저장 오류")
+            warning = f"녹화 내용은 에디터에 보존했지만 최근 녹화 임시 저장에 실패했습니다: {exc}"
+        self._sig_recording_done.emit(macro)
+        if warning is not None:
+            self._sig_recording_save_warning.emit(warning)
 
     def _on_recording_done(self, macro: object) -> None:
         self._recording_stop_thread = None
@@ -1107,6 +1110,10 @@ class MainWindow(QMainWindow):
         self._sb_count.setText(f"이벤트: {count}")
         self._refresh_recent_menu()
         logger.info(f"녹화 완료: {count}개 이벤트")
+
+    def _on_recording_save_warning(self, message: str) -> None:
+        QMessageBox.warning(self, "최근 녹화 저장 오류", message)
+        logger.warning(message)
 
     def _stop_sequencer(self) -> bool:
         """시퀀서 worker와 관련 overlay/hook/UI 상태를 함께 정리한다."""
@@ -1415,6 +1422,13 @@ class MainWindow(QMainWindow):
     def _on_play_error(self, msg: str) -> None:
         if self._state == "stopping":
             self._recording_stop_thread = None
+            from macroflow import recorder
+            if recorder.is_recording():
+                self._update_toolbar()
+                self._sb_state.setText("녹화 중지 오류 — 중지 버튼으로 다시 시도하세요")
+                QMessageBox.warning(self, "녹화 중지 오류", msg)
+                logger.error(f"녹화 중지 오류: {msg}")
+                return
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
         if self._repeat_session is not None:
@@ -1834,7 +1848,7 @@ class MainWindow(QMainWindow):
             self._update_toolbar()
             if not stopped:
                 self._sb_state.setText("긴급 중지 요청됨 — 시퀀스 worker 종료 대기 중")
-        if self._state == "recording":
+        if self._state in {"recording", "stopping"}:
             self._do_stop_recording()
         elif self._state == "playing":
             self._stop_playback()
@@ -1880,30 +1894,27 @@ class MainWindow(QMainWindow):
             and self._hotkey_runtime is not None
             and not self._hotkey_runtime.globally_registered
         )
-        self._editor_file_toolbar.setVisible(is_editor_tab)
-        self._editor_export_toolbar.setVisible(is_editor_tab)
-        self._runtime_control_toolbar.setVisible(not is_fav_tab)
-        self._playback_settings_toolbar.setVisible(not is_fav_tab)
-        self._range_playback_toolbar.setVisible(not is_fav_tab)
         record_key = self._hotkey_label("runtime.record_or_capture")
         play_key = self._hotkey_label("runtime.play_or_color_capture")
         pause_key = self._hotkey_label("runtime.pause_or_resume")
 
         # 녹화: 시퀀서·즐겨찾기 탭에서는 항상 비활성화
         self._act_record.setEnabled(
-            (is_idle or is_rec)
+            (is_idle or is_rec or is_stop)
             and not seq_running
             and not is_seq_tab
             and not is_fav_tab
             and runtime_recording_available
         )
         self._act_record.setChecked(is_rec)
-        if is_rec and self._append_recording_mode:
+        if is_stop:
+            self._act_record.setText(f"■ 중지 재시도 ({record_key})")
+        elif is_rec and self._append_recording_mode:
             self._act_record.setText(f"■ 이어서 녹화 중지 ({record_key})")
+        elif is_rec:
+            self._act_record.setText(f"■ 중지 ({record_key})")
         else:
-            self._act_record.setText(
-                f"■ 중지 ({record_key})" if is_rec else f"● 녹화 ({record_key})"
-            )
+            self._act_record.setText(f"● 녹화 ({record_key})")
         can_append_record = (
             is_idle
             and not seq_running
@@ -1947,8 +1958,11 @@ class MainWindow(QMainWindow):
             else f"⏸ 일시중지 ({pause_key})"
         )
         self._act_range_play.setEnabled(
-            is_idle and not seq_running and self._macro is not None and not is_seq_tab
+            is_idle and not seq_running and self._macro is not None and is_editor_tab
         )
+        can_set_range = is_idle and not seq_running and is_editor_tab
+        self._range_start_spin.setEnabled(can_set_range)
+        self._range_end_spin.setEnabled(can_set_range)
         can_mutate_files = is_idle and not seq_running
         can_edit_macro_file = can_mutate_files and is_editor_tab
         self._act_open.setEnabled(can_edit_macro_file)
@@ -1982,11 +1996,12 @@ class MainWindow(QMainWindow):
             self._menu_save.setEnabled(can_mutate_files and self._macro is not None)
             self._menu_save_as.setEnabled(can_mutate_files and self._macro is not None)
 
-        # 시퀀서 실행 중이거나 재생/녹화 중에는 속도·반복·간격 설정 불가
-        can_change_settings = is_idle and not seq_running
-        self._speed_combo.setEnabled(can_change_settings)
-        self._repeat_spin.setEnabled(can_change_settings)
-        self._interval_spin.setEnabled(can_change_settings)
+        # 시퀀서는 속도만 소비한다. 반복·간격은 단일 매크로 재생에만 적용한다.
+        can_change_speed = is_idle and not seq_running and not is_fav_tab
+        can_change_repeat = can_change_speed and is_editor_tab
+        self._speed_combo.setEnabled(can_change_speed)
+        self._repeat_spin.setEnabled(can_change_repeat)
+        self._interval_spin.setEnabled(can_change_repeat)
         hotkeys_degraded = bool(
             self._hotkey_runtime is not None and self._hotkey_runtime.degraded
         )
@@ -1997,7 +2012,9 @@ class MainWindow(QMainWindow):
             self._act_play.setEnabled(False)
             self._act_pause.setEnabled(False)
             self._act_range_play.setEnabled(False)
-        self._act_hotkey_settings.setEnabled(can_change_settings and not hotkeys_degraded)
+        self._act_hotkey_settings.setEnabled(
+            is_idle and not seq_running and not hotkeys_degraded
+        )
 
     def _update_range_spinboxes(self) -> None:
         """매크로 로드 후 구간 SpinBox 범위를 갱신한다."""

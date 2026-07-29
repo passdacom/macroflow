@@ -292,7 +292,7 @@ class _MacroItem(MacroFileItem):
 
     def __init__(self, path: Path, *, step_id: str | None = None) -> None:
         super().__init__(
-            step_id=step_id or f"macro-{secrets.token_hex(4)}",
+            step_id=step_id or f"macro-{secrets.token_hex(8)}",
             path=path,
         )
 
@@ -471,8 +471,8 @@ class MacroSequencerWidget(QWidget):
         self._gap_spin.valueChanged.connect(self._on_gap_changed)
         manage_toolbar.addWidget(self._gap_spin)
 
-        layout.addWidget(add_toolbar)
         layout.addWidget(flow_toolbar)
+        layout.addWidget(add_toolbar)
         layout.addWidget(manage_toolbar)
 
         # 본문: 목록 + 실행 버튼 + 로그
@@ -578,7 +578,7 @@ class MacroSequencerWidget(QWidget):
         events = _node_local_events(_insert_text_input_event([], -1, text, 0))
         self._insert_sequence_item(
             InlineActionItem(
-                step_id=f"inline-{secrets.token_hex(4)}",
+                step_id=f"inline-{secrets.token_hex(8)}",
                 label=f"문구 입력: {text}",
                 events=events,
                 playback_settings=MacroSettings(),
@@ -611,7 +611,7 @@ class MacroSequencerWidget(QWidget):
         click_name = f"{button} {'더블' if is_double else ''}클릭".replace("  ", " ")
         self._put_inline_action(
             InlineActionItem(
-                step_id=f"inline-{secrets.token_hex(4)}",
+                step_id=f"inline-{secrets.token_hex(8)}",
                 label=f"{click_name}: X {x_ratio:.2%}, Y {y_ratio:.2%}",
                 events=events,
                 playback_settings=MacroSettings(),
@@ -643,7 +643,7 @@ class MacroSequencerWidget(QWidget):
         )
         self._put_inline_action(
             InlineActionItem(
-                step_id=f"inline-{secrets.token_hex(4)}",
+                step_id=f"inline-{secrets.token_hex(8)}",
                 label=(
                     f"색상 대기: {target_color.upper()} · X {x_ratio:.2%}, "
                     f"Y {y_ratio:.2%} · {timeout_ms}ms"
@@ -683,7 +683,7 @@ class MacroSequencerWidget(QWidget):
             raise ValueError(f"대기 시간은 0~{_MAX_GAP_MS}ms 범위여야 합니다.")
         self._insert_sequence_item(
             WaitItem(
-                step_id=f"wait-{secrets.token_hex(4)}",
+                step_id=f"wait-{secrets.token_hex(8)}",
                 duration_ms=duration_ms,
             )
         )
@@ -1034,11 +1034,11 @@ class MacroSequencerWidget(QWidget):
             return
         duplicate = copy.deepcopy(self._items[row])
         if isinstance(duplicate, MacroFileItem):
-            duplicate.step_id = f"macro-{secrets.token_hex(4)}"
+            duplicate.step_id = f"macro-{secrets.token_hex(8)}"
         elif isinstance(duplicate, WaitItem):
-            duplicate.step_id = f"wait-{secrets.token_hex(4)}"
+            duplicate.step_id = f"wait-{secrets.token_hex(8)}"
         else:
-            duplicate.step_id = f"inline-{secrets.token_hex(4)}"
+            duplicate.step_id = f"inline-{secrets.token_hex(8)}"
         duplicate.status = "pending"
         duplicate.message = ""
         self._insert_sequence_item(duplicate)

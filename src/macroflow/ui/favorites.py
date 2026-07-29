@@ -139,6 +139,7 @@ class FavoritesWidget(QWidget):
 
         # 도구바
         toolbar = QToolBar("즐겨찾기 도구", self)
+        toolbar.setObjectName("favorites-manage-toolbar")
         toolbar.setMovable(False)
 
         self._act_new_group = QAction("📁 새 그룹", self)

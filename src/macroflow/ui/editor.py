@@ -200,10 +200,17 @@ class EventEditorWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # 탭별 문서 작업은 탭 바로 아래의 고정된 첫 행에 둔다.
+        self._document_toolbar = QToolBar("매크로 파일", self)
+        self._document_toolbar.setObjectName("editor-file-toolbar")
+        self._document_toolbar.setMovable(False)
+        layout.addWidget(self._document_toolbar)
+
         # 보기/편집 도구바
         edit_toolbar = QToolBar("보기/편집", self)
         edit_toolbar.setObjectName("editor-edit-toolbar")
         edit_toolbar.setMovable(False)
+        self._edit_toolbar = edit_toolbar
 
         self._act_toggle_moves = QAction("이동 표시", self)
         self._act_toggle_moves.setToolTip("마우스 이동 이벤트 표시/숨김 (비파괴)")
@@ -231,31 +238,28 @@ class EventEditorWidget(QWidget):
         self._act_set_delay.setEnabled(False)
         edit_toolbar.addAction(self._act_set_delay)
 
-        history_toolbar = QToolBar("실행 취소/표시", self)
-        history_toolbar.setObjectName("editor-history-toolbar")
-        history_toolbar.setMovable(False)
-
         self._act_undo = QAction("↩ 취소", self)
         self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
         self._act_undo.triggered.connect(self._undo)
         self._act_undo.setEnabled(False)
-        history_toolbar.addAction(self._act_undo)
+        edit_toolbar.addSeparator()
+        edit_toolbar.addAction(self._act_undo)
 
         self._act_redo = QAction("↪ 재실행", self)
         self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
-        history_toolbar.addAction(self._act_redo)
+        edit_toolbar.addAction(self._act_redo)
 
-        history_toolbar.addSeparator()
+        edit_toolbar.addSeparator()
 
         self._act_reset = QAction("원본 복원", self)
         self._act_reset.setToolTip("raw_events 기준으로 events를 초기화합니다")
         self._act_reset.triggered.connect(self._reset_to_raw)
         self._act_reset.setEnabled(False)
-        history_toolbar.addAction(self._act_reset)
+        edit_toolbar.addAction(self._act_reset)
 
-        history_toolbar.addSeparator()
+        edit_toolbar.addSeparator()
 
         self._chk_relative_time = QCheckBox("⏱ 기록 간격")
         self._chk_relative_time.setToolTip(
@@ -265,10 +269,9 @@ class EventEditorWidget(QWidget):
         )
         self._chk_relative_time.setChecked(False)
         self._chk_relative_time.toggled.connect(self._on_relative_time_toggled)
-        history_toolbar.addWidget(self._chk_relative_time)
+        edit_toolbar.addWidget(self._chk_relative_time)
 
         layout.addWidget(edit_toolbar)
-        layout.addWidget(history_toolbar)
 
         # 동작 추가 도구바 — 삽입 작업을 한 행에 모아 반복 편집 흐름을 단순화한다.
         add_toolbar = QToolBar("동작 추가", self)
@@ -344,6 +347,28 @@ class EventEditorWidget(QWidget):
         QShortcut(QKeySequence("Ctrl+Y"), self).activated.connect(self._redo)
         QShortcut(QKeySequence("Ctrl+Shift+Z"), self).activated.connect(self._redo)
         QShortcut(QKeySequence("Delete"), self).activated.connect(self._delete_selected)
+
+    def install_main_window_actions(
+        self,
+        *,
+        document_actions: tuple[QAction, QAction, QAction],
+        export_actions: tuple[QAction, QAction, QAction],
+    ) -> None:
+        """Place main-window actions into the editor's stable tab-local rows."""
+        for action in document_actions:
+            self._document_toolbar.addAction(action)
+
+        before = self._act_undo
+        for action in export_actions:
+            self._edit_toolbar.insertAction(before, action)
+        self._edit_toolbar.insertSeparator(before)
+
+    def required_toolbar_width(self) -> int:
+        """Return the tab-local width needed to keep every action directly visible."""
+        return max(
+            self._document_toolbar.sizeHint().width(),
+            self._edit_toolbar.sizeHint().width(),
+        ) + 8
 
     # ── 공개 인터페이스 ───────────────────────────────────────────────────────
 

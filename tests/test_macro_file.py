@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from typing import Any, TextIO
 
 import pytest
 
@@ -204,10 +205,194 @@ def test_save_creates_bak(tmp_path: Path) -> None:
     assert bak_path.exists()
 
 
+def test_partial_save_failure_preserves_existing_macro(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """임시 파일 직렬화 실패가 기존 매크로 본문을 손상시키면 안 된다."""
+    import macroflow.macro_file as macro_file
+
+    macro = _make_macro()
+    path = tmp_path / "existing.json"
+    path.write_text("ORIGINAL", encoding="utf-8")
+
+    def partial_dump(
+        _data: dict[str, Any],
+        file: TextIO,
+        **_kwargs: Any,
+    ) -> None:
+        file.write('{"meta":')
+        file.flush()
+        raise OSError("simulated disk failure")
+
+    monkeypatch.setattr(macro_file.json, "dump", partial_dump)
+
+    with pytest.raises(OSError, match="simulated disk failure"):
+        save(macro, str(path))
+
+    assert path.read_text(encoding="utf-8") == "ORIGINAL"
+    assert not list(tmp_path.glob(f".{path.name}.*.tmp"))
+
+
+def test_replace_failure_preserves_existing_macro_and_cleans_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """원자 교체 실패 시 기존 파일과 이전 버전 백업을 모두 보존한다."""
+    import macroflow.macro_file as macro_file
+
+    macro = _make_macro()
+    path = tmp_path / "existing.json"
+    path.write_text("ORIGINAL", encoding="utf-8")
+
+    original_replace = macro_file.os.replace
+
+    def fail_replace(source: Path, target: Path) -> None:
+        if target == path:
+            raise PermissionError("target is locked")
+        original_replace(source, target)
+
+    monkeypatch.setattr(macro_file.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="target is locked"):
+        save(macro, str(path))
+
+    assert path.read_text(encoding="utf-8") == "ORIGINAL"
+    assert path.with_suffix(".bak").read_text(encoding="utf-8") == "ORIGINAL"
+    assert not list(tmp_path.glob(f".{path.name}.*.tmp"))
+
+
+def test_partial_backup_failure_preserves_existing_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import macroflow.macro_file as macro_file
+
+    macro = _make_macro()
+    path = tmp_path / "existing.json"
+    backup = path.with_suffix(".bak")
+    path.write_text("ORIGINAL", encoding="utf-8")
+    backup.write_text("PREVIOUS BACKUP", encoding="utf-8")
+
+    def partial_copy(_source: Path, destination: Path) -> None:
+        destination.write_text("PARTIAL", encoding="utf-8")
+        raise OSError("simulated backup failure")
+
+    monkeypatch.setattr(macro_file.shutil, "copy2", partial_copy)
+
+    with pytest.raises(OSError, match="simulated backup failure"):
+        save(macro, str(path))
+
+    assert path.read_text(encoding="utf-8") == "ORIGINAL"
+    assert backup.read_text(encoding="utf-8") == "PREVIOUS BACKUP"
+    assert not list(tmp_path.glob(f".{backup.name}.*.tmp"))
+
+
 def test_load_missing_file(tmp_path: Path) -> None:
     """존재하지 않는 파일을 로드하면 FileNotFoundError가 발생해야 한다."""
     with pytest.raises(FileNotFoundError):
         load(str(tmp_path / "nonexistent.json"))
+
+
+def test_load_rejects_unsupported_schema_version(tmp_path: Path) -> None:
+    macro = _make_macro()
+    path = tmp_path / "future.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["meta"]["version"] = "99.0"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schema 99.0"):
+        load(str(path))
+
+
+def test_load_rejects_invalid_runtime_event_field_types(tmp_path: Path) -> None:
+    macro = _make_macro()
+    path = tmp_path / "invalid-types.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["events"][0]["timestamp_ns"] = "not-an-integer"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="event field types"):
+        load(str(path))
+
+
+def test_load_rejects_duplicate_ids_within_an_event_stream(tmp_path: Path) -> None:
+    macro = _make_macro()
+    path = tmp_path / "duplicate-id.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["events"][1]["id"] = raw["events"][0]["id"]
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate event id"):
+        load(str(path))
+
+
+def test_load_keeps_legacy_8_character_event_ids(tmp_path: Path) -> None:
+    macro = _make_macro()
+    path = tmp_path / "legacy-id.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["events"][0]["id"] = "1234abcd"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load(str(path))
+
+    assert loaded.events[0].id == "1234abcd"
+
+
+def test_load_normalizes_json_integer_notation_for_float_fields(tmp_path: Path) -> None:
+    macro = _make_macro()
+    path = tmp_path / "integer-floats.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["meta"]["dpi_scale"] = 1
+    raw["settings"]["default_playback_speed"] = 1
+    raw["events"][0]["x_ratio"] = 0
+    raw["events"][0]["y_ratio"] = 1
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    loaded = load(str(path))
+
+    assert loaded.meta.dpi_scale == 1.0
+    assert type(loaded.meta.dpi_scale) is float
+    assert loaded.settings.default_playback_speed == 1.0
+    assert type(loaded.settings.default_playback_speed) is float
+    event = loaded.events[0]
+    assert isinstance(event, MouseButtonEvent)
+    assert event.x_ratio == 0.0
+    assert type(event.x_ratio) is float
+
+
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [
+        ("metadata", "metadata field types"),
+        ("settings", "settings field types"),
+        ("is_edited", "is_edited field type"),
+    ],
+)
+def test_load_rejects_invalid_document_field_types(
+    tmp_path: Path,
+    variant: str,
+    expected: str,
+) -> None:
+    macro = _make_macro()
+    path = tmp_path / f"invalid-{variant}.json"
+    save(macro, str(path))
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if variant == "metadata":
+        raw["meta"]["screen_width"] = "1920"
+    elif variant == "settings":
+        raw["settings"]["click_dist_threshold_px"] = True
+    else:
+        raw["is_edited"] = "false"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=expected):
+        load(str(path))
 
 
 def test_legacy_event_without_remark_loads_with_empty_remark(tmp_path: Path) -> None:

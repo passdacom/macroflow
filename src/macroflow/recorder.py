@@ -205,7 +205,7 @@ def _convert_raw(
     rel_ts_ns = _project_recording_timestamp_ns(ts_ns)
     if rel_ts_ns is None:
         return None
-    eid = secrets.token_hex(4)
+    eid = secrets.token_hex(8)
 
     if kind == "m":
         x_px, y_px, mouse_data = data
@@ -423,6 +423,10 @@ def start_recording(
     if _recording:
         logger.warning("Already recording — start_recording() ignored")
         return
+    if _consumer_thread is not None:
+        if _consumer_thread.is_alive():
+            raise RuntimeError("Previous recorder consumer is still running")
+        _consumer_thread = None
 
     _on_emergency_stop = on_emergency_stop
     _esc_press_times.clear()
@@ -440,12 +444,26 @@ def start_recording(
     _suppressed_pause_keys.clear()
     _suppressed_pause_mouse.clear()
 
-    start_hook(_raw_queue)
+    try:
+        start_hook(_raw_queue)
+    except Exception:
+        _raw_queue = None
+        _on_emergency_stop = None
+        raise
 
     _consumer_thread = threading.Thread(
         target=_consumer_loop, daemon=True, name="RecorderConsumer"
     )
-    _consumer_thread.start()
+    try:
+        _consumer_thread.start()
+    except Exception:
+        try:
+            stop_hook()
+        finally:
+            _consumer_thread = None
+            _raw_queue = None
+            _on_emergency_stop = None
+        raise
     _recording = True
     logger.debug("Recording started")
 
@@ -459,7 +477,7 @@ def stop_recording() -> MacroData:
     Raises:
         RuntimeError: 녹화 중이 아닌 상태에서 호출.
     """
-    global _recording, _consumer_thread, _on_emergency_stop
+    global _recording, _raw_queue, _consumer_thread, _on_emergency_stop
 
     if not _recording:
         raise RuntimeError("stop_recording() called while not recording")
@@ -474,11 +492,14 @@ def stop_recording() -> MacroData:
 
     if _consumer_thread is not None:
         _consumer_thread.join(timeout=3.0)
+        if _consumer_thread.is_alive():
+            raise RuntimeError("Recorder consumer did not stop within 3 seconds")
         _consumer_thread = None
 
     _recording = False
     with _event_buffer_lock:
         captured = list(_event_buffer)
+    _raw_queue = None
     logger.debug(f"Recording stopped — {len(captured)} events captured")
 
     raw_events: list[AnyEvent] = captured
@@ -524,7 +545,7 @@ def inject_color_trigger(
     if ts_ns is None:
         return
     event = ColorTriggerEvent(
-        id=secrets.token_hex(4),
+        id=secrets.token_hex(8),
         type="color_trigger",
         timestamp_ns=ts_ns,
         x_ratio=x_ratio,
@@ -558,7 +579,7 @@ def inject_text_input(
     timestamp_ns = max(0, pause_started_ns - _rec_start_ns - paused_before_ns)
     _raw_queue.append(
         TextInputEvent(
-            id=secrets.token_hex(4),
+            id=secrets.token_hex(8),
             type="text_input",
             timestamp_ns=timestamp_ns,
             delay_override_ms=delay_override_ms,

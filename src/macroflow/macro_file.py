@@ -14,8 +14,10 @@ import dataclasses
 import json
 import logging
 import math
+import os
 import re
 import shutil
+import tempfile
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
@@ -58,8 +60,7 @@ def _migrate(data: dict[str, Any]) -> dict[str, Any]:
     if key in _MIGRATIONS:
         logger.info(f"Migrating macro schema: {key}")
         return _MIGRATIONS[key](data)  # type: ignore[no-any-return]
-    logger.warning(f"No migration path for schema {version}; loading as-is")
-    return data
+    raise ValueError(f"No migration path for schema {version}")
 
 
 # ── 역직렬화 ──────────────────────────────────────────────────────────────────
@@ -82,6 +83,8 @@ def _dict_to_settings(d: dict[str, Any]) -> MacroSettings:
     저장해 둔 단일 timeout 의미를 보존한다.
     """
     data = dict(d)
+    if type(data.get("default_playback_speed")) is int:
+        data["default_playback_speed"] = float(data["default_playback_speed"])
     legacy_timeout = data.get("color_check_click_timeout_ms", 10000)
     data.setdefault("color_check_click_wait_timeout_ms", legacy_timeout)
     data.setdefault("color_check_click_skip_timeout_ms", legacy_timeout)
@@ -131,6 +134,10 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
         "remark":           d.get("remark", ""),
     }
 
+    def ratio(name: str) -> Any:
+        value = d[name]
+        return float(value) if type(value) is int else value
+
     match d["type"]:
         case "mouse_down" | "mouse_up":
             raw_action = d.get("color_check_on_mismatch", "skip")
@@ -141,8 +148,8 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
             )
             return MouseButtonEvent(
                 **common,
-                x_ratio=d["x_ratio"],
-                y_ratio=d["y_ratio"],
+                x_ratio=ratio("x_ratio"),
+                y_ratio=ratio("y_ratio"),
                 button=d.get("button", "left"),
                 recorded_color=d.get("recorded_color"),
                 color_check_enabled=d.get("color_check_enabled", False),
@@ -151,16 +158,16 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
         case "mouse_move":
             return MouseMoveEvent(
                 **common,
-                x_ratio=d["x_ratio"],
-                y_ratio=d["y_ratio"],
+                x_ratio=ratio("x_ratio"),
+                y_ratio=ratio("y_ratio"),
             )
         case "mouse_wheel":
             return MouseWheelEvent(
                 **common,
                 delta=d["delta"],
                 axis=d.get("axis", "vertical"),
-                x_ratio=d["x_ratio"],
-                y_ratio=d["y_ratio"],
+                x_ratio=ratio("x_ratio"),
+                y_ratio=ratio("y_ratio"),
             )
         case "key_down" | "key_up":
             return KeyEvent(
@@ -173,8 +180,8 @@ def _dict_to_event(d: dict[str, Any]) -> AnyEvent:
         case "color_trigger":
             return ColorTriggerEvent(
                 **common,
-                x_ratio=d["x_ratio"],
-                y_ratio=d["y_ratio"],
+                x_ratio=ratio("x_ratio"),
+                y_ratio=ratio("y_ratio"),
                 target_color=d["target_color"],
                 tolerance=d.get("tolerance", 10),
                 timeout_ms=_bounded_int(
@@ -327,6 +334,23 @@ def event_types_valid(event: AnyEvent, *, _depth: int = 0) -> bool:
     return False
 
 
+def _event_ids_unique(events: list[AnyEvent]) -> bool:
+    """Return whether one event stream, including nested blocks, has unique IDs."""
+    seen: set[str] = set()
+
+    def visit(event: AnyEvent) -> bool:
+        if event.id in seen:
+            return False
+        seen.add(event.id)
+        if isinstance(event, ConditionEvent):
+            return all(visit(item) for item in (*event.if_true, *event.if_false))
+        if isinstance(event, LoopEvent):
+            return all(visit(item) for item in event.events)
+        return True
+
+    return all(visit(event) for event in events)
+
+
 def settings_types_valid(settings: MacroSettings) -> bool:
     """Return whether a settings snapshot preserves exact numeric JSON types."""
     for field in dataclasses.fields(settings):
@@ -337,6 +361,20 @@ def settings_types_valid(settings: MacroSettings) -> bool:
         elif type(value) is not int:
             return False
     return True
+
+
+def _metadata_types_valid(meta: MacroMeta) -> bool:
+    return (
+        type(meta.version) is str
+        and type(meta.app_version) is str
+        and type(meta.created_at) is str
+        and type(meta.screen_width) is int
+        and type(meta.screen_height) is int
+        and type(meta.dpi_scale) is float
+        and math.isfinite(meta.dpi_scale)
+        and type(meta.author) is str
+        and type(meta.description) is str
+    )
 
 
 def inline_event_block_valid(events: list[AnyEvent]) -> bool:
@@ -387,6 +425,33 @@ def inline_event_block_valid(events: list[AnyEvent]) -> bool:
 
 # ── 공개 I/O ─────────────────────────────────────────────────────────────────
 
+
+def _fsync_path(path: Path) -> None:
+    """Flush a completed temp file through a writable descriptor on every OS."""
+    # Windows' ``os.fsync`` delegates to ``_commit`` and rejects read-only
+    # descriptors with EBADF. Reopen as rb+ after the writer/copy handle closes.
+    with path.open("rb+") as file:
+        os.fsync(file.fileno())
+
+
+def _atomic_backup(source: Path, destination: Path) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            dir=destination.parent,
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+        shutil.copy2(source, temp_path)
+        _fsync_path(temp_path)
+        os.replace(temp_path, destination)
+    except Exception:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        raise
+
 def load(path: str) -> MacroData:
     """JSON 파일에서 MacroData를 로드한다.
 
@@ -416,13 +481,27 @@ def load(path: str) -> MacroData:
 
     try:
         raw = _migrate(raw)
-        meta = MacroMeta(**raw["meta"])
+        meta_data = dict(raw["meta"])
+        if type(meta_data.get("dpi_scale")) is int:
+            meta_data["dpi_scale"] = float(meta_data["dpi_scale"])
+        meta = MacroMeta(**meta_data)
         settings = _dict_to_settings(raw.get("settings", {}))
         raw_events: list[AnyEvent] = [_dict_to_event(e) for e in raw["raw_events"]]
         events: list[AnyEvent] = [_dict_to_event(e) for e in raw["events"]]
         is_edited: bool = raw.get("is_edited", False)
     except (KeyError, TypeError) as e:
         raise ValueError(f"매크로 파일 구조 오류 ({path}): {e}") from e
+
+    if not _metadata_types_valid(meta):
+        raise ValueError(f"매크로 metadata field types 오류 ({path})")
+    if not settings_types_valid(settings):
+        raise ValueError(f"매크로 settings field types 오류 ({path})")
+    if type(is_edited) is not bool:
+        raise ValueError(f"매크로 is_edited field type 오류 ({path})")
+    if not all(event_types_valid(event) for event in (*raw_events, *events)):
+        raise ValueError(f"매크로 event field types 오류 ({path})")
+    if not _event_ids_unique(raw_events) or not _event_ids_unique(events):
+        raise ValueError(f"매크로 duplicate event id 오류 ({path})")
 
     return MacroData(
         meta=meta,
@@ -447,8 +526,9 @@ def save(macro: MacroData, path: str) -> None:
     try:
         # 기존 파일 백업
         if p.exists():
-            shutil.copy2(p, p.with_suffix(".bak"))
-            logger.debug(f"Backed up: {p.with_suffix('.bak')}")
+            backup_path = p.with_suffix(".bak")
+            _atomic_backup(p, backup_path)
+            logger.debug(f"Backed up: {backup_path}")
 
         p.parent.mkdir(parents=True, exist_ok=True)
 
@@ -460,8 +540,26 @@ def save(macro: MacroData, path: str) -> None:
             "is_edited":  macro.is_edited,
         }
 
-        with p.open("w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                newline="\n",
+                prefix=f".{p.name}.",
+                suffix=".tmp",
+                dir=p.parent,
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+                json.dump(data, temp_file, ensure_ascii=False, indent=2, allow_nan=False)
+                temp_file.flush()
+            _fsync_path(temp_path)
+            os.replace(temp_path, p)
+        except Exception:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            raise
     except OSError as e:
         raise OSError(f"매크로 저장 실패 ({path}): {e}") from e
 
