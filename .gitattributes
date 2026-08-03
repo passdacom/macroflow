@@ -1,0 +1,2 @@
+# Preserve authoritative upstream license bytes, including trailing spaces.
+licenses/bzip2-1.0.8.txt -whitespace
