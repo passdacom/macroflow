@@ -20,6 +20,7 @@ def _load_bump_module() -> ModuleType:
 
 def _write_version_sources(root: Path, version: str) -> None:
     (root / "src/macroflow").mkdir(parents=True)
+    (root / "tools").mkdir(parents=True)
     (root / "pyproject.toml").write_text(
         f'[project]\nname = "macroflow"\nversion = "{version}"\n', encoding="utf-8"
     )
@@ -29,14 +30,26 @@ def _write_version_sources(root: Path, version: str) -> None:
     (root / "uv.lock").write_text(
         f'[[package]]\nname = "macroflow"\nversion = "{version}"\n', encoding="utf-8"
     )
+    (root / "tools/build_release_bundle.py").write_text(
+        f'LOCKED_PACKAGE_VERSIONS = {{\n    "macroflow": "{version}",\n}}\n',
+        encoding="utf-8",
+    )
 
 
 def _read_declared_versions(root: Path) -> set[str]:
     values: set[str] = set()
-    for relative in ("pyproject.toml", "src/macroflow/__init__.py", "uv.lock"):
+    for relative in (
+        "pyproject.toml",
+        "src/macroflow/__init__.py",
+        "uv.lock",
+        "tools/build_release_bundle.py",
+    ):
         text = (root / relative).read_text(encoding="utf-8")
-        declaration = next(line for line in text.splitlines() if "version" in line)
-        values.add(declaration.split('"', 2)[1])
+        if relative == "tools/build_release_bundle.py":
+            declaration = next(line for line in text.splitlines() if '"macroflow"' in line)
+        else:
+            declaration = next(line for line in text.splitlines() if "version" in line)
+        values.add(declaration.split('"')[-2])
     return values
 
 

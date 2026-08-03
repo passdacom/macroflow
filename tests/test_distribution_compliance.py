@@ -101,14 +101,14 @@ def test_bundle_builder_packages_exe_source_pointer_notices_and_spdx(tmp_path: P
     app_dir = tmp_path / "MacroFlow"
     runtime_dir = app_dir / "_internal" / "PyQt6" / "Qt6" / "bin"
     runtime_dir.mkdir(parents=True)
-    exe = app_dir / "MacroFlow-v1.6.1-build999.exe"
+    exe = app_dir / "MacroFlow-v1.7.0-build999.exe"
     exe.write_bytes(b"MZ\x00macroflow-test")
     (runtime_dir / "Qt6Core.dll").write_bytes(b"qt-runtime")
     inventory = tmp_path / "inventory.txt"
     inventory.write_text("PyQt6\\QtCore.pyd\nPyQt6\\Qt6\\bin\\Qt6Core.dll\n", encoding="utf-8")
     output = tmp_path / "release"
     commit = "a" * 40
-    tag = "v1.6.1-build999"
+    tag = "v1.7.0-build999"
 
     result = subprocess.run(
         [
@@ -142,7 +142,7 @@ def test_bundle_builder_packages_exe_source_pointer_notices_and_spdx(tmp_path: P
     )
 
     assert result.returncode == 0, result.stderr
-    bundle = output / "MacroFlow-v1.6.1-build999-GPL.zip"
+    bundle = output / "MacroFlow-v1.7.0-build999-GPL.zip"
     checksum = output / f"{bundle.name}.sha256"
     provenance = output / f"{bundle.name}.provenance.txt"
     assert bundle.is_file()
@@ -167,7 +167,7 @@ def test_bundle_builder_packages_exe_source_pointer_notices_and_spdx(tmp_path: P
 
     with zipfile.ZipFile(bundle) as archive:
         names = set(archive.namelist())
-        prefix = "MacroFlow-v1.6.1-build999/"
+        prefix = "MacroFlow-v1.7.0-build999/"
         assert prefix + exe.name in names
         assert prefix + "_internal/PyQt6/Qt6/bin/Qt6Core.dll" in names
         assert {prefix + name for name in REQUIRED_BUNDLE_FILES} <= names
@@ -221,7 +221,7 @@ def test_bundle_builder_packages_exe_source_pointer_notices_and_spdx(tmp_path: P
 def test_bundle_builder_rejects_non_full_commit(tmp_path: Path) -> None:
     app_dir = tmp_path / "MacroFlow"
     app_dir.mkdir()
-    exe = app_dir / "MacroFlow-v1.6.1-build999.exe"
+    exe = app_dir / "MacroFlow-v1.7.0-build999.exe"
     exe.write_bytes(b"MZ")
     inventory = tmp_path / "inventory.txt"
     inventory.write_text("inventory", encoding="utf-8")
@@ -241,7 +241,7 @@ def test_bundle_builder_rejects_non_full_commit(tmp_path: Path) -> None:
             "--commit",
             "abc123",
             "--tag",
-            "v1.6.1-build999",
+            "v1.7.0-build999",
             "--run-id",
             "12345",
             "--run-number",
@@ -319,7 +319,7 @@ def test_pyinstaller_spec_and_bundle_gate_exclude_unneeded_qt_pdf(tmp_path: Path
 
     app_dir = tmp_path / "MacroFlow"
     app_dir.mkdir()
-    exe = app_dir / "MacroFlow-v1.6.1-build999.exe"
+    exe = app_dir / "MacroFlow-v1.7.0-build999.exe"
     exe.write_bytes(b"MZ")
     inventory = tmp_path / "inventory.txt"
     inventory.write_text(
@@ -341,7 +341,7 @@ def test_pyinstaller_spec_and_bundle_gate_exclude_unneeded_qt_pdf(tmp_path: Path
             "--commit",
             "a" * 40,
             "--tag",
-            "v1.6.1-build999",
+            "v1.7.0-build999",
             "--run-id",
             "12345",
             "--run-number",

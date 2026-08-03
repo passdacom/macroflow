@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from macroflow.hotkey_config import DEFAULT_HOTKEY_CONFIG, HotkeyConfig
+from macroflow.hotkey_config import (
+    DEFAULT_HOTKEY_CONFIG,
+    EDITOR_ACTION_IDS,
+    QUICK_RUN_ACTION_IDS,
+    RUNTIME_ACTION_IDS,
+    HotkeyConfig,
+)
 from macroflow.ui.hotkey_runtime import HotkeyRuntime
 from macroflow.win32.hotkeys import (
+    MOD_ALT,
+    MOD_CONTROL,
     MOD_NOREPEAT,
     NativeHotkey,
     NativeHotkeySet,
@@ -68,13 +76,18 @@ def _runtime_config(**runtime_changes: str) -> HotkeyConfig:
 def test_native_bindings_are_stable_and_include_mod_norepeat() -> None:
     bindings = native_hotkeys(DEFAULT_HOTKEY_CONFIG)
 
-    assert [(binding.registration_id, binding.action_id, binding.vk) for binding in bindings] == [
+    assert [(binding.registration_id, binding.action_id, binding.vk) for binding in bindings[:4]] == [
         (1, "runtime.record_or_capture", 0x75),
         (2, "runtime.play_or_color_capture", 0x76),
         (3, "runtime.pause_or_resume", 0x77),
         (4, "recording.quick_text", 0x78),
     ]
-    assert all(binding.modifiers == MOD_NOREPEAT for binding in bindings)
+    assert all(binding.modifiers == MOD_NOREPEAT for binding in bindings[:4])
+    assert [binding.vk for binding in bindings[4:]] == [0x31, 0x32, 0x33, 0x34, 0x35]
+    assert all(
+        binding.modifiers == MOD_NOREPEAT | MOD_CONTROL | MOD_ALT
+        for binding in bindings[4:]
+    )
 
 
 def test_transactional_replace_registers_the_complete_candidate() -> None:
@@ -113,7 +126,7 @@ def test_failed_replace_removes_partial_candidate_and_restores_exact_old_set() -
     failed_index = backend.calls.index(("register", 3, MOD_NOREPEAT, 0x77))
     assert ("unregister", 1) in backend.calls[failed_index + 1 :]
     assert ("unregister", 2) in backend.calls[failed_index + 1 :]
-    assert backend.calls[-4:] == [
+    assert backend.calls[-len(old):] == [
         ("register", binding.registration_id, binding.modifiers, binding.vk) for binding in old
     ]
 
@@ -184,6 +197,22 @@ def test_initialization_attempts_native_registration_only_once() -> None:
     assert len(backend.calls) == call_count
     assert fallbacks.bindings == dict(DEFAULT_HOTKEY_CONFIG.bindings)
     assert fallbacks.replacements == 1
+
+
+def test_optional_quick_run_collision_preserves_global_runtime_controls() -> None:
+    backend = FakeBackend(fail_ids={5})
+    registrar = NativeHotkeySet(backend)
+    fallbacks = FakeFallbacks()
+    runtime = HotkeyRuntime(registrar, fallbacks, lambda _action: None)
+
+    result = runtime.initialize(DEFAULT_HOTKEY_CONFIG)
+
+    assert result.success
+    assert result.failed_action_id == "quick_run.slot_1"
+    assert runtime.globally_registered
+    assert not runtime.quick_run_globally_registered
+    assert [binding.action_id for binding in registrar.current] == list(RUNTIME_ACTION_IDS)
+    assert set(fallbacks.bindings) == set((*EDITOR_ACTION_IDS, *QUICK_RUN_ACTION_IDS))
 
 
 def test_incomplete_initial_cleanup_enters_degraded_mode_without_focused_duplicates() -> None:
@@ -354,7 +383,24 @@ def test_runtime_accepts_a_registrar_protocol_not_real_user32() -> None:
     runtime = HotkeyRuntime(registrar, FakeFallbacks(), lambda _action: None)
 
     assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
-    assert len(registrar.current) == 4
+    assert len(registrar.current) == 9
+
+
+def test_quick_run_hotkeys_can_be_suspended_during_recording_and_restored() -> None:
+    backend = FakeBackend()
+    registrar = NativeHotkeySet(backend)
+    runtime = HotkeyRuntime(registrar, FakeFallbacks(), lambda _action: None)
+    assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
+
+    suspended = runtime.set_quick_run_enabled(False)
+
+    assert suspended.success
+    assert [item.action_id for item in registrar.current] == list(RUNTIME_ACTION_IDS)
+
+    restored = runtime.set_quick_run_enabled(True)
+
+    assert restored.success
+    assert len(registrar.current) == 9
 
 
 def test_incomplete_rollback_marks_runtime_degraded_and_blocks_partial_native_dispatch() -> None:

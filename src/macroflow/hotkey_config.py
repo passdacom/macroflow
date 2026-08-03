@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Final, Literal, Protocol, cast
 
-HotkeyScope = Literal["runtime", "editor"]
+HotkeyScope = Literal["runtime", "editor", "quick_run"]
 
 
 class SettingsReader(Protocol):
@@ -47,12 +47,20 @@ HOTKEY_SPECS: Final = (
         "Ctrl+Shift+G",
         "에디터 색 체크 삽입",
     ),
+    HotkeySpec("quick_run.slot_1", "quick_run", "Ctrl+Alt+1", "빠른 실행 슬롯 1"),
+    HotkeySpec("quick_run.slot_2", "quick_run", "Ctrl+Alt+2", "빠른 실행 슬롯 2"),
+    HotkeySpec("quick_run.slot_3", "quick_run", "Ctrl+Alt+3", "빠른 실행 슬롯 3"),
+    HotkeySpec("quick_run.slot_4", "quick_run", "Ctrl+Alt+4", "빠른 실행 슬롯 4"),
+    HotkeySpec("quick_run.slot_5", "quick_run", "Ctrl+Alt+5", "빠른 실행 슬롯 5"),
 )
 _SPEC_BY_ACTION: Final = {spec.action_id: spec for spec in HOTKEY_SPECS}
 RUNTIME_ACTION_IDS: Final = tuple(
     spec.action_id for spec in HOTKEY_SPECS if spec.scope == "runtime"
 )
 EDITOR_ACTION_IDS: Final = tuple(spec.action_id for spec in HOTKEY_SPECS if spec.scope == "editor")
+QUICK_RUN_ACTION_IDS: Final = tuple(
+    spec.action_id for spec in HOTKEY_SPECS if spec.scope == "quick_run"
+)
 _RECOVERY_PREFIX: Final = "hotkeys/recovery/"
 _RECOVERY_ARMED_KEY: Final = "hotkeys/recovery_armed"
 
@@ -192,6 +200,11 @@ def canonicalize_hotkey(value: str) -> str:
     return "+".join((*modifiers, key))
 
 
+def parse_hotkey_chord(value: str) -> tuple[tuple[str, ...], str]:
+    """Return canonical modifier names and the one non-modifier key."""
+    return _parse_chord(value)
+
+
 def _canonicalize_if_possible(value: str) -> str:
     try:
         return canonicalize_hotkey(str(value))
@@ -207,8 +220,8 @@ def validate_hotkey_config(config: HotkeyConfig) -> HotkeyValidationResult:
     for spec in HOTKEY_SPECS:
         value = config.binding_for(spec.action_id)
         if not value.strip():
-            if spec.scope == "runtime":
-                errors.append(HotkeyValidationError(spec.action_id, "runtime binding is required"))
+            if spec.scope in {"runtime", "quick_run"}:
+                errors.append(HotkeyValidationError(spec.action_id, "global binding is required"))
             canonical[spec.action_id] = ""
             continue
         try:
@@ -238,7 +251,7 @@ def validate_hotkey_config(config: HotkeyConfig) -> HotkeyValidationResult:
                 errors.append(
                     HotkeyValidationError(spec.action_id, "runtime binding must be a bare F1..F24 key")
                 )
-        else:
+        elif spec.scope == "editor":
             if chord in _FIXED_EDITOR_SHORTCUTS:
                 errors.append(
                     HotkeyValidationError(spec.action_id, "shortcut conflicts with a fixed shortcut")
@@ -249,6 +262,17 @@ def validate_hotkey_config(config: HotkeyConfig) -> HotkeyValidationResult:
                         spec.action_id, "non-function editor keys require a modifier"
                     )
                 )
+        elif not modifiers and function_number is None:
+            errors.append(
+                HotkeyValidationError(
+                    spec.action_id,
+                    "global quick-run keys require a modifier or function key",
+                )
+            )
+        elif function_number is None and not (len(key) == 1 and key.isalnum()):
+            errors.append(
+                HotkeyValidationError(spec.action_id, "unsupported global quick-run key")
+            )
 
     by_chord: dict[str, list[str]] = {}
     for action_id, chord in canonical.items():
@@ -315,6 +339,13 @@ def _recovery_is_armed(settings: Mapping[str, object] | SettingsReader) -> bool:
     if isinstance(raw, str):
         return raw.strip().casefold() in {"1", "true", "yes", "on"}
     return bool(raw)
+
+
+def hotkey_config_recovery_is_armed(
+    settings: Mapping[str, object] | SettingsReader,
+) -> bool:
+    """Expose the shared durable transaction marker to sibling settings domains."""
+    return _recovery_is_armed(settings)
 
 
 def arm_hotkey_config_recovery(

@@ -508,6 +508,7 @@ def test_regular_operations_are_blocked_while_sequence_runs() -> None:
             _macro=object(),
             _is_sequencer_tab=lambda: False,
             _is_favorites_tab=lambda: False,
+            _is_quick_run_tab=lambda: False,
             _start_playback=MagicMock(),
             _sb_state=status,
         )

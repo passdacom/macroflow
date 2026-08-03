@@ -154,7 +154,7 @@ def test_favorites_tab_disables_play_toolbar_action() -> None:
     end = src.index("def _update_range_spinboxes", start)
     method_src = src[start:end]
 
-    assert "elif is_fav_tab:" in method_src
+    assert "elif is_fav_tab or is_quick_tab:" in method_src
     assert "_act_play.setEnabled(False)" in method_src
 
 
