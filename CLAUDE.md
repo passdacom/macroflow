@@ -7,8 +7,8 @@
 
 ## 1. 프로젝트 한 줄 요약
 
-**MacroFlow** — 마우스·키보드 동작을 녹화하고 재생하는 **Windows 전용** 데스크톱 매크로 앱.
-팀 내부 배포 전용. 비기술자도 단일 `.exe` 실행만으로 사용 가능해야 한다.
+**MacroFlow** — 마우스·키보드 동작을 녹화하고 재생하는 **Windows 전용** GPLv3 데스크톱 매크로 앱.
+비기술자도 공식 GPL 배포 묶음의 단일 `.exe`를 실행할 수 있어야 한다.
 
 ---
 
@@ -20,7 +20,7 @@
 | 이벤트 캡처 | **ctypes + Win32 LL Hook** | pynput Listener 사용 금지 (이벤트 순서 보장 불가) |
 | 이벤트 재생 | **ctypes + SendInput API** | pynput 재생 제어 사용 금지 |
 | GUI | PyQt6 6.6+ | PyQt5 문법 사용 금지 |
-| 빌드/배포 | PyInstaller 6.x (onefile) | Windows 단일 .exe 배포 |
+| 빌드/배포 | PyInstaller 6.x (onefile) | EXE·소스·라이선스를 GPL 배포 ZIP으로 제공 |
 | 테스트 | pytest 8.x + pytest-qt | |
 | 코드 품질 | ruff + mypy | CI에서 강제 |
 | 패키지 관리 | uv | pip 직접 사용 금지 |

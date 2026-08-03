@@ -2,7 +2,7 @@
 # macroflow-win.spec
 #
 # 주요 설정:
-#   - onefile: 단일 .exe 파일 (팀 배포용)
+#   - onedir: Qt DLL을 교체·재링크할 수 있는 GPL/LGPL 배포 디렉터리
 #   - DPI Aware 매니페스트 포함 (좌표 어긋남 방지)
 #   - UAC: 관리자 권한 불필요 (asInvoker)
 #   - UPX 비활성화: 보안 솔루션 오탐 방지
@@ -40,14 +40,25 @@ a = Analysis(
     noarchive=False,
 )
 
+# Qt's image-format hook may collect PDF support even though MacroFlow has no PDF feature.
+# Keep unneeded modules out of the executable so the reviewed SBOM/source scope stays exact.
+_EXCLUDED_QT_PAYLOADS = {
+    'pyqt6/qt6/bin/qt6pdf.dll',
+    'pyqt6/qt6/plugins/imageformats/qpdf.dll',
+}
+a.binaries = [
+    entry
+    for entry in a.binaries
+    if entry[0].replace('\\', '/').lower() not in _EXCLUDED_QT_PAYLOADS
+]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='MacroFlow',
     debug=False,
     bootloader_ignore_signals=False,
@@ -64,5 +75,13 @@ exe = EXE(
     icon=None,              # 아이콘 추가 시: icon=str(ROOT / 'assets' / 'icon.ico')
     manifest=str(ROOT / 'build' / 'macroflow.manifest'),  # DPI Aware
     version=None,
-    onefile=True,           # 단일 exe
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name='MacroFlow',
 )

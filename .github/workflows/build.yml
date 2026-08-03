@@ -25,10 +25,10 @@ jobs:
           enable-cache: true
 
       - name: Set up Python 3.11
-        run: uv python install 3.11
+        run: uv python install 3.11.15
 
       - name: Install dependencies
-        run: uv sync --locked --extra dev --extra ui-test --python 3.11
+        run: uv sync --locked --extra dev --extra ui-test --python 3.11.15
 
       - name: Install Qt runtime library
         run: sudo apt-get update && sudo apt-get install --yes libegl1
@@ -65,10 +65,10 @@ jobs:
           enable-cache: true
 
       - name: Set up Python 3.11
-        run: uv python install 3.11
+        run: uv python install 3.11.15
 
       - name: Install dependencies
-        run: uv sync --locked --extra dev --extra ui-test --python 3.11
+        run: uv sync --locked --extra dev --extra ui-test --python 3.11.15
 
       - name: Run pytest on Windows
         env:
@@ -97,26 +97,28 @@ jobs:
           VERSION: ${{ steps.get_version.outputs.version }}
           BUILD: ${{ github.run_number }}
         run: |
-          mv dist/MacroFlow.exe "dist/MacroFlow-v${VERSION}-build${BUILD}.exe"
+          mv dist/MacroFlow/MacroFlow.exe "dist/MacroFlow/MacroFlow-v${VERSION}-build${BUILD}.exe"
 
-      - name: Write checksum and provenance
+      - name: Verify replaceable Qt runtime layout
         shell: pwsh
         run: |
-          $exe = Get-ChildItem 'dist/MacroFlow-v*.exe' | Select-Object -First 1
-          $hash = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLowerInvariant()
-          Set-Content -Encoding ascii "$($exe.FullName).sha256" "$hash  $($exe.Name)"
-          @(
-            "commit=$env:GITHUB_SHA"
-            "run_id=$env:GITHUB_RUN_ID"
-            "run_number=$env:GITHUB_RUN_NUMBER"
-            "repository=$env:GITHUB_REPOSITORY"
-          ) | Set-Content -Encoding ascii "$($exe.FullName).provenance.txt"
+          $ErrorActionPreference = 'Stop'
+          $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          foreach ($dll in @('Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll')) {
+            if (-not (Get-ChildItem 'dist/MacroFlow' -Recurse -File -Filter $dll | Select-Object -First 1)) {
+              throw "Replaceable Qt runtime file is missing: $dll"
+            }
+          }
+          $embedded = (uv run pyi-archive_viewer --list $exe | Out-String)
+          if ($embedded -match 'Qt6(?:Core|Gui|Widgets)\.dll') {
+            throw 'Qt runtime DLLs must remain outside the executable for LGPL replacement rights'
+          }
 
       - name: Smoke packaged EXE
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = (Get-ChildItem 'dist/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
           $process = Start-Process -FilePath $exe -PassThru
           $deadline = (Get-Date).AddSeconds(30)
           $window = $null
@@ -157,7 +159,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = (Get-ChildItem 'dist/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
           $process = Start-Process -FilePath $exe -ArgumentList '--smoke-inline-sequence' -PassThru
           try {
@@ -177,11 +179,52 @@ jobs:
             }
           }
 
-      - name: Upload EXE artifact
+      - name: Build GPL distribution bundle
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+          BUILD: ${{ github.run_number }}
+          PYTHON_BUILD_SOURCE_SHA256: 8f012da286789efb4916bdc7fdd85af15a8ff616de559f99c0c63067a821506c
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $appDir = (Resolve-Path 'dist/MacroFlow').Path
+          $sourceDateEpoch = (git show -s --format=%ct $env:GITHUB_SHA).Trim()
+          $pythonBuildSourceName = 'python-build-standalone-20260414-7af98d60e411de479ab16f5537efc7184dffc25a.tar.gz'
+          $pythonBuildSource = Join-Path $env:RUNNER_TEMP $pythonBuildSourceName
+          Invoke-WebRequest `
+            -Uri 'https://codeload.github.com/astral-sh/python-build-standalone/tar.gz/7af98d60e411de479ab16f5537efc7184dffc25a' `
+            -OutFile $pythonBuildSource
+          $pythonBuildSourceHash = (Get-FileHash -Algorithm SHA256 $pythonBuildSource).Hash.ToLowerInvariant()
+          if ($pythonBuildSourceHash -cne $env:PYTHON_BUILD_SOURCE_SHA256) {
+            throw "python-build-standalone source hash mismatch: $pythonBuildSourceHash"
+          }
+          $inventory = Join-Path $env:RUNNER_TEMP 'macroflow-pyinstaller-contents.txt'
+          uv run pyi-archive_viewer --list $exe | Out-File -Encoding utf8 $inventory
+          Get-ChildItem 'dist/MacroFlow' -Recurse -File | ForEach-Object {
+            $_.FullName.Substring($appDir.Length + 1).Replace('\\', '/')
+          } | Sort-Object | Add-Content -Encoding utf8 $inventory
+          uv run python tools/build_release_bundle.py `
+            --exe $exe `
+            --app-dir $appDir `
+            --archive-inventory $inventory `
+            --repository $env:GITHUB_REPOSITORY `
+            --commit $env:GITHUB_SHA `
+            --tag "v$env:VERSION-build$env:BUILD" `
+            --run-id $env:GITHUB_RUN_ID `
+            --run-number $env:GITHUB_RUN_NUMBER `
+            --source-date-epoch $sourceDateEpoch `
+            --output-dir release
+          Copy-Item $pythonBuildSource 'release/'
+          "$pythonBuildSourceHash  $pythonBuildSourceName" | Set-Content `
+            -Encoding ascii "release/$pythonBuildSourceName.sha256"
+
+      - name: Upload GPL release artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: MacroFlow-exe
-          path: dist/MacroFlow-v*
+          name: MacroFlow-gpl-release
+          path: release/
+          if-no-files-found: error
           retention-days: 30
 
   release:
@@ -196,21 +239,29 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Download EXE artifact
+      - name: Download GPL release artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: MacroFlow-exe
-          path: dist/
+          name: MacroFlow-gpl-release
+          path: release/
 
       - name: Create release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
           tag_name: v${{ needs.build-exe.outputs.version }}-build${{ github.run_number }}
           name: "MacroFlow v${{ needs.build-exe.outputs.version }} Build ${{ github.run_number }}"
-          files: dist/MacroFlow-v*
+          files: release/*
           body: |
+            MacroFlow is free software distributed under GNU GPLv3.
+
             Source commit: `${{ github.sha }}`
+            Exact corresponding source: `${{ github.server_url }}/${{ github.repository }}/tree/${{ github.sha }}`
             Workflow run: `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`
-            Verify the EXE with the attached `.sha256` file.
+
+            Download the `-GPL.zip` bundle, which includes the executable, SPDX SBOM,
+            third-party notices, license texts, PyInstaller inventory, and source instructions.
+            The pinned `python-build-standalone` corresponding-source archive and its SHA-256
+            checksum are attached as separate assets.
+            Verify the ZIP with the attached `.sha256` file.
           generate_release_notes: true
           make_latest: true
