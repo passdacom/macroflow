@@ -432,7 +432,7 @@ def build_bundle(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             encoding="ascii",
         )
         for staged_file in (staged_bundle, staged_checksum, staged_provenance):
-            with staged_file.open("rb") as stream:
+            with staged_file.open("r+b") as stream:
                 os.fsync(stream.fileno())
         os.replace(staging, output_dir)
     except BaseException:

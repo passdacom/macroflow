@@ -261,6 +261,12 @@ def test_bundle_builder_rejects_non_full_commit(tmp_path: Path) -> None:
     assert "40-character lowercase Git SHA" in result.stderr
 
 
+def test_bundle_builder_opens_staged_outputs_writable_for_windows_fsync() -> None:
+    source = (ROOT / "tools" / "build_release_bundle.py").read_text(encoding="utf-8")
+
+    assert 'with staged_file.open("r+b") as stream:' in source
+
+
 def test_bundle_builder_rejects_version_or_build_mismatch(tmp_path: Path) -> None:
     app_dir = tmp_path / "MacroFlow"
     app_dir.mkdir()
