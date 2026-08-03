@@ -33,7 +33,7 @@ def test_ci_uses_locked_dependencies_on_linux_and_windows() -> None:
     jobs = _workflow()["jobs"]
     for job_name in ("lint-test", "build-exe"):
         commands = [step.get("run", "") for step in jobs[job_name]["steps"]]
-        assert "uv sync --locked --extra dev --extra ui-test --python 3.11" in commands
+        assert "uv sync --locked --extra dev --extra ui-test --python 3.11.15" in commands
 
     validation = _steps(jobs["lint-test"])["Validate GitHub Actions workflow"]["run"]
     assert '$(go env GOPATH)/bin/actionlint" .github/workflows/build.yml' in validation
@@ -61,9 +61,11 @@ def test_release_requires_manual_dispatch_and_publishes_provenance() -> None:
     )
     assert release["needs"] == "build-exe"
     release_step = _steps(release)["Create release"]
-    assert release_step["with"]["files"] == "dist/MacroFlow-v*"
+    assert release_step["with"]["files"] == "release/*"
     assert "github.sha" in release_step["with"]["body"]
     assert ".sha256" in release_step["with"]["body"]
+    assert "GPLv3" in release_step["with"]["body"]
+    assert "corresponding source" in release_step["with"]["body"].lower()
 
 
 def test_actions_are_sha_pinned_and_tokens_are_least_privilege() -> None:

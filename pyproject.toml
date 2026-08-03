@@ -1,13 +1,19 @@
 [project]
 name = "macroflow"
-version = "1.6.0"
-description = "Windows 전용 마우스/키보드 매크로 녹화·재생 도구 (팀 내부 배포용)"
+version = "1.6.1"
+description = "Windows 전용 마우스/키보드 매크로 녹화·재생 도구"
+readme = "README.md"
+license = "GPL-3.0-only"
 requires-python = ">=3.11"
 dependencies = [
     "PyQt6>=6.6.0",
     # ctypes는 표준 라이브러리 — 별도 설치 불필요
     # pynput은 의도적으로 제외 (Win32 LL Hook 직접 사용)
 ]
+
+[project.urls]
+Source = "https://github.com/passdacom/macroflow"
+Issues = "https://github.com/passdacom/macroflow/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -16,6 +22,7 @@ dev = [
     "mypy>=1.10",
     "pyinstaller>=6.0",
     "PyYAML>=6.0",
+    "spdx-tools==0.8.3",
 ]
 # M3(UI) 구현 후 사용: uv sync --extra ui-test
 # CI에서는 xvfb-run 또는 QT_QPA_PLATFORM=offscreen 설정 필요
