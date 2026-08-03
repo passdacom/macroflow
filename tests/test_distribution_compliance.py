@@ -819,21 +819,28 @@ def test_bundle_builder_rejects_unreviewed_qt_module(tmp_path: Path) -> None:
     kelvin_collision = qt_bin / "Qt6NetworK.dll"
     reviewed_network.write_bytes(b"reviewed")
     kelvin_collision.write_bytes(b"unreviewed Unicode collision")
-    kelvin_output = tmp_path / "kelvin-release"
-    kelvin_args = list(result.args)
-    kelvin_args[kelvin_args.index("--output-dir") + 1] = str(kelvin_output)
-    kelvin_result = subprocess.run(
-        kelvin_args,
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert kelvin_result.returncode != 0
-    assert "non-ASCII path" in kelvin_result.stderr
-    assert not kelvin_output.exists()
-    reviewed_network.unlink()
-    kelvin_collision.unlink()
+    observed_names = {path.name for path in qt_bin.iterdir()}
+    if kelvin_collision.name in observed_names:
+        kelvin_output = tmp_path / "kelvin-release"
+        kelvin_args = list(result.args)
+        kelvin_args[kelvin_args.index("--output-dir") + 1] = str(kelvin_output)
+        kelvin_result = subprocess.run(
+            kelvin_args,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert kelvin_result.returncode != 0
+        assert "non-ASCII path" in kelvin_result.stderr
+        assert not kelvin_output.exists()
+        kelvin_collision.unlink()
+    else:
+        # NTFS treats Kelvin-sign K and ASCII K as the same case-insensitive
+        # filename, so no second payload exists to inspect or allowlist.
+        assert reviewed_network.samefile(kelvin_collision)
+    if reviewed_network.exists():
+        reviewed_network.unlink()
 
 
 def test_windows_python_download_manifest_is_exact_and_pinned() -> None:

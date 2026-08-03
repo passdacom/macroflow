@@ -1,2 +1,3 @@
-# Preserve authoritative upstream license bytes, including trailing spaces.
-licenses/bzip2-1.0.8.txt -whitespace
+# Preserve authoritative upstream license bytes across Windows checkouts.
+licenses/libffi-MIT.txt -text
+licenses/bzip2-1.0.8.txt -text -whitespace
