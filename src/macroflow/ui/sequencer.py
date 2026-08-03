@@ -433,7 +433,7 @@ class MacroSequencerWidget(QWidget):
         self._act_open_flow.triggered.connect(self._open_flow)
         flow_toolbar.addAction(self._act_open_flow)
 
-        self._act_save_flow = QAction("💾 저장", self)
+        self._act_save_flow = QAction("💾 플로우 저장", self)
         self._act_save_flow.setToolTip(
             "현재 .macroflow 파일에 덮어쓰기 저장합니다 (파일이 없으면 다른 이름으로 저장)"
         )
@@ -441,7 +441,7 @@ class MacroSequencerWidget(QWidget):
         self._act_save_flow.setEnabled(False)
         flow_toolbar.addAction(self._act_save_flow)
 
-        self._act_save_flow_as = QAction("💾 다른 이름", self)
+        self._act_save_flow_as = QAction("💾 플로우 다른 이름으로 저장", self)
         self._act_save_flow_as.setToolTip("새 경로를 지정하여 .macroflow 파일로 저장합니다")
         self._act_save_flow_as.triggered.connect(self._save_flow_as)
         self._act_save_flow_as.setEnabled(False)
@@ -449,7 +449,7 @@ class MacroSequencerWidget(QWidget):
 
         manage_toolbar.addSeparator()
 
-        self._act_merge = QAction("🔗 병합", self)
+        self._act_merge = QAction("🔗 매크로로 병합", self)
         self._act_merge.setToolTip(
             "목록의 모든 매크로를 순서대로 이어 붙여 하나의 매크로로 만든 뒤\n"
             "매크로 에디터 탭으로 보냅니다 (저장 후 수정 가능)"

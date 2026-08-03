@@ -49,6 +49,7 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
         editor_file = toolbar(window._editor, "editor-file-toolbar")
         editor_edit = toolbar(window._editor, "editor-edit-toolbar")
         sequence_file = toolbar(window._sequencer, "sequencer-flow-toolbar")
+        sequence_manage = toolbar(window._sequencer, "sequencer-manage-toolbar")
         favorites_manage = toolbar(window._favorites, "favorites-manage-toolbar")
 
         assert window._editor.findChild(QToolBar, "editor-history-toolbar") is None
@@ -57,10 +58,13 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
         assert runtime.geometry().y() < playback.geometry().y()
 
         assert [action.text() for action in editor_file.actions() if action.text()] == [
-            "📂 열기", "💾 저장", "💾 다른 이름"
+            "📂 매크로 열기", "💾 매크로 저장", "💾 다른 이름으로 저장"
         ]
         assert [action.text() for action in sequence_file.actions() if action.text()] == [
-            "📂 플로우 열기", "💾 저장", "💾 다른 이름"
+            "📂 플로우 열기", "💾 플로우 저장", "💾 플로우 다른 이름으로 저장"
+        ]
+        assert "🔗 매크로로 병합" in [
+            action.text() for action in sequence_manage.actions() if action.text()
         ]
         assert (
             editor_file.geometry().y()
@@ -75,14 +79,14 @@ def test_toolbar_rows_stay_fixed_and_tab_actions_align() -> None:
         )
         assert [action.text() for action in edit_actions if action.text()] == [
             "이동 표시", "이동 삭제", "재생 대기",
-            "시퀀서", "즐겨찾기", "이전 복원",
+            "시퀀서에 추가", "즐겨찾기로 저장", "이전 매크로 복원",
             "취소", "재실행", "원본 복원",
         ]
         interval = window._editor.findChild(QCheckBox)
         editor_add = toolbar(window._editor, "editor-add-toolbar")
         assert interval is not None and editor_add.isAncestorOf(interval)
 
-        for tab in (window._editor, window._sequencer, window._favorites):
+        for tab in (window._editor, window._sequencer, window._favorites, window._quick_run):
             window._tabs.setCurrentWidget(tab)
             app.processEvents()
             assert runtime.isVisible()

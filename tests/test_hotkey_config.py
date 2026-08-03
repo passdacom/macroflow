@@ -42,6 +42,11 @@ def test_defaults_are_canonical_and_expose_runtime_virtual_keys() -> None:
         "editor.insert_text": "Ctrl+Shift+T",
         "editor.insert_click": "Ctrl+Shift+L",
         "editor.insert_color_trigger": "Ctrl+Shift+G",
+        "quick_run.slot_1": "Ctrl+Alt+1",
+        "quick_run.slot_2": "Ctrl+Alt+2",
+        "quick_run.slot_3": "Ctrl+Alt+3",
+        "quick_run.slot_4": "Ctrl+Alt+4",
+        "quick_run.slot_5": "Ctrl+Alt+5",
     }
     assert runtime_virtual_keys(DEFAULT_HOTKEY_CONFIG) == frozenset({0x75, 0x76, 0x77, 0x78})
 
@@ -114,6 +119,11 @@ def test_save_writes_only_canonical_configurable_bindings() -> None:
         "hotkeys/editor.insert_text": "",
         "hotkeys/editor.insert_click": "Ctrl+Shift+L",
         "hotkeys/editor.insert_color_trigger": "Ctrl+Shift+G",
+        "hotkeys/quick_run.slot_1": "Ctrl+Alt+1",
+        "hotkeys/quick_run.slot_2": "Ctrl+Alt+2",
+        "hotkeys/quick_run.slot_3": "Ctrl+Alt+3",
+        "hotkeys/quick_run.slot_4": "Ctrl+Alt+4",
+        "hotkeys/quick_run.slot_5": "Ctrl+Alt+5",
     }
 
 
@@ -175,6 +185,17 @@ def test_local_binding_may_be_cleared_and_function_keys_may_be_bare() -> None:
 
     assert validate_hotkey_config(config).is_valid
     assert config.binding_for("editor.insert_click") == "F12"
+
+
+def test_quick_run_bindings_are_global_modified_chords() -> None:
+    config = _config(**{"quick_run.slot_1": "Shift+F10"})
+
+    assert validate_hotkey_config(config).is_valid
+
+    invalid = validate_hotkey_config(_config(**{"quick_run.slot_1": "1"}))
+    assert not invalid.is_valid
+    assert invalid.errors[0].action_id == "quick_run.slot_1"
+    assert "modifier" in invalid.errors[0].message
 
 
 def test_unknown_action_is_not_accepted() -> None:

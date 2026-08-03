@@ -8,11 +8,16 @@ from dataclasses import dataclass
 from typing import Any, Final, Protocol
 
 from macroflow.hotkey_config import (
+    QUICK_RUN_ACTION_IDS,
     RUNTIME_ACTION_IDS,
     HotkeyConfig,
+    parse_hotkey_chord,
     runtime_virtual_keys,
 )
 
+MOD_ALT: Final = 0x0001
+MOD_CONTROL: Final = 0x0002
+MOD_SHIFT: Final = 0x0004
 MOD_NOREPEAT: Final = 0x4000
 WM_HOTKEY: Final = 0x0312
 
@@ -26,9 +31,20 @@ class NativeHotkey:
 
     @property
     def display_key(self) -> str:
+        names: list[str] = []
+        if self.modifiers & MOD_CONTROL:
+            names.append("Ctrl")
+        if self.modifiers & MOD_ALT:
+            names.append("Alt")
+        if self.modifiers & MOD_SHIFT:
+            names.append("Shift")
         if 0x70 <= self.vk <= 0x87:
-            return f"F{self.vk - 0x70 + 1}"
-        return f"VK_{self.vk:02X}"
+            key = f"F{self.vk - 0x70 + 1}"
+        elif 0x30 <= self.vk <= 0x39 or 0x41 <= self.vk <= 0x5A:
+            key = chr(self.vk)
+        else:
+            key = f"VK_{self.vk:02X}"
+        return "+".join((*names, key))
 
 
 @dataclass(frozen=True)
@@ -52,20 +68,46 @@ class HotkeyRegistrar(Protocol):
     def replace(self, candidate: Sequence[NativeHotkey]) -> RegistrationResult: ...
 
 
-def native_hotkeys(config: HotkeyConfig) -> tuple[NativeHotkey, ...]:
-    """Build stable native registration records for the runtime action set."""
-    virtual_keys = runtime_virtual_keys(config)
-    if len(virtual_keys) != len(RUNTIME_ACTION_IDS):
-        raise ValueError("runtime hotkeys must be unique")
-    return tuple(
-        NativeHotkey(
-            action_id=action_id,
-            registration_id=index,
-            modifiers=MOD_NOREPEAT,
-            vk=0x70 + int(config.binding_for(action_id)[1:]) - 1,
+def _native_key(value: str) -> tuple[int, int]:
+    modifiers, key = parse_hotkey_chord(value)
+    native_modifiers = MOD_NOREPEAT
+    if "Ctrl" in modifiers:
+        native_modifiers |= MOD_CONTROL
+    if "Alt" in modifiers:
+        native_modifiers |= MOD_ALT
+    if "Shift" in modifiers:
+        native_modifiers |= MOD_SHIFT
+    if key.startswith("F") and key[1:].isdigit():
+        vk = 0x70 + int(key[1:]) - 1
+    elif len(key) == 1 and key.isalnum():
+        vk = ord(key.upper())
+    else:
+        raise ValueError(f"unsupported global hotkey key: {key}")
+    return native_modifiers, vk
+
+
+def native_hotkeys(
+    config: HotkeyConfig,
+    *,
+    include_quick_run: bool = True,
+) -> tuple[NativeHotkey, ...]:
+    """Build stable native registration records for the global action set."""
+    runtime_virtual_keys(config)
+    action_ids = list(RUNTIME_ACTION_IDS)
+    if include_quick_run:
+        action_ids.extend(QUICK_RUN_ACTION_IDS)
+    bindings: list[NativeHotkey] = []
+    for index, action_id in enumerate(action_ids, start=1):
+        modifiers, vk = _native_key(config.binding_for(action_id))
+        bindings.append(
+            NativeHotkey(
+                action_id=action_id,
+                registration_id=index,
+                modifiers=modifiers,
+                vk=vk,
+            )
         )
-        for index, action_id in enumerate(RUNTIME_ACTION_IDS, start=1)
-    )
+    return tuple(bindings)
 
 
 class NativeHotkeySet:

@@ -129,6 +129,73 @@ def test_recording_hook_failure_is_shown_without_entering_recording_ui() -> None
     assert result.returncode == 0, result.stderr
 
 
+def test_recording_start_failure_reports_quick_run_restore_failure() -> None:
+    result = _run_offscreen(
+        """
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtWidgets import QApplication
+        from macroflow.ui.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        with patch.object(MainWindow, "_restore_settings", lambda self: None):
+            window = MainWindow()
+        runtime = Mock()
+        runtime.globally_registered = True
+        runtime.set_quick_run_enabled.side_effect = [
+            SimpleNamespace(success=True),
+            SimpleNamespace(success=False),
+        ]
+        window._hotkey_runtime = runtime
+
+        with patch("macroflow.ui.main_window.sys.platform", "win32"), \
+             patch("macroflow.recorder.start_recording", side_effect=RuntimeError("boom")), \
+             patch("macroflow.ui.main_window.QMessageBox.warning") as warning, \
+             patch("macroflow.ui.main_window.QMessageBox.critical"):
+            window._start_recording()
+
+        assert runtime.set_quick_run_enabled.call_args_list == [
+            ((False,), {}),
+            ((True,), {}),
+        ]
+        warning.assert_called_once()
+        assert "복구" in warning.call_args.args[2]
+        window.close()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_recording_stop_terminal_error_restores_quick_run_hotkeys() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "stopping"
+        host._recording_stop_thread = Mock()
+        host._repeat_session = None
+        host._playback_pause_event = Mock()
+        host._hotkey_runtime = Mock()
+        host._hotkey_runtime.set_quick_run_enabled.return_value.success = True
+
+        with patch("macroflow.recorder.is_recording", return_value=False), \
+             patch("macroflow.ui.main_window.sys.platform", "win32"), \
+             patch("macroflow.ui.main_window.QMessageBox.warning"):
+            MainWindow._on_play_error(host, "녹화 중지 오류: terminal failure")
+
+        host._hotkey_runtime.set_quick_run_enabled.assert_called_once_with(True)
+        assert host._state == "idle"
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_recording_stop_failure_keeps_stopping_state_and_allows_retry() -> None:
     result = _run_offscreen(
         """

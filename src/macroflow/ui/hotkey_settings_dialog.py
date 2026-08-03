@@ -27,6 +27,7 @@ from macroflow.hotkey_config import (
 
 _ERROR_TRANSLATIONS = {
     "runtime binding is required": "글로벌 운영 단축키는 비워둘 수 없습니다.",
+    "global binding is required": "글로벌 단축키는 비워둘 수 없습니다.",
     "must be a single chord": "한 번에 누르는 단일 조합만 사용할 수 있습니다.",
     "invalid key sequence": "올바른 키 조합이 아닙니다.",
     "duplicate modifier": "같은 수정 키가 중복되었습니다.",
@@ -39,6 +40,8 @@ _ERROR_TRANSLATIONS = {
     "unsupported key": "지원하지 않는 키 이름입니다.",
     "shortcut conflicts with a fixed shortcut": "MacroFlow의 고정 편집 단축키와 충돌합니다.",
     "non-function editor keys require a modifier": "일반 키는 Ctrl, Alt 또는 Shift와 함께 지정해야 합니다.",
+    "global quick-run keys require a modifier or function key": "빠른 실행 단축키는 수정 키 조합 또는 기능 키를 사용해야 합니다.",
+    "unsupported global quick-run key": "빠른 실행 글로벌 단축키는 문자, 숫자 또는 기능 키만 지원합니다.",
 }
 
 
@@ -67,12 +70,17 @@ class HotkeySettingsDialog(QDialog):
         guidance = QLabel(
             "글로벌 운영 단축키는 녹화 이벤트 누락을 방지하기 위해 수정 키 없는 "
             "F1~F24만 지원합니다. 다른 프로그램이 사용 중인 글로벌 키는 적용 시 감지되며, "
-            "충돌하면 기존 설정을 유지합니다. ESC×3 긴급 중지는 변경되지 않습니다."
+            "충돌하면 기존 설정을 유지합니다. 빠른 실행 슬롯은 수정 키 조합도 지원하며, "
+            "ESC×3 긴급 중지는 변경되지 않습니다."
         )
         guidance.setWordWrap(True)
         root.addWidget(guidance)
 
-        for scope, title in (("runtime", "글로벌 운영"), ("editor", "매크로 에디터 내부")):
+        for scope, title in (
+            ("runtime", "글로벌 운영"),
+            ("quick_run", "빠른 실행 슬롯"),
+            ("editor", "매크로 에디터 내부"),
+        ):
             group = QGroupBox(title, self)
             form = QFormLayout(group)
             for spec in HOTKEY_SPECS:
