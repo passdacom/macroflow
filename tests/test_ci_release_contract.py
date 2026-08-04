@@ -81,11 +81,19 @@ def test_windows_job_proves_lgpl_library_replacement_without_mutating_release() 
 def test_pr_build_and_provenance_use_the_exact_checked_out_head() -> None:
     jobs = _workflow()["jobs"]
     expected_ref = "${{ github.event.pull_request.head.sha || github.sha }}"
-    for job_name in ("lint-test", "build-exe"):
-        checkout = next(
-            step for step in jobs[job_name]["steps"] if step.get("uses", "").startswith("actions/checkout@")
-        )
-        assert checkout["with"]["ref"] == expected_ref
+    lint_checkout = next(
+        step
+        for step in jobs["lint-test"]["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert "ref" not in lint_checkout["with"]
+
+    build_checkout = next(
+        step
+        for step in jobs["build-exe"]["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert build_checkout["with"]["ref"] == expected_ref
 
     bundle = _steps(jobs["build-exe"])["Build GPL distribution bundle"]["run"]
     assert "$sourceCommit = (git rev-parse HEAD).Trim()" in bundle
