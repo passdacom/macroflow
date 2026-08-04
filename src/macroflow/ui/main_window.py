@@ -17,8 +17,15 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QByteArray, QSettings, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEvent
+from PyQt6.QtCore import QByteArray, QSettings, Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QKeyEvent,
+    QKeySequence,
+    QShowEvent,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -52,6 +59,7 @@ from macroflow.quick_run import (
     save_quick_run_slots,
 )
 from macroflow.types import MacroData
+from macroflow.user_data import UserDataMode, prepare_application_user_data
 from macroflow.win32.hotkeys import (
     NativeHotkeySet,
     RegistrationResult,
@@ -135,6 +143,7 @@ class MainWindow(QMainWindow):
         self._current_file: Path | None = None
         self._hotkeys_registered: bool = False
         app_settings = QSettings("MacroFlow", "MacroFlow")
+        self._user_data = prepare_application_user_data(settings=app_settings)
         self._hotkey_config: HotkeyConfig = load_hotkey_config(app_settings)
         self._quick_run_slots: tuple[QuickRunSlot, ...] = load_quick_run_slots(
             app_settings
@@ -186,6 +195,21 @@ class MainWindow(QMainWindow):
         self._favorites.set_favorites_dir(self._get_favorites_dir())
 
         self._setup_statusbar()
+        if self._user_data.mode is UserDataMode.MIGRATED:
+            self._sb_state.setText(
+                f"기존 사용자 데이터 {self._user_data.copied_files}개 이전 완료"
+            )
+            logger.info(
+                "기존 사용자 데이터를 안전한 경로로 복사했습니다: %s (%d files)",
+                self._user_data.root,
+                self._user_data.copied_files,
+            )
+        elif self._user_data.mode is UserDataMode.LEGACY_FALLBACK:
+            self._sb_state.setText("사용자 데이터 이전 실패 — 기존 폴더를 계속 사용합니다")
+            logger.error(
+                "사용자 데이터 이전 실패; 기존 폴더를 계속 사용합니다: %s",
+                self._user_data.error,
+            )
 
         # ── 신호 연결 ─────────────────────────────────────────────────────────
         self._sig_recording_done.connect(self._on_recording_done)
@@ -298,6 +322,12 @@ class MainWindow(QMainWindow):
         self._recent_menu = QMenu("최근 녹화", self)
         file_menu.addMenu(self._recent_menu)
         self._refresh_recent_menu()
+
+        file_menu.addSeparator()
+
+        self._act_open_user_data = QAction("사용자 데이터 폴더 열기", self)
+        self._act_open_user_data.triggered.connect(self._open_user_data_dir)
+        file_menu.addAction(self._act_open_user_data)
 
         file_menu.addSeparator()
 
@@ -2454,23 +2484,30 @@ class MainWindow(QMainWindow):
         return True
 
     def _get_macros_dir(self) -> Path:
-        """영구 저장용 macros 디렉토리 경로를 반환한다.
-
-        PyInstaller 패키징 상태이면 exe 파일 옆 macros/ 폴더,
-        개발 환경이면 현재 작업 디렉토리 아래 macros/ 폴더를 사용한다.
-        """
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "macros"
-        return Path.cwd() / "macros"
+        """현재 사용자 데이터 루트의 영구 macros 디렉토리를 반환한다."""
+        return self._user_data.macros_dir
 
     def _get_favorites_dir(self) -> Path:
-        """즐겨찾기 저장용 favorites 디렉토리 경로를 반환한다.
+        """현재 사용자 데이터 루트의 영구 favorites 디렉토리를 반환한다."""
+        return self._user_data.favorites_dir
 
-        macros/ 와 별도의 favorites/ 폴더를 사용한다.
-        """
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "favorites"
-        return Path.cwd() / "favorites"
+    def _open_user_data_dir(self) -> None:
+        """파일 탐색기에서 현재 사용자 데이터 루트를 연다."""
+        try:
+            self._user_data.root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "사용자 데이터 폴더",
+                f"사용자 데이터 폴더를 준비하지 못했습니다:\n{exc}",
+            )
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._user_data.root))):
+            QMessageBox.warning(
+                self,
+                "사용자 데이터 폴더",
+                f"파일 탐색기에서 폴더를 열지 못했습니다:\n{self._user_data.root}",
+            )
 
     def _save_and_add_to_favorites(self) -> None:
         """현재 매크로를 이름 입력 후 즐겨찾기 폴더에 저장하고 즐겨찾기 탭에 추가한다."""
