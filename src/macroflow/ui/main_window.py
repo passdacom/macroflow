@@ -479,7 +479,7 @@ class MainWindow(QMainWindow):
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
 
-        self._act_restore_prev = QAction("이전 매크로 복원", self)
+        self._act_restore_prev = QAction("이전 복원", self)
         self._act_restore_prev.setToolTip(
             "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
             "(실수로 F6을 눌러 기존 매크로가 사라졌을 때 사용)"
