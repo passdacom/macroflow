@@ -496,7 +496,7 @@ def test_workflow_mirrors_all_reviewed_runtime_sources_with_checksums() -> None:
         assert digest in workflow_text
 
     assert '"release/$($source.Name).sha256"' in run
-    assert "git archive --format=tar.gz" in run
+    assert "git -c core.autocrlf=false archive --format=tar.gz" in run
     assert "MacroFlow-$env:TAG-source.tar.gz" in run
 
     assert "download.qt.io/archive/qt/6.11/6.11.0/submodules/qtbase" in run

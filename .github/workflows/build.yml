@@ -411,7 +411,7 @@ jobs:
               -Encoding ascii "release/$($source.Name).sha256"
           }
           $macroflowSourceName = "MacroFlow-$env:TAG-source.tar.gz"
-          git archive --format=tar.gz --output "release/$macroflowSourceName" $env:GITHUB_SHA
+          git -c core.autocrlf=false archive --format=tar.gz --output "release/$macroflowSourceName" $env:GITHUB_SHA
           $macroflowSourceHash = (Get-FileHash -Algorithm SHA256 "release/$macroflowSourceName").Hash.ToLowerInvariant()
           "$macroflowSourceHash  $macroflowSourceName" | Set-Content `
             -Encoding ascii "release/$macroflowSourceName.sha256"
