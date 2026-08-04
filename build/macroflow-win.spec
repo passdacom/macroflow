@@ -43,6 +43,7 @@ a = Analysis(
 # Qt's image-format hook may collect PDF support even though MacroFlow has no PDF feature.
 # Keep unneeded modules out of the executable so the reviewed SBOM/source scope stays exact.
 _EXCLUDED_QT_PAYLOADS = {
+    'pyqt6/qt6/bin/opengl32sw.dll',
     'pyqt6/qt6/bin/qt6pdf.dll',
     'pyqt6/qt6/plugins/imageformats/qpdf.dll',
 }

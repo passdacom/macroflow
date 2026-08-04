@@ -2671,7 +2671,11 @@ class MainWindow(QMainWindow):
             f"{pause}: 일시중지/계속<br>"
             f"{quick_text}: 빠른 텍스트 기록<br>"
             "ESC×3: 긴급 중지<br><br>"
-            "구간 재생: 시작/끝 행 번호 설정 (0=전체)",
+            "구간 재생: 시작/끝 행 번호 설정 (0=전체)<br><br>"
+            "MacroFlow: GNU GPLv3-only<br>"
+            "Qt 6.11.0: GNU LGPLv3<br>"
+            "라이선스 원문과 대응 소스 안내: 배포 ZIP의 LICENSE, licenses/, "
+            "THIRD_PARTY_NOTICES.md, SOURCE_CODE.md",
         )
 
     def keyPressEvent(self, event: QKeyEvent | None) -> None:  # noqa: N802

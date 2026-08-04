@@ -52,6 +52,8 @@ jobs:
     name: Build Windows EXE
     needs: lint-test
     runs-on: windows-latest
+    env:
+      UV_PYTHON_DOWNLOADS_JSON_URL: ${{ github.workspace }}/build/python-downloads.json
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
@@ -65,7 +67,9 @@ jobs:
           enable-cache: true
 
       - name: Set up Python 3.11
-        run: uv python install 3.11.15
+        run: >-
+          uv python install 3.11.15
+          --python-downloads-json-url build/python-downloads.json
 
       - name: Install dependencies
         run: uv sync --locked --extra dev --extra ui-test --python 3.11.15
@@ -179,25 +183,211 @@ jobs:
             }
           }
 
+      - name: Smoke modified replaceable Qt library
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $qtDll = (Get-ChildItem 'dist/MacroFlow' -Recurse -File -Filter 'Qt6Core.dll' | Select-Object -First 1).FullName
+          $backup = Join-Path $env:RUNNER_TEMP 'Qt6Core.dll.original'
+          $originalHash = (Get-FileHash -Algorithm SHA256 $qtDll).Hash.ToLowerInvariant()
+          Copy-Item $qtDll $backup -Force
+          $process = $null
+          $ownedIds = [System.Collections.Generic.HashSet[int]]::new()
+          try {
+            $bytes = [System.IO.File]::ReadAllBytes($qtDll)
+            if ($bytes.Length -lt 64) { throw 'Qt6Core.dll is not a valid PE file' }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            if ($peOffset -lt 0 -or $peOffset + 12 -gt $bytes.Length) {
+              throw 'Qt6Core.dll has an invalid PE header offset'
+            }
+            if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45) {
+              throw 'Qt6Core.dll is missing the PE signature'
+            }
+            $peTimeDateStampOffset = $peOffset + 8
+            $timeDateStamp = [BitConverter]::ToUInt32($bytes, $peTimeDateStampOffset)
+            $replacementTimeDateStamp = if ($timeDateStamp -eq [uint32]::MaxValue) {
+              [uint32]0
+            } else {
+              [uint32]($timeDateStamp + 1)
+            }
+            [BitConverter]::GetBytes($replacementTimeDateStamp).CopyTo(
+              $bytes,
+              $peTimeDateStampOffset
+            )
+            [System.IO.File]::WriteAllBytes($qtDll, $bytes)
+            $modifiedHash = (Get-FileHash -Algorithm SHA256 $qtDll).Hash.ToLowerInvariant()
+            if ($modifiedHash -eq $originalHash) {
+              throw 'Qt replacement smoke did not modify the library bytes'
+            }
+
+            $process = Start-Process -FilePath $exe -PassThru
+            $deadline = (Get-Date).AddSeconds(30)
+            $window = $null
+            [void]$ownedIds.Add($process.Id)
+            do {
+              if ($process.HasExited) {
+                throw "Packaged EXE rejected modified Qt6Core.dll with code $($process.ExitCode)"
+              }
+              do {
+                $added = $false
+                Get-CimInstance Win32_Process | Where-Object {
+                  $ownedIds.Contains([int]$_.ParentProcessId)
+                } | ForEach-Object {
+                  if ($ownedIds.Add([int]$_.ProcessId)) { $added = $true }
+                }
+              } while ($added)
+              $window = Get-Process -Id @($ownedIds) -ErrorAction SilentlyContinue |
+                Where-Object {
+                  $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like 'MacroFlow*'
+                } |
+                Select-Object -First 1
+              if ($window) { break }
+              Start-Sleep -Milliseconds 500
+              $process.Refresh()
+            } while ((Get-Date) -lt $deadline)
+            if (-not $window) {
+              throw 'Modified Qt library smoke did not expose a MacroFlow window'
+            }
+            Write-Host "LGPL_REPLACEMENT_SMOKE_OK original=$originalHash modified=$modifiedHash"
+          }
+          finally {
+            if ($process -and -not $process.HasExited) {
+              & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+            }
+            if ($ownedIds.Count -gt 0) {
+              Wait-Process -Id @($ownedIds) -Timeout 10 -ErrorAction SilentlyContinue
+            }
+            $restoreDeadline = (Get-Date).AddSeconds(10)
+            $restored = $false
+            do {
+              try {
+                Copy-Item $backup $qtDll -Force
+                $restored = $true
+              }
+              catch {
+                if ((Get-Date) -ge $restoreDeadline) { throw }
+                Start-Sleep -Milliseconds 200
+              }
+            } while (-not $restored)
+            Remove-Item $backup -Force
+            $restoredHash = (Get-FileHash -Algorithm SHA256 $qtDll).Hash.ToLowerInvariant()
+            if ($restoredHash -ne $originalHash) {
+              throw 'Qt6Core.dll was not restored after replacement smoke'
+            }
+          }
+
       - name: Build GPL distribution bundle
         shell: pwsh
         env:
           VERSION: ${{ steps.get_version.outputs.version }}
           BUILD: ${{ github.run_number }}
+          PYQT6_SOURCE_SHA256: 45dd60aa69976de1918b5ced6b4e7b6a25abd2a919ecef5fd5826ecc76718889
+          QTBASE_SOURCE_SHA256: 231ad85979864d914dc9568a1b71c91d6cf20d7b2021d059103bf0eb51cb755e
+          QTSVG_SOURCE_SHA256: dfa8d653be07087d9407ed4a4ebae847f8953e0b7abd829f089803ab652a30e6
+          QTIMAGEFORMATS_SOURCE_SHA256: d3adb02ac5e2fe24068dbdaee0d7cc68cc3fa8553291c1bfce77c9fe8e940cc8
+          OPENSSL_SOURCE_SHA256: deae7c80cba99c4b4f940ecadb3c3338b13cb77418409238e57d7f31f2a3b736
+          LIBFFI_SOURCE_SHA256: b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e
+          BZIP2_SOURCE_SHA256: ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+          XZ_SOURCE_SHA256: 507825b599356c10dca1cd720c9d0d0c9d5400b9de300af00e4d1ea150795543
+          PYTHON_SOURCE_SHA256: 272179ddd9a2e41a0fc8e42e33dfbdca0b3711aa5abf372d3f2d51543d09b625
+          PYQT6_SIP_SOURCE_SHA256: 869c5b48afe38e55b1ee0dd72182b0886e968cc509b98023ff50010b013ce1be
+          PYINSTALLER_SOURCE_SHA256: ec73aeb8bd9b7f2f1240d328a4542e90b3c6e6fbc106014778431c616592a865
           PYTHON_BUILD_SOURCE_SHA256: 8f012da286789efb4916bdc7fdd85af15a8ff616de559f99c0c63067a821506c
         run: |
           $ErrorActionPreference = 'Stop'
+          function Get-VerifiedSource {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [Parameter(Mandatory = $true)][string]$Uri,
+              [Parameter(Mandatory = $true)][string]$ExpectedHash
+            )
+            $path = Join-Path $env:RUNNER_TEMP $Name
+            Invoke-WebRequest -Uri $Uri -OutFile $path | Out-Null
+            $actualHash = (Get-FileHash -Algorithm SHA256 $path).Hash.ToLowerInvariant()
+            if ($actualHash -cne $ExpectedHash) {
+              throw "source hash mismatch for ${Name}: $actualHash"
+            }
+            [PSCustomObject]@{ Name = $Name; Path = $path; Hash = $actualHash }
+          }
+
           $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
           $appDir = (Resolve-Path 'dist/MacroFlow').Path
           $sourceDateEpoch = (git show -s --format=%ct $env:GITHUB_SHA).Trim()
-          $pythonBuildSourceName = 'python-build-standalone-20260414-7af98d60e411de479ab16f5537efc7184dffc25a.tar.gz'
-          $pythonBuildSource = Join-Path $env:RUNNER_TEMP $pythonBuildSourceName
-          Invoke-WebRequest `
-            -Uri 'https://codeload.github.com/astral-sh/python-build-standalone/tar.gz/7af98d60e411de479ab16f5537efc7184dffc25a' `
-            -OutFile $pythonBuildSource
-          $pythonBuildSourceHash = (Get-FileHash -Algorithm SHA256 $pythonBuildSource).Hash.ToLowerInvariant()
-          if ($pythonBuildSourceHash -cne $env:PYTHON_BUILD_SOURCE_SHA256) {
-            throw "python-build-standalone source hash mismatch: $pythonBuildSourceHash"
+          $env:TAG = "v$env:VERSION-build$env:BUILD"
+          $sourceAssets = @(
+            Get-VerifiedSource `
+              -Name 'pyqt6-6.11.0.tar.gz' `
+              -Uri 'https://files.pythonhosted.org/packages/8b/47/b25c13eca5bebc6505394d0223e46d7ebf0c57dcac2ed908d7d19b18ab6b/pyqt6-6.11.0.tar.gz' `
+              -ExpectedHash $env:PYQT6_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'qtbase-everywhere-src-6.11.0.tar.xz' `
+              -Uri 'https://download.qt.io/archive/qt/6.11/6.11.0/submodules/qtbase-everywhere-src-6.11.0.tar.xz' `
+              -ExpectedHash $env:QTBASE_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'qtsvg-everywhere-src-6.11.0.tar.xz' `
+              -Uri 'https://download.qt.io/archive/qt/6.11/6.11.0/submodules/qtsvg-everywhere-src-6.11.0.tar.xz' `
+              -ExpectedHash $env:QTSVG_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'qtimageformats-everywhere-src-6.11.0.tar.xz' `
+              -Uri 'https://download.qt.io/archive/qt/6.11/6.11.0/submodules/qtimageformats-everywhere-src-6.11.0.tar.xz' `
+              -ExpectedHash $env:QTIMAGEFORMATS_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'openssl-3.5.6.tar.gz' `
+              -Uri 'https://github.com/openssl/openssl/releases/download/openssl-3.5.6/openssl-3.5.6.tar.gz' `
+              -ExpectedHash $env:OPENSSL_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'libffi-3.4.6.tar.gz' `
+              -Uri 'https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz' `
+              -ExpectedHash $env:LIBFFI_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'bzip2-1.0.8.tar.gz' `
+              -Uri 'https://astral-sh.github.io/mirror/files/bzip2-1.0.8.tar.gz' `
+              -ExpectedHash $env:BZIP2_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'xz-5.8.1.tar.gz' `
+              -Uri 'https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz' `
+              -ExpectedHash $env:XZ_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'Python-3.11.15.tar.xz' `
+              -Uri 'https://www.python.org/ftp/python/3.11.15/Python-3.11.15.tar.xz' `
+              -ExpectedHash $env:PYTHON_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'pyqt6_sip-13.11.1.tar.gz' `
+              -Uri 'https://files.pythonhosted.org/packages/90/24/a753e1af94b9ae5b2da63d4598457308da3cdbf0838c959381db086ccc86/pyqt6_sip-13.11.1.tar.gz' `
+              -ExpectedHash $env:PYQT6_SIP_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'pyinstaller-6.19.0.tar.gz' `
+              -Uri 'https://files.pythonhosted.org/packages/c8/63/fd62472b6371d89dc138d40c36d87a50dc2de18a035803bbdc376b4ffac4/pyinstaller-6.19.0.tar.gz' `
+              -ExpectedHash $env:PYINSTALLER_SOURCE_SHA256
+            Get-VerifiedSource `
+              -Name 'python-build-standalone-20260414-7af98d60e411de479ab16f5537efc7184dffc25a.tar.gz' `
+              -Uri 'https://codeload.github.com/astral-sh/python-build-standalone/tar.gz/7af98d60e411de479ab16f5537efc7184dffc25a' `
+              -ExpectedHash $env:PYTHON_BUILD_SOURCE_SHA256
+          )
+          $env:LIBFFI_LICENSE_ARCHIVE = ($sourceAssets | Where-Object {
+            $_.Name -eq 'libffi-3.4.6.tar.gz'
+          }).Path
+          $env:BZIP2_LICENSE_ARCHIVE = ($sourceAssets | Where-Object {
+            $_.Name -eq 'bzip2-1.0.8.tar.gz'
+          }).Path
+          @'
+          import os
+          import pathlib
+          import tarfile
+
+          checks = (
+              (os.environ["LIBFFI_LICENSE_ARCHIVE"], "libffi-3.4.6/LICENSE", "licenses/libffi-MIT.txt"),
+              (os.environ["BZIP2_LICENSE_ARCHIVE"], "bzip2-1.0.8/LICENSE", "licenses/bzip2-1.0.8.txt"),
+          )
+          for archive, member, checked_in in checks:
+              with tarfile.open(archive) as source:
+                  source_bytes = source.extractfile(member).read()
+              if source_bytes != pathlib.Path(checked_in).read_bytes():
+                  raise SystemExit(f"checked-in license differs from {member}")
+          '@ | uv run python -
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Exact source license verification failed'
           }
           $inventory = Join-Path $env:RUNNER_TEMP 'macroflow-pyinstaller-contents.txt'
           uv run pyi-archive_viewer --list $exe | Out-File -Encoding utf8 $inventory
@@ -210,14 +400,21 @@ jobs:
             --archive-inventory $inventory `
             --repository $env:GITHUB_REPOSITORY `
             --commit $env:GITHUB_SHA `
-            --tag "v$env:VERSION-build$env:BUILD" `
+            --tag $env:TAG `
             --run-id $env:GITHUB_RUN_ID `
             --run-number $env:GITHUB_RUN_NUMBER `
             --source-date-epoch $sourceDateEpoch `
             --output-dir release
-          Copy-Item $pythonBuildSource 'release/'
-          "$pythonBuildSourceHash  $pythonBuildSourceName" | Set-Content `
-            -Encoding ascii "release/$pythonBuildSourceName.sha256"
+          foreach ($source in $sourceAssets) {
+            Copy-Item $source.Path 'release/'
+            "$($source.Hash)  $($source.Name)" | Set-Content `
+              -Encoding ascii "release/$($source.Name).sha256"
+          }
+          $macroflowSourceName = "MacroFlow-$env:TAG-source.tar.gz"
+          git -c core.autocrlf=false archive --format=tar.gz --output "release/$macroflowSourceName" $env:GITHUB_SHA
+          $macroflowSourceHash = (Get-FileHash -Algorithm SHA256 "release/$macroflowSourceName").Hash.ToLowerInvariant()
+          "$macroflowSourceHash  $macroflowSourceName" | Set-Content `
+            -Encoding ascii "release/$macroflowSourceName.sha256"
 
       - name: Upload GPL release artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -245,6 +442,29 @@ jobs:
           name: MacroFlow-gpl-release
           path: release/
 
+      - name: Preflight release tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.build-exe.outputs.version }}-build${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          require_absent() {
+            local endpoint="$1"
+            local description="$2"
+            local output
+            if output="$(gh api "repos/$GITHUB_REPOSITORY/$endpoint" 2>&1)"; then
+              echo "$description already exists; refusing to overwrite it" >&2
+              exit 1
+            fi
+            if [[ "$output" != *"HTTP 404"* ]]; then
+              echo "$output" >&2
+              exit 1
+            fi
+          }
+          require_absent "releases/tags/$TAG" "Release $TAG"
+          require_absent "git/ref/tags/$TAG" "Tag $TAG"
+
       - name: Create release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
         with:
@@ -260,8 +480,109 @@ jobs:
 
             Download the `-GPL.zip` bundle, which includes the executable, SPDX SBOM,
             third-party notices, license texts, PyInstaller inventory, and source instructions.
-            The pinned `python-build-standalone` corresponding-source archive and its SHA-256
-            checksum are attached as separate assets.
+            The exact reviewed runtime companion source archives (MacroFlow, PyQt6,
+            PyQt6-sip, Qt, CPython, OpenSSL, libffi, bzip2, XZ Utils,
+            PyInstaller, and the pinned
+            `python-build-standalone` source), plus a SHA-256 checksum sidecar for every
+            source asset, are attached.
             Verify the ZIP with the attached `.sha256` file.
           generate_release_notes: true
-          make_latest: true
+          draft: true
+          make_latest: false
+          overwrite_files: false
+          target_commitish: ${{ github.sha }}
+
+      - name: Verify draft release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.build-exe.outputs.version }}-build${{ github.run_number }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          resolve_tag_commit() {
+            local object_type object_sha
+            object_type="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type')"
+            object_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+            while [[ "$object_type" == "tag" ]]; do
+              object_type="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object.type')"
+              object_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object.sha')"
+            done
+            [[ "$object_type" == "commit" ]]
+            printf '%s\n' "$object_sha"
+          }
+          if [[ "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" != "true" ]]; then
+            echo "Release must remain draft until every asset is verified" >&2
+            exit 1
+          fi
+          test "$(resolve_tag_commit)" = "$EXPECTED_SHA"
+
+          remote_dir="$(mktemp -d)"
+          expected_names="$remote_dir/expected-assets.txt"
+          remote_names="$remote_dir/remote-assets.txt"
+          find release -maxdepth 1 -type f -printf '%f\n' | sort > "$expected_names"
+          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > "$remote_names"
+          diff -u "$expected_names" "$remote_names"
+
+          mkdir -p "$remote_dir/assets"
+          gh release download "$TAG" --dir "$remote_dir/assets"
+          while IFS= read -r -d '' local_asset; do
+            name="$(basename "$local_asset")"
+            cmp --silent "$local_asset" "$remote_dir/assets/$name"
+          done < <(find release -maxdepth 1 -type f -print0)
+
+          while IFS= read -r -d '' sidecar; do
+            (
+              cd "$remote_dir/assets"
+              sha256sum -c "$(basename "$sidecar")"
+            )
+          done < <(find "$remote_dir/assets" -maxdepth 1 -type f -name '*.sha256' -print0)
+
+      - name: Publish verified release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.build-exe.outputs.version }}-build${{ github.run_number }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          resolve_tag_commit() {
+            local object_type object_sha
+            object_type="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type')"
+            object_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+            while [[ "$object_type" == "tag" ]]; do
+              object_type="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object.type')"
+              object_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object.sha')"
+            done
+            [[ "$object_type" == "commit" ]]
+            printf '%s\n' "$object_sha"
+          }
+          test "$(resolve_tag_commit)" = "$EXPECTED_SHA"
+          gh release edit "$TAG" --draft=false --latest
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "false"
+          test "$(resolve_tag_commit)" = "$EXPECTED_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')" = "$TAG"
+
+          final_dir="$(mktemp -d)"
+          find release -maxdepth 1 -type f -printf '%f\n' | sort > "$final_dir/expected-assets.txt"
+          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > "$final_dir/public-assets.txt"
+          diff -u "$final_dir/expected-assets.txt" "$final_dir/public-assets.txt"
+
+          for attempt in 1 2 3 4 5; do
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+              --jq '.assets[] | [.name, .digest] | @tsv' > "$final_dir/digests.tsv"
+            if awk -F '\t' '
+              NF != 2 || $2 !~ /^sha256:[0-9a-f]{64}$/ { invalid = 1 }
+              END { exit invalid }
+            ' "$final_dir/digests.tsv"; then
+              break
+            fi
+            [[ "$attempt" -lt 5 ]] || { echo "Asset digest was not available" >&2; exit 1; }
+            sleep 2
+          done
+          while IFS= read -r -d '' local_asset; do
+            name="$(basename "$local_asset")"
+            expected="sha256:$(sha256sum "$local_asset" | cut -d ' ' -f 1)"
+            actual="$(awk -F '\t' -v name="$name" '$1 == name { print $2 }' "$final_dir/digests.tsv")"
+            test "$actual" = "$expected"
+          done < <(find release -maxdepth 1 -type f -print0)
