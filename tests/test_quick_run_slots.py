@@ -107,6 +107,25 @@ def test_corrupt_slot_settings_fail_closed_to_an_empty_slot() -> None:
     assert loaded[0] == QuickRunSlot(index=1, name="슬롯 1", macro_path=None)
 
 
+def test_oversized_persisted_speed_fails_closed_to_normal_speed() -> None:
+    settings = FakeSettings(
+        {
+            "quick_run/slot_1/name": "정상 슬롯",
+            "quick_run/slot_1/path": "/valid/macro.json",
+            "quick_run/slot_1/speed": 10**10_000,
+        }
+    )
+
+    loaded = load_quick_run_slots(settings)
+
+    assert loaded[0] == QuickRunSlot(
+        index=1,
+        name="정상 슬롯",
+        macro_path=Path("/valid/macro.json"),
+        speed=1.0,
+    )
+
+
 def test_failed_slot_sync_restores_the_complete_previous_snapshot(tmp_path: Path) -> None:
     class FailingFirstSync(FakeSettings):
         def __init__(self, values: dict[str, Any]) -> None:

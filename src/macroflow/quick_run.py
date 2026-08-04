@@ -141,7 +141,7 @@ def load_quick_run_slots(
             )
             if not math.isfinite(speed) or not QUICK_RUN_MIN_SPEED <= speed <= QUICK_RUN_MAX_SPEED:
                 speed = 1.0
-        except ValueError:
+        except (OverflowError, ValueError):
             speed = 1.0
         try:
             path = Path(raw_path) if raw_path else None
