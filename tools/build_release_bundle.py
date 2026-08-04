@@ -130,7 +130,7 @@ PACKAGE_DISPLAY_NAMES = {
     "pyinstaller": "PyInstaller",
 }
 LOCKED_PACKAGE_VERSIONS = {
-    "macroflow": "1.7.0",
+    "macroflow": "1.8.0",
     "pyqt6": "6.11.0",
     "pyqt6-qt6": "6.11.0",
     "pyqt6-sip": "13.11.1",

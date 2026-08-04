@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Protocol
 from macroflow.hotkey_config import hotkey_config_recovery_is_armed
 
 QUICK_RUN_SLOT_COUNT = 5
+QUICK_RUN_MIN_SPEED = 0.1
+QUICK_RUN_MAX_SPEED = 10.0
 
 
 class SettingsStore(Protocol):
@@ -25,6 +28,7 @@ class QuickRunSlot:
     index: int
     name: str
     macro_path: Path | None = None
+    speed: float = 1.0
 
     def __post_init__(self) -> None:
         if not 1 <= self.index <= QUICK_RUN_SLOT_COUNT:
@@ -35,8 +39,16 @@ class QuickRunSlot:
             if self.macro_path is not None
             else None
         )
+        if (
+            isinstance(self.speed, bool)
+            or not isinstance(self.speed, (int, float))
+            or not math.isfinite(self.speed)
+            or not QUICK_RUN_MIN_SPEED <= self.speed <= QUICK_RUN_MAX_SPEED
+        ):
+            raise ValueError("quick-run speed must be between 0.1x and 10.0x")
         object.__setattr__(self, "name", normalized_name)
         object.__setattr__(self, "macro_path", normalized_path)
+        object.__setattr__(self, "speed", float(self.speed))
 
     @property
     def action_id(self) -> str:
@@ -93,6 +105,17 @@ def _sync_succeeded(settings: object) -> bool:
     return int(str(status_value)) == 0
 
 
+def _readback_matches(key: str, actual: object, expected: object) -> bool:
+    if not key.endswith("/speed"):
+        return actual == expected
+    if isinstance(actual, bool) or not isinstance(actual, (str, int, float)):
+        return False
+    try:
+        return float(actual) == expected
+    except (OverflowError, ValueError):
+        return False
+
+
 def load_quick_run_slots(
     settings: Mapping[str, object] | SettingsStore,
     *,
@@ -108,9 +131,28 @@ def load_quick_run_slots(
         prefix = f"{recovery_prefix}/slot_{index}"
         raw_name = str(_value(settings, f"{prefix}/name", f"슬롯 {index}"))
         raw_path = str(_value(settings, f"{prefix}/path", ""))
+        raw_speed = _value(settings, f"{prefix}/speed", 1.0)
+        try:
+            speed = (
+                float(raw_speed)
+                if isinstance(raw_speed, (str, int, float))
+                and not isinstance(raw_speed, bool)
+                else 1.0
+            )
+            if not math.isfinite(speed) or not QUICK_RUN_MIN_SPEED <= speed <= QUICK_RUN_MAX_SPEED:
+                speed = 1.0
+        except (OverflowError, ValueError):
+            speed = 1.0
         try:
             path = Path(raw_path) if raw_path else None
-            slots.append(QuickRunSlot(index=index, name=raw_name, macro_path=path))
+            slots.append(
+                QuickRunSlot(
+                    index=index,
+                    name=raw_name,
+                    macro_path=path,
+                    speed=speed,
+                )
+            )
         except (OSError, RuntimeError, TypeError, ValueError):
             slots.append(QuickRunSlot(index=index, name=f"슬롯 {index}"))
     return tuple(slots)
@@ -132,6 +174,7 @@ def arm_quick_run_recovery(
         expected[f"{prefix}/path"] = (
             str(slot.macro_path) if slot.macro_path is not None else ""
         )
+        expected[f"{prefix}/speed"] = slot.speed
     try:
         for key, value in expected.items():
             _set_value(settings, key, value)
@@ -139,7 +182,10 @@ def arm_quick_run_recovery(
             return False
     except (OSError, RuntimeError, TypeError, ValueError):
         return False
-    return all(_value(settings, key, object()) == value for key, value in expected.items())
+    return all(
+        _readback_matches(key, _value(settings, key, object()), value)
+        for key, value in expected.items()
+    )
 
 
 def save_quick_run_slots(
@@ -154,7 +200,7 @@ def save_quick_run_slots(
     keys = tuple(
         f"quick_run/slot_{index}/{field}"
         for index in range(1, QUICK_RUN_SLOT_COUNT + 1)
-        for field in ("name", "path")
+        for field in ("name", "path", "speed")
     )
     snapshot = {key: _value(settings, key, missing) for key in keys}
     success = False
@@ -167,6 +213,7 @@ def save_quick_run_slots(
                 f"{prefix}/path",
                 str(slot.macro_path) if slot.macro_path is not None else "",
             )
+            _set_value(settings, f"{prefix}/speed", slot.speed)
         success = _sync_succeeded(settings)
         if success:
             success = load_quick_run_slots(settings, honor_recovery=False) == tuple(slots)

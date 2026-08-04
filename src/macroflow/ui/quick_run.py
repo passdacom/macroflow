@@ -7,6 +7,7 @@ from pathlib import Path
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFocusEvent, QKeySequence
 from PyQt6.QtWidgets import (
+    QDoubleSpinBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -43,7 +44,7 @@ class QuickRunWidget(QWidget):
     """Edit and invoke five explicit human-gated quick-run slots."""
 
     configuration_requested = pyqtSignal(object, object)
-    run_requested = pyqtSignal(int)
+    run_requested = pyqtSignal(object)
     hotkey_editing_changed = pyqtSignal(bool)
 
     def __init__(
@@ -55,6 +56,7 @@ class QuickRunWidget(QWidget):
         super().__init__(parent)
         self._name_edits: list[QLineEdit] = []
         self._path_edits: list[QLineEdit] = []
+        self._speed_spins: list[QDoubleSpinBox] = []
         self._hotkey_edits: list[QKeySequenceEdit] = []
         self._run_buttons: list[QPushButton] = []
 
@@ -100,22 +102,34 @@ class QuickRunWidget(QWidget):
             )
             grid.addWidget(clear, 1, 3)
 
-            grid.addWidget(QLabel("단축키:"), 2, 0)
+            grid.addWidget(QLabel("재생 속도:"), 2, 0)
+            speed_spin = QDoubleSpinBox(group)
+            speed_spin.setObjectName(f"quick-run-speed-{slot.index}")
+            speed_spin.setRange(0.1, 10.0)
+            speed_spin.setSingleStep(0.1)
+            speed_spin.setDecimals(1)
+            speed_spin.setSuffix("x")
+            speed_spin.setValue(slot.speed)
+            speed_spin.setToolTip("이 슬롯만 재생할 때 적용할 속도 배율")
+            grid.addWidget(speed_spin, 2, 1)
+
+            grid.addWidget(QLabel("단축키:"), 3, 0)
             hotkey_edit = _SafeKeySequenceEdit(
                 QKeySequence(hotkey_config.binding_for(slot.action_id)),
                 group,
             )
             hotkey_edit.setObjectName(f"quick-run-hotkey-{slot.index}")
             hotkey_edit.editing_changed.connect(self.hotkey_editing_changed)
-            grid.addWidget(hotkey_edit, 2, 1)
+            grid.addWidget(hotkey_edit, 3, 1)
             run = QPushButton(f"슬롯 {slot.index} 지금 실행", group)
             run.clicked.connect(
-                lambda _checked=False, index=slot.index: self.run_requested.emit(index)
+                lambda _checked=False, index=slot.index: self._request_run(index)
             )
-            grid.addWidget(run, 2, 2, 1, 2)
+            grid.addWidget(run, 3, 2, 1, 2)
 
             self._name_edits.append(name_edit)
             self._path_edits.append(path_edit)
+            self._speed_spins.append(speed_spin)
             self._hotkey_edits.append(hotkey_edit)
             self._run_buttons.append(run)
             slot_layout.addWidget(group)
@@ -146,18 +160,7 @@ class QuickRunWidget(QWidget):
 
     def _apply_changes(self) -> None:
         try:
-            slots = tuple(
-                QuickRunSlot(
-                    index=index,
-                    name=self._name_edits[index - 1].text(),
-                    macro_path=(
-                        Path(self._path_edits[index - 1].text().strip())
-                        if self._path_edits[index - 1].text().strip()
-                        else None
-                    ),
-                )
-                for index in range(1, 6)
-            )
+            slots = tuple(self._slot_from_inputs(index) for index in range(1, 6))
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             QMessageBox.warning(self, "빠른 실행 설정 오류", str(exc))
             return
@@ -168,6 +171,23 @@ class QuickRunWidget(QWidget):
             for slot in slots
         }
         self.configuration_requested.emit(slots, bindings)
+
+    def _slot_from_inputs(self, index: int) -> QuickRunSlot:
+        raw_path = self._path_edits[index - 1].text().strip()
+        return QuickRunSlot(
+            index=index,
+            name=self._name_edits[index - 1].text(),
+            macro_path=Path(raw_path) if raw_path else None,
+            speed=self._speed_spins[index - 1].value(),
+        )
+
+    def _request_run(self, index: int) -> None:
+        try:
+            slot = self._slot_from_inputs(index)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            QMessageBox.warning(self, "빠른 실행 설정 오류", str(exc))
+            return
+        self.run_requested.emit(slot)
 
     def set_configuration(
         self,
@@ -180,6 +200,7 @@ class QuickRunWidget(QWidget):
             self._path_edits[index].setText(
                 str(slot.macro_path) if slot.macro_path is not None else ""
             )
+            self._speed_spins[index].setValue(slot.speed)
             self._hotkey_edits[index].setKeySequence(
                 QKeySequence(hotkey_config.binding_for(slot.action_id))
             )

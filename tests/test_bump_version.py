@@ -31,6 +31,8 @@ def _write_version_sources(root: Path, version: str) -> None:
         f'[[package]]\nname = "macroflow"\nversion = "{version}"\n', encoding="utf-8"
     )
     (root / "tools/build_release_bundle.py").write_text(
+        'PACKAGE_LICENSES = {\n    "macroflow": "GPL-3.0-only",\n}\n'
+        'PACKAGE_DISPLAY_NAMES = {\n    "macroflow": "MacroFlow",\n}\n'
         f'LOCKED_PACKAGE_VERSIONS = {{\n    "macroflow": "{version}",\n}}\n',
         encoding="utf-8",
     )
@@ -46,7 +48,11 @@ def _read_declared_versions(root: Path) -> set[str]:
     ):
         text = (root / relative).read_text(encoding="utf-8")
         if relative == "tools/build_release_bundle.py":
-            declaration = next(line for line in text.splitlines() if '"macroflow"' in line)
+            lines = text.splitlines()
+            locked_index = lines.index("LOCKED_PACKAGE_VERSIONS = {")
+            declaration = next(
+                line for line in lines[locked_index + 1 :] if '"macroflow"' in line
+            )
         else:
             declaration = next(line for line in text.splitlines() if "version" in line)
         values.add(declaration.split('"')[-2])

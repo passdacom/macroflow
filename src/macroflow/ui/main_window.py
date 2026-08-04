@@ -222,7 +222,7 @@ class MainWindow(QMainWindow):
         self._quick_run.configuration_requested.connect(
             self._apply_quick_run_configuration
         )
-        self._quick_run.run_requested.connect(self._run_quick_slot)
+        self._quick_run.run_requested.connect(self._run_quick_slot_preview)
         self._quick_run.hotkey_editing_changed.connect(
             self._set_quick_run_hotkey_editing
         )
@@ -479,7 +479,7 @@ class MainWindow(QMainWindow):
         )
         self._act_save_fav.triggered.connect(self._save_and_add_to_favorites)
 
-        self._act_restore_prev = QAction("이전 매크로 복원", self)
+        self._act_restore_prev = QAction("이전 복원", self)
         self._act_restore_prev.setToolTip(
             "새 녹화를 시작하기 직전의 매크로를 복원합니다\n"
             "(실수로 F6을 눌러 기존 매크로가 사라졌을 때 사용)"
@@ -840,7 +840,14 @@ class MainWindow(QMainWindow):
     def _run_quick_slot(self, slot_index: int) -> None:
         if not 1 <= slot_index <= len(self._quick_run_slots):
             return
-        slot = self._quick_run_slots[slot_index - 1]
+        self._execute_quick_slot(self._quick_run_slots[slot_index - 1])
+
+    def _run_quick_slot_preview(self, slot: object) -> None:
+        """Run the values currently visible in the tab without persisting them."""
+        if isinstance(slot, QuickRunSlot):
+            self._execute_quick_slot(slot)
+
+    def _execute_quick_slot(self, slot: QuickRunSlot) -> None:
         if self._state != "idle" or self._sequencer.is_running():
             self._sb_state.setText(
                 f"{slot.name} 실행 안 함 — 다른 자동화가 실행 중입니다"
@@ -873,6 +880,7 @@ class MainWindow(QMainWindow):
             options=full_playback_options(1),
             playback_macro=macro,
             source_label=f"빠른 실행: {slot.name}",
+            forced_speed=slot.speed,
         )
 
     def _on_play_event(self, index: int) -> None:
@@ -1440,6 +1448,7 @@ class MainWindow(QMainWindow):
         *,
         playback_macro: MacroData | None = None,
         source_label: str = "",
+        forced_speed: float | None = None,
     ) -> None:
         macro = playback_macro if playback_macro is not None else self._macro
         if macro is None:
@@ -1447,7 +1456,11 @@ class MainWindow(QMainWindow):
 
         _speed_presets = [0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
         idx = self._speed_combo.currentIndex()
-        speed = self._custom_speed if idx == 6 else _speed_presets[idx]
+        speed = (
+            forced_speed
+            if forced_speed is not None
+            else self._custom_speed if idx == 6 else _speed_presets[idx]
+        )
         if options is None:
             if forced_range is not None:
                 options = range_playback_options(forced_range)

@@ -75,12 +75,14 @@ with TemporaryDirectory() as directory:
     widget.configuration_requested.connect(lambda slots, bindings: captured.append((slots, bindings)))
     widget._name_edits[0].setText("공통 전처리")
     widget._path_edits[0].setText(str(macro))
+    widget._speed_spins[0].setValue(2.5)
     widget._hotkey_edits[0].setKeySequence(QKeySequence("Ctrl+Shift+1"))
     widget._apply_changes()
     slots, bindings = captured[-1]
     assert len(slots) == 5
     assert slots[0].name == "공통 전처리"
     assert slots[0].macro_path == macro.resolve(strict=False)
+    assert slots[0].speed == 2.5
     assert bindings["quick_run.slot_1"] == "Ctrl+Shift+1"
     widget.close()
 """
@@ -248,16 +250,32 @@ with TemporaryDirectory() as directory:
     )
     window._macro = editor_macro
     window._current_file = Path(directory) / "editor.json"
-    slots = list(default_quick_run_slots())
-    slots[0] = QuickRunSlot(index=1, name="공통 전처리", macro_path=path)
-    window._quick_run_slots = tuple(slots)
-    with patch.object(window, "_start_playback") as start:
-        window._run_quick_slot(1)
+    window._quick_run._name_edits[0].setText("공통 전처리")
+    window._quick_run._path_edits[0].setText(str(path))
+    window._quick_run._speed_spins[0].setValue(2.5)
+    with patch.object(window, "_start_playback") as start, \
+         patch("macroflow.ui.main_window.QMessageBox.warning") as warning:
+        window._quick_run._run_buttons[0].click()
+    warning.assert_not_called()
     assert window._macro is editor_macro
     assert window._current_file.name == "editor.json"
     started = start.call_args.kwargs["playback_macro"]
     assert [event.id for event in started.events] == ["slot-wait"]
+    assert start.call_args.kwargs["forced_speed"] == 2.5
     assert start.call_args.kwargs["source_label"] == "빠른 실행: 공통 전처리"
+
+    slots = list(default_quick_run_slots())
+    slots[0] = QuickRunSlot(
+        index=1,
+        name="저장된 슬롯",
+        macro_path=path,
+        speed=3.0,
+    )
+    window._quick_run_slots = tuple(slots)
+    with patch.object(window, "_start_playback") as start:
+        window._run_quick_slot(1)
+    assert start.call_args.kwargs["forced_speed"] == 3.0
+    assert start.call_args.kwargs["source_label"] == "빠른 실행: 저장된 슬롯"
     window.close()
 """
     )
