@@ -37,7 +37,18 @@ class FakeSettings:
 def test_default_user_data_root_uses_roaming_appdata(tmp_path: Path) -> None:
     appdata = tmp_path / "Roaming"
 
-    assert default_user_data_root(environ={"APPDATA": str(appdata)}) == appdata / "MacroFlow"
+    assert default_user_data_root(environ={"APPDATA": str(appdata)}) == (
+        appdata / "MacroFlow" / "Data"
+    )
+
+
+def test_default_user_data_root_prefers_local_appdata(tmp_path: Path) -> None:
+    local = tmp_path / "Local"
+    roaming = tmp_path / "Roaming"
+
+    assert default_user_data_root(
+        environ={"LOCALAPPDATA": str(local), "APPDATA": str(roaming)}
+    ) == local / "MacroFlow" / "data"
 
 
 def test_non_frozen_application_keeps_development_data_in_working_directory(
@@ -244,6 +255,185 @@ def test_missing_configured_root_recovers_again_from_preserved_legacy_data(
     assert result.mode is UserDataMode.MIGRATED
     assert (target / "macros" / "업무.json").read_bytes() == legacy.read_bytes()
     assert legacy.exists()
+
+
+def test_favorites_index_conflict_is_kept_outside_active_favorites(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy_dir = executable_dir / "favorites"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "_index.json").write_text(
+        '{"version":1,"groups":[{"id":"legacy","name":"기존","items":["업무.json"]}]}',
+        encoding="utf-8",
+    )
+    (legacy_dir / "업무.json").write_text("{}", encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_favorites = target / "favorites"
+    target_favorites.mkdir(parents=True)
+    current_index = '{"version":1,"groups":[]}'
+    (target_favorites / "_index.json").write_text(current_index, encoding="utf-8")
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.MIGRATED
+    assert (target_favorites / "_index.json").read_text(encoding="utf-8") == current_index
+    assert not list(target_favorites.glob("_index.legacy-*.json"))
+    conflicts = list((target / "migration-conflicts").glob("favorites-index-legacy-*.json"))
+    assert len(conflicts) == 1
+    assert (target_favorites / "업무.json").exists()
+
+
+def test_partial_configured_migration_retries_instead_of_adopting_incomplete_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    executable_dir = tmp_path / "legacy-app"
+    macros = executable_dir / "macros"
+    macros.mkdir(parents=True)
+    (macros / "a.json").write_text('{"id":"a"}', encoding="utf-8")
+    (macros / "b.json").write_text('{"id":"b"}', encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    partial = target / "macros" / "a.json"
+    partial.parent.mkdir(parents=True)
+    partial.write_text('{"id":"a"}', encoding="utf-8")
+    settings = FakeSettings({DATA_ROOT_KEY: str(target)})
+    real_copy2 = shutil.copy2
+
+    def fail_second(source: Path, destination: Path) -> object:
+        if Path(source).name == "b.json":
+            raise OSError("injected second-file failure")
+        return real_copy2(source, destination)
+
+    monkeypatch.setattr("macroflow.user_data.shutil.copy2", fail_second)
+    first = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=tmp_path / "ignored",
+    )
+    assert first.mode is UserDataMode.LEGACY_FALLBACK
+    assert (target / "macros" / "a.json").exists()
+    assert not (target / "macros" / "b.json").exists()
+
+    monkeypatch.setattr("macroflow.user_data.shutil.copy2", real_copy2)
+    second = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=tmp_path / "ignored",
+    )
+
+    assert second.mode is UserDataMode.MIGRATED
+    assert (target / "macros" / "a.json").exists()
+    assert (target / "macros" / "b.json").exists()
+
+
+def test_new_legacy_delta_is_imported_but_deleted_canonical_file_is_not_resurrected(
+    tmp_path: Path,
+) -> None:
+    legacy_root = tmp_path / "legacy-app"
+    legacy_macros = legacy_root / "macros"
+    legacy_macros.mkdir(parents=True)
+    (legacy_macros / "a.json").write_text('{"id":"a"}', encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    settings = FakeSettings()
+
+    first = prepare_user_data(
+        executable_dir=legacy_root,
+        settings=settings,
+        target_root=target,
+    )
+    assert first.mode is UserDataMode.MIGRATED
+
+    (legacy_macros / "b.json").write_text('{"id":"b"}', encoding="utf-8")
+    second = prepare_user_data(
+        executable_dir=tmp_path / "new-app-location",
+        settings=settings,
+        target_root=tmp_path / "ignored",
+    )
+    assert second.mode is UserDataMode.MIGRATED
+    assert (target / "macros" / "b.json").exists()
+
+    (target / "macros" / "a.json").unlink()
+    third = prepare_user_data(
+        executable_dir=tmp_path / "newer-app-location",
+        settings=settings,
+        target_root=tmp_path / "ignored-again",
+    )
+    assert third.mode is UserDataMode.STABLE
+    assert not (target / "macros" / "a.json").exists()
+
+
+def test_symlinked_legacy_directory_fails_closed_without_copying_external_data(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    executable_dir.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.json").write_text("{}", encoding="utf-8")
+    try:
+        (executable_dir / "macros").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this platform")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.LEGACY_FALLBACK
+    assert not (target / "macros" / "secret.json").exists()
+
+
+def test_symlinked_destination_directory_fails_closed_without_external_write(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    macro = executable_dir / "macros" / "safe.json"
+    macro.parent.mkdir(parents=True)
+    macro.write_text("{}", encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (target / "macros").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this platform")
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.LEGACY_FALLBACK
+    assert not (outside / "safe.json").exists()
+    assert macro.exists()
+
+
+def test_unavailable_stable_root_does_not_crash_fresh_application(tmp_path: Path) -> None:
+    executable_dir = tmp_path / "app"
+    executable_dir.mkdir()
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory", encoding="utf-8")
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=blocker / "MacroFlow" / "Data",
+    )
+
+    assert result.mode is UserDataMode.LEGACY_FALLBACK
+    assert result.root == executable_dir.resolve()
+    assert result.error
 
 
 def test_copy_failure_falls_back_to_legacy_without_changing_settings(

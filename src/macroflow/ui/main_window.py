@@ -173,9 +173,13 @@ class MainWindow(QMainWindow):
 
         # ── 하위 위젯 ─────────────────────────────────────────────────────────
         self._editor = EventEditorWidget()
-        self._sequencer = MacroSequencerWidget()
+        self._sequencer = MacroSequencerWidget(default_dir=self._user_data.macros_dir)
         self._favorites = FavoritesWidget()
-        self._quick_run = QuickRunWidget(self._quick_run_slots, self._hotkey_config)
+        self._quick_run = QuickRunWidget(
+            self._quick_run_slots,
+            self._hotkey_config,
+            default_dir=self._user_data.macros_dir,
+        )
         self._overlay = OverlayWindow()
 
         # ── UI 구성 ───────────────────────────────────────────────────────────
@@ -2342,15 +2346,8 @@ class MainWindow(QMainWindow):
         return True
 
     def _get_default_dir(self) -> str:
-        """파일 다이얼로그 초기 폴더를 반환한다.
-
-        PyInstaller 패키징 상태이면 exe 파일이 있는 폴더,
-        개발 환경이면 현재 작업 디렉토리를 반환한다.
-        """
-        if getattr(sys, "frozen", False):
-            # PyInstaller 패키징 상태: sys.executable = ...MacroFlow.exe
-            return str(Path(sys.executable).parent)
-        return str(Path.cwd())
+        """매크로 파일 다이얼로그의 안정적인 초기 폴더를 반환한다."""
+        return str(self._user_data.macros_dir)
 
     def _open_file(self) -> None:
         if self._sequence_file_mutation_blocked():

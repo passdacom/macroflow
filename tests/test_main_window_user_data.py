@@ -47,10 +47,13 @@ def test_frozen_main_window_migrates_and_uses_stable_user_data(tmp_path: Path) -
         app = QApplication.instance() or QApplication([])
         MainWindow._restore_settings = lambda self: None
         window = MainWindow()
-        expected = Path({str(appdata / 'MacroFlow')!r}).resolve()
+        expected = Path({str(appdata / 'MacroFlow' / 'Data')!r}).resolve()
         assert window._get_macros_dir() == expected / "macros", window._get_macros_dir()
         assert window._get_favorites_dir() == expected / "favorites", window._get_favorites_dir()
         assert window._favorites._favorites_dir == expected / "favorites", window._favorites._favorites_dir
+        assert window._get_default_dir() == str(expected / "macros")
+        assert window._sequencer._get_default_dir() == str(expected / "macros")
+        assert window._quick_run._default_dir == expected / "macros"
         assert (expected / "macros" / "업무.json").exists(), list(expected.rglob("*"))
         assert (expected / "favorites" / "즐겨찾기.json").exists(), list(expected.rglob("*"))
         assert (Path({str(legacy)!r}) / "macros" / "업무.json").exists()

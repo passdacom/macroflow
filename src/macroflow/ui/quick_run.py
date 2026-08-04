@@ -52,8 +52,11 @@ class QuickRunWidget(QWidget):
         slots: tuple[QuickRunSlot, ...],
         hotkey_config: HotkeyConfig,
         parent: QWidget | None = None,
+        *,
+        default_dir: Path | None = None,
     ) -> None:
         super().__init__(parent)
+        self._default_dir = Path.cwd() if default_dir is None else default_dir
         self._name_edits: list[QLineEdit] = []
         self._path_edits: list[QLineEdit] = []
         self._speed_spins: list[QDoubleSpinBox] = []
@@ -148,7 +151,7 @@ class QuickRunWidget(QWidget):
 
     def _choose_macro(self, index: int) -> None:
         current = self._path_edits[index - 1].text().strip()
-        start_dir = str(Path(current).parent) if current else str(Path.cwd())
+        start_dir = str(Path(current).parent) if current else str(self._default_dir)
         path, _ = QFileDialog.getOpenFileName(
             self,
             f"빠른 실행 슬롯 {index} 매크로 선택",
