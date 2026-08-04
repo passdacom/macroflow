@@ -322,6 +322,87 @@ def test_favorites_index_conflict_is_merged_without_exposing_index_as_macro(
     assert imported[0].read_text(encoding="utf-8") == "{}"
 
 
+def test_malformed_current_favorites_index_is_backed_up_and_replaced(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy_favorites = executable_dir / "favorites"
+    legacy_favorites.mkdir(parents=True)
+    (legacy_favorites / "업무.json").write_text("{}", encoding="utf-8")
+    (legacy_favorites / "_index.json").write_text(
+        '{"version":1,"groups":[{"id":"legacy","name":"기존","items":["업무.json"]}]}',
+        encoding="utf-8",
+    )
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_favorites = target / "favorites"
+    target_favorites.mkdir(parents=True)
+    (target_favorites / "_index.json").write_text("{malformed", encoding="utf-8")
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.MIGRATED
+    assert result.error is not None
+    merged = json.loads((target_favorites / "_index.json").read_text(encoding="utf-8"))
+    assert merged["groups"][0]["name"] == "기존"
+    assert len(list((target / "migration-conflicts").glob("favorites-index-*.json"))) == 2
+
+
+def test_malformed_legacy_favorites_index_is_archived_with_warning(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy_favorites = executable_dir / "favorites"
+    legacy_favorites.mkdir(parents=True)
+    (legacy_favorites / "업무.json").write_text("{}", encoding="utf-8")
+    (legacy_favorites / "_index.json").write_text("{malformed", encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_favorites = target / "favorites"
+    target_favorites.mkdir(parents=True)
+    valid_current = '{"version":1,"groups":[{"id":"current","name":"현재","items":[]}]}'
+    (target_favorites / "_index.json").write_text(valid_current, encoding="utf-8")
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.MIGRATED
+    assert result.error is not None
+    assert json.loads((target_favorites / "_index.json").read_text(encoding="utf-8"))[
+        "groups"
+    ][0]["name"] == "현재"
+    assert len(list((target / "migration-conflicts").glob("favorites-index-*.json"))) == 2
+
+
+def test_malformed_legacy_index_without_current_index_is_archived(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy_favorites = executable_dir / "favorites"
+    legacy_favorites.mkdir(parents=True)
+    (legacy_favorites / "업무.json").write_text("{}", encoding="utf-8")
+    (legacy_favorites / "_index.json").write_text("{malformed", encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.MIGRATED
+    assert result.error is not None
+    index = json.loads((target / "favorites" / "_index.json").read_text(encoding="utf-8"))
+    assert index["groups"] == []
+    assert len(list((target / "migration-conflicts").glob("favorites-index-*.json"))) == 1
+    assert (target / "favorites" / "업무.json").exists()
+
+
 def test_partial_configured_migration_retries_instead_of_adopting_incomplete_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -76,6 +76,7 @@ class _CopyResult:
     copied_files: int
     path_map: dict[Path, Path]
     source_manifest: dict[str, str]
+    warning: str | None = None
 
 
 def default_user_data_root(
@@ -278,7 +279,7 @@ def _merge_favorites_index(
     target_index: Path,
     destination_root: Path,
     path_map: Mapping[Path, Path],
-) -> bool:
+) -> tuple[bool, str | None]:
     """Merge group metadata while preserving both pre-merge index documents."""
     source_data = _read_favorites_index(source_index)
     target_data = _read_favorites_index(target_index)
@@ -290,13 +291,22 @@ def _merge_favorites_index(
         conflict_dir / f"favorites-index-legacy-{source_hash[:12]}.json",
         source_hash,
     )
-    if source_data is None or target_data is None:
-        return False
     _exclusive_verified_copy(
         target_index,
         conflict_dir / f"favorites-index-current-{target_hash[:12]}.json",
         target_hash,
     )
+    if source_data is None:
+        if target_data is None:
+            _replace_json_with_readback(
+                target_index,
+                {"version": 1, "groups": []},
+            )
+        return False, "legacy favorites index is malformed; both preimages were archived"
+    warning = None
+    if target_data is None:
+        target_data = {"version": source_data.get("version", 1), "groups": []}
+        warning = "current favorites index was malformed and was replaced after backup"
 
     merged = deepcopy(target_data)
     merged_groups = merged["groups"]
@@ -336,7 +346,7 @@ def _merge_favorites_index(
                 existing_items.append(item_name)
 
     _replace_json_with_readback(target_index, merged)
-    return True
+    return True, warning
 
 
 def _copy_and_verify_tree(
@@ -351,6 +361,7 @@ def _copy_and_verify_tree(
     file_count = 0
     entry_count = 0
     total_bytes = 0
+    warnings: list[str] = []
 
     _assert_safe_directory(destination, role="destination root")
     for directory_name in ("macros", "favorites"):
@@ -402,6 +413,25 @@ def _copy_and_verify_tree(
             if previous.get(manifest_key) == source_hash:
                 continue
 
+            is_favorites_index = (
+                directory_name == "favorites" and relative.as_posix() == "_index.json"
+            )
+            if is_favorites_index and not target.exists() and _read_favorites_index(item) is None:
+                _exclusive_verified_copy(
+                    item,
+                    destination / "migration-conflicts" / (
+                        f"favorites-index-legacy-{source_hash[:12]}.json"
+                    ),
+                    source_hash,
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _replace_json_with_readback(target, {"version": 1, "groups": []})
+                warnings.append(
+                    "legacy favorites index is malformed; its preimage was archived"
+                )
+                copied += 1
+                continue
+
             if target.exists():
                 if _is_link_or_reparse(target):
                     raise OSError(f"destination file cannot be a link or junction: {target}")
@@ -409,7 +439,12 @@ def _copy_and_verify_tree(
                     path_map[item.resolve(strict=False)] = target.resolve(strict=False)
                     continue
                 if directory_name == "favorites" and relative.as_posix() == "_index.json":
-                    if _merge_favorites_index(item, target, destination, path_map):
+                    merged, warning = _merge_favorites_index(
+                        item, target, destination, path_map
+                    )
+                    if warning is not None:
+                        warnings.append(warning)
+                    if merged:
                         path_map[item.resolve(strict=False)] = target.resolve(strict=False)
                         copied += 1
                     continue
@@ -429,7 +464,12 @@ def _copy_and_verify_tree(
             path_map[item.resolve(strict=False)] = target.resolve(strict=False)
             copied += 1
 
-    return _CopyResult(copied, path_map, source_manifest)
+    return _CopyResult(
+        copied,
+        path_map,
+        source_manifest,
+        warning="; ".join(warnings) if warnings else None,
+    )
 
 
 def _remapped_path(
@@ -653,7 +693,12 @@ def prepare_user_data(
                 source: (stable_root / destination.relative_to(staging)).resolve(strict=False)
                 for source, destination in copied.path_map.items()
             }
-            copied = _CopyResult(copied.copied_files, path_map, copied.source_manifest)
+            copied = _CopyResult(
+                copied.copied_files,
+                path_map,
+                copied.source_manifest,
+                copied.warning,
+            )
         else:
             _ensure_data_directories(stable_root)
             copied = _copy_and_verify_tree(source_root, stable_root, effective_manifest)
@@ -687,6 +732,7 @@ def prepare_user_data(
             stable_root,
             UserDataMode.MIGRATED,
             copied_files=copied.copied_files,
+            error=copied.warning,
         )
     except _UnsafeLegacySource as exc:
         try:

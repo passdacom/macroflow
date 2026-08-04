@@ -200,14 +200,17 @@ class MainWindow(QMainWindow):
 
         self._setup_statusbar()
         if self._user_data.mode is UserDataMode.MIGRATED:
+            suffix = " — 일부 즐겨찾기 index 경고 확인 필요" if self._user_data.error else ""
             self._sb_state.setText(
-                f"기존 사용자 데이터 {self._user_data.copied_files}개 이전 완료"
+                f"기존 사용자 데이터 {self._user_data.copied_files}개 이전 완료{suffix}"
             )
             logger.info(
                 "기존 사용자 데이터를 안전한 경로로 복사했습니다: %s (%d files)",
                 self._user_data.root,
                 self._user_data.copied_files,
             )
+            if self._user_data.error:
+                logger.warning("사용자 데이터 이전 경고: %s", self._user_data.error)
         elif self._user_data.mode is UserDataMode.LEGACY_FALLBACK:
             self._sb_state.setText("사용자 데이터 이전 실패 — 기존 폴더를 계속 사용합니다")
             logger.error(
