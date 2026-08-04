@@ -814,13 +814,15 @@ def test_bundle_builder_rejects_unreviewed_qt_module(tmp_path: Path) -> None:
     assert mixed_case_result.returncode == 0, mixed_case_result.stderr
     mixed_case.unlink()
 
-    qt_bin = app_dir / "_internal" / "PyQt6" / "Qt6" / "bin"
-    reviewed_network = qt_bin / "Qt6Network.dll"
-    kelvin_collision = qt_bin / "Qt6NetworK.dll"
-    reviewed_network.write_bytes(b"reviewed")
-    kelvin_collision.write_bytes(b"unreviewed Unicode collision")
-    observed_names = {path.name for path in qt_bin.iterdir()}
-    if kelvin_collision.name in observed_names:
+    # The simultaneous collision probe requires a case-sensitive filesystem.
+    # Windows is already covered above by the standalone Kelvin-sign API-set
+    # payload, while NTFS may alias or enumerate the two names inconsistently.
+    if sys.platform != "win32":
+        qt_bin = app_dir / "_internal" / "PyQt6" / "Qt6" / "bin"
+        reviewed_network = qt_bin / "Qt6Network.dll"
+        kelvin_collision = qt_bin / "Qt6NetworK.dll"
+        reviewed_network.write_bytes(b"reviewed")
+        kelvin_collision.write_bytes(b"unreviewed Unicode collision")
         kelvin_output = tmp_path / "kelvin-release"
         kelvin_args = list(result.args)
         kelvin_args[kelvin_args.index("--output-dir") + 1] = str(kelvin_output)
@@ -834,13 +836,8 @@ def test_bundle_builder_rejects_unreviewed_qt_module(tmp_path: Path) -> None:
         assert kelvin_result.returncode != 0
         assert "non-ASCII path" in kelvin_result.stderr
         assert not kelvin_output.exists()
-        kelvin_collision.unlink()
-    else:
-        # NTFS treats Kelvin-sign K and ASCII K as the same case-insensitive
-        # filename, so no second payload exists to inspect or allowlist.
-        assert reviewed_network.samefile(kelvin_collision)
-    if reviewed_network.exists():
         reviewed_network.unlink()
+        kelvin_collision.unlink()
 
 
 def test_windows_python_download_manifest_is_exact_and_pinned() -> None:
