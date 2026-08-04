@@ -71,6 +71,30 @@ def test_non_frozen_application_keeps_development_data_in_working_directory(
     assert DATA_ROOT_KEY not in settings.values
 
 
+def test_explicit_portable_marker_keeps_data_beside_executable(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "portable"
+    executable_dir.mkdir()
+    (executable_dir / "portable.mode").write_text("", encoding="utf-8")
+    macro = executable_dir / "macros" / "portable.json"
+    macro.parent.mkdir()
+    macro.write_text("{}", encoding="utf-8")
+    settings = FakeSettings()
+
+    result = prepare_application_user_data(
+        settings=settings,
+        frozen=True,
+        executable=executable_dir / "MacroFlow.exe",
+        target_root=tmp_path / "profile" / "MacroFlow" / "Data",
+    )
+
+    assert result.mode is UserDataMode.STABLE
+    assert result.root == executable_dir
+    assert (result.macros_dir / "portable.json").exists()
+    assert DATA_ROOT_KEY not in settings.values
+
+
 def test_frozen_application_migrates_from_executable_directory(
     tmp_path: Path,
 ) -> None:
@@ -378,6 +402,32 @@ def test_new_legacy_delta_is_imported_but_deleted_canonical_file_is_not_resurrec
     assert not (target / "macros" / "a.json").exists()
 
 
+def test_stable_fast_path_repairs_legacy_qsettings_paths(tmp_path: Path) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy = executable_dir / "macros" / "a.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("{}", encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    settings = FakeSettings({"last_file": str(legacy)})
+
+    first = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=target,
+    )
+    assert first.mode is UserDataMode.MIGRATED
+    settings.setValue("last_file", str(legacy))
+
+    second = prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=tmp_path / "ignored",
+    )
+
+    assert second.mode is UserDataMode.STABLE
+    assert settings.value("last_file") == str(target / "macros" / "a.json")
+
+
 def test_symlinked_legacy_directory_fails_closed_without_copying_external_data(
     tmp_path: Path,
 ) -> None:
@@ -403,6 +453,57 @@ def test_symlinked_legacy_directory_fails_closed_without_copying_external_data(
     assert result.error is not None
     assert "link or junction" in result.error
     assert not (target / "macros" / "secret.json").exists()
+
+
+def test_symlinked_legacy_root_is_not_resolved_into_a_trusted_source(
+    tmp_path: Path,
+) -> None:
+    real_legacy = tmp_path / "real-legacy"
+    macro = real_legacy / "macros" / "secret.json"
+    macro.parent.mkdir(parents=True)
+    macro.write_text("{}", encoding="utf-8")
+    linked_legacy = tmp_path / "linked-legacy"
+    try:
+        linked_legacy.symlink_to(real_legacy, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this platform")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+
+    result = prepare_user_data(
+        executable_dir=linked_legacy,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.STABLE
+    assert result.error is not None
+    assert not (target / "macros" / "secret.json").exists()
+
+
+def test_symlinked_stable_root_is_not_resolved_and_written_through(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    macro = executable_dir / "macros" / "safe.json"
+    macro.parent.mkdir(parents=True)
+    macro.write_text("{}", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked_target = tmp_path / "linked-profile"
+    try:
+        linked_target.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this platform")
+
+    result = prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=linked_target,
+    )
+
+    assert result.mode is UserDataMode.LEGACY_FALLBACK
+    assert not (outside / "macros" / "safe.json").exists()
+    assert macro.exists()
 
 
 def test_symlinked_destination_directory_fails_closed_without_external_write(

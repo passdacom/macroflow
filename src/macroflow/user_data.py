@@ -12,6 +12,7 @@ from collections.abc import Mapping, MutableMapping
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import chain
 from pathlib import Path
 from typing import Protocol
 
@@ -160,6 +161,19 @@ def _is_link_or_reparse(path: Path) -> bool:
     except OSError:
         return False
     return bool(attributes & _REPARSE_POINT)
+
+
+def _absolute_path(path: Path) -> Path:
+    """Make a path absolute without erasing symlink/reparse identity."""
+    return Path(os.path.abspath(path.expanduser()))
+
+
+def _assert_no_reparse_ancestors(path: Path, *, role: str) -> None:
+    for candidate in (path, *path.parents):
+        if _is_link_or_reparse(candidate):
+            raise OSError(
+                f"{role} path cannot contain a link or junction: {candidate}"
+            )
 
 
 def _assert_safe_directory(path: Path, *, role: str) -> None:
@@ -335,6 +349,7 @@ def _copy_and_verify_tree(
     source_manifest: dict[str, str] = {}
     previous = {} if known_manifest is None else known_manifest
     file_count = 0
+    entry_count = 0
     total_bytes = 0
 
     _assert_safe_directory(destination, role="destination root")
@@ -353,14 +368,15 @@ def _copy_and_verify_tree(
         if not source_dir.exists():
             continue
 
-        items = sorted(
-            source_dir.rglob("*"),
-            key=lambda item: (
-                item.is_file() and item.name == "_index.json",
-                item.as_posix(),
-            ),
+        index_item = source_dir / "_index.json"
+        regular_items = (
+            item for item in source_dir.rglob("*") if item != index_item
         )
-        for item in items:
+        deferred_index = (index_item,) if index_item.exists() else ()
+        for item in chain(regular_items, deferred_index):
+            entry_count += 1
+            if entry_count > _MAX_FILES:
+                raise OSError("legacy user data exceeds the safe migration limits")
             if _is_link_or_reparse(item):
                 raise _UnsafeLegacySource(
                     f"legacy user data contains an unsupported link: {item}"
@@ -520,9 +536,17 @@ def _legacy_source(
 ) -> Path | None:
     stored = _value(settings, _LEGACY_ROOT_KEY, "")
     if isinstance(stored, str) and stored:
-        candidate = Path(stored).expanduser().resolve(strict=False)
+        candidate = _absolute_path(Path(stored))
+        try:
+            _assert_no_reparse_ancestors(candidate, role="legacy source")
+        except OSError as exc:
+            raise _UnsafeLegacySource(str(exc)) from exc
         if _legacy_data_exists(candidate):
             return candidate
+    try:
+        _assert_no_reparse_ancestors(executable_root, role="legacy source")
+    except OSError as exc:
+        raise _UnsafeLegacySource(str(exc)) from exc
     return executable_root if _legacy_data_exists(executable_root) else None
 
 
@@ -559,8 +583,18 @@ def prepare_application_user_data(
         return UserDataPreparation(development_root, UserDataMode.STABLE)
     if executable is None:
         raise ValueError("executable is required for a frozen application")
+    executable_root = _absolute_path(executable.parent)
+    portable_marker = executable_root / "portable.mode"
+    if portable_marker.is_file() and not _is_link_or_reparse(portable_marker):
+        try:
+            _assert_no_reparse_ancestors(executable_root, role="portable data")
+            _ensure_data_directories(executable_root)
+        except OSError:
+            pass
+        else:
+            return UserDataPreparation(executable_root, UserDataMode.STABLE)
     return prepare_user_data(
-        executable_dir=executable.parent,
+        executable_dir=executable_root,
         settings=settings,
         target_root=target_root,
     )
@@ -574,18 +608,20 @@ def prepare_user_data(
 ) -> UserDataPreparation:
     """Resolve stable paths and import legacy deltas without deleting their source."""
 
-    executable_root = executable_dir.expanduser().resolve(strict=False)
+    executable_root = _absolute_path(executable_dir)
     configured = _value(settings, DATA_ROOT_KEY, "")
-    stable_root = (
+    stable_root = _absolute_path(
         Path(configured)
         if isinstance(configured, str) and configured
         else default_user_data_root() if target_root is None else target_root
-    ).expanduser().resolve(strict=False)
-    source_root = _legacy_source(settings, executable_root)
+    )
+    source_root: Path | None = None
     known_manifest = _parse_manifest(_value(settings, _LEGACY_MANIFEST_KEY, ""))
-    stable_existed = stable_root.exists()
 
     try:
+        _assert_no_reparse_ancestors(stable_root, role="stable user-data")
+        source_root = _legacy_source(settings, executable_root)
+        stable_existed = stable_root.exists()
         if source_root is None:
             _ensure_data_directories(stable_root)
             persisted = _persist_root_and_remap_paths(
@@ -624,6 +660,18 @@ def prepare_user_data(
 
         manifest_changed = copied.source_manifest != known_manifest
         if not copied.copied_files and not manifest_changed and configured:
+            persisted = _persist_root_and_remap_paths(
+                settings,
+                old_root=source_root,
+                new_root=stable_root,
+                path_map=copied.path_map,
+                source_manifest=copied.source_manifest,
+            )
+            if not persisted:
+                return _fallback(
+                    source_root,
+                    "user-data settings could not be repaired",
+                )
             return UserDataPreparation(stable_root, UserDataMode.STABLE)
 
         persisted = _persist_root_and_remap_paths(

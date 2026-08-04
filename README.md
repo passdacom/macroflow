@@ -22,6 +22,8 @@ MacroFlow는 Windows에서 마우스·키보드 동작을 녹화하고 재생하
 
 Windows 배포본은 매크로와 즐겨찾기를 버전별 실행 폴더가 아니라 `%LOCALAPPDATA%\MacroFlow\data\` 아래에 보관합니다. 따라서 새 버전을 다른 폴더에 압축 해제하거나 설치해도 같은 사용자 데이터를 불러옵니다. `LOCALAPPDATA`가 없는 제한된 환경에서만 `%APPDATA%\MacroFlow\Data\`를 사용합니다.
 
+완전 portable 저장이 필요한 경우에만 `MacroFlow.exe` 옆에 빈 `portable.mode` 파일을 만드십시오. 이 명시적 모드에서는 EXE 옆 `macros/`, `favorites/`를 계속 사용하며 AppData migration을 수행하지 않습니다.
+
 이전 버전의 `MacroFlow.exe` 옆에 `macros/` 또는 `favorites/`가 있으면 새 버전의 첫 실행에서 다음과 같이 원본 보존형 migration을 수행합니다.
 
 1. 기존 파일을 새 사용자 데이터 폴더로 복사합니다. 기존 폴더의 원본은 삭제하거나 이동하지 않습니다.

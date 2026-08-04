@@ -74,6 +74,21 @@ def test_frozen_main_window_migrates_and_uses_stable_user_data(tmp_path: Path) -
             window._open_user_data_dir()
         assert Path(opened.call_args.args[0].toLocalFile()) == expected
         window.close()
+
+        # A later run must repair a split state even when the manifest has no delta.
+        persisted.setValue("last_file", str(Path({str(macro)!r})))
+        persisted.sync()
+        repair_settings = QSettings("MacroFlow", "MacroFlow")
+        from macroflow.user_data import prepare_application_user_data
+        repaired = prepare_application_user_data(
+            settings=repair_settings,
+            frozen=True,
+            executable=Path({str(legacy / 'MacroFlow.exe')!r}),
+        )
+        assert repaired.root == expected
+        durable_readback = QSettings("MacroFlow", "MacroFlow")
+        durable_readback.sync()
+        assert Path(str(durable_readback.value("last_file"))) == expected / "macros" / "업무.json"
         """
     )
     env = os.environ.copy()
