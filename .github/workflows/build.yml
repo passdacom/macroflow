@@ -500,34 +500,32 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          resolve_tag_commit() {
-            local object_type object_sha
-            object_type="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type')"
-            object_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
-            while [[ "$object_type" == "tag" ]]; do
-              object_type="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object.type')"
-              object_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$object_sha" --jq '.object.sha')"
-            done
-            [[ "$object_type" == "commit" ]]
-            printf '%s\n' "$object_sha"
-          }
-          if [[ "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" != "true" ]]; then
-            echo "Release must remain draft until every asset is verified" >&2
-            exit 1
-          fi
-          test "$(resolve_tag_commit)" = "$EXPECTED_SHA"
-
           remote_dir="$(mktemp -d)"
+          releases_json="$remote_dir/releases.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$releases_json"
+          release_count="$(jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag)] | length' "$releases_json")"
+          test "$release_count" = "1"
+          release_id="$(jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id' "$releases_json")"
+          release_draft="$(jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .draft' "$releases_json")"
+          release_target="$(jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .target_commitish' "$releases_json")"
+          test "$release_draft" = "true"
+          test "$release_target" = "$EXPECTED_SHA"
+
           expected_names="$remote_dir/expected-assets.txt"
           remote_names="$remote_dir/remote-assets.txt"
+          assets_json="$remote_dir/assets.json"
           find release -maxdepth 1 -type f -printf '%f\n' | sort > "$expected_names"
-          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > "$remote_names"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" > "$assets_json"
+          jq -r '.[].name' "$assets_json" | sort > "$remote_names"
           diff -u "$expected_names" "$remote_names"
 
           mkdir -p "$remote_dir/assets"
-          gh release download "$TAG" --dir "$remote_dir/assets"
           while IFS= read -r -d '' local_asset; do
             name="$(basename "$local_asset")"
+            asset_id="$(jq -r --arg name "$name" '[.[] | select(.name == $name) | .id] | if length == 1 then .[0] else empty end' "$assets_json")"
+            test -n "$asset_id"
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$remote_dir/assets/$name"
             cmp --silent "$local_asset" "$remote_dir/assets/$name"
           done < <(find release -maxdepth 1 -type f -print0)
 
@@ -557,15 +555,38 @@ jobs:
             [[ "$object_type" == "commit" ]]
             printf '%s\n' "$object_sha"
           }
-          test "$(resolve_tag_commit)" = "$EXPECTED_SHA"
-          gh release edit "$TAG" --draft=false --latest
-          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "false"
-          test "$(resolve_tag_commit)" = "$EXPECTED_SHA"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')" = "$TAG"
+          publish_dir="$(mktemp -d)"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$publish_dir/releases.json"
+          release_count="$(jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag)] | length' "$publish_dir/releases.json")"
+          test "$release_count" = "1"
+          release_id="$(jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id' "$publish_dir/releases.json")"
+          release_draft="$(jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .draft' "$publish_dir/releases.json")"
+          release_target="$(jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .target_commitish' "$publish_dir/releases.json")"
+          test "$release_draft" = "true"
+          test "$release_target" = "$EXPECTED_SHA"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            -F draft=false -f make_latest=true > "$publish_dir/published.json"
+          test "$(jq -r '.draft' "$publish_dir/published.json")" = "false"
+          test "$(jq -r '.tag_name' "$publish_dir/published.json")" = "$TAG"
+
+          for attempt in 1 2 3 4 5; do
+            if actual_sha="$(resolve_tag_commit 2>/dev/null)" && [[ "$actual_sha" == "$EXPECTED_SHA" ]]; then
+              break
+            fi
+            [[ "$attempt" -lt 5 ]] || { echo "Published tag did not resolve to expected SHA" >&2; exit 1; }
+            sleep 2
+          done
+          for attempt in 1 2 3 4 5; do
+            if [[ "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')" == "$TAG" ]]; then
+              break
+            fi
+            [[ "$attempt" -lt 5 ]] || { echo "Published release did not become latest" >&2; exit 1; }
+            sleep 2
+          done
 
           final_dir="$(mktemp -d)"
           find release -maxdepth 1 -type f -printf '%f\n' | sort > "$final_dir/expected-assets.txt"
-          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > "$final_dir/public-assets.txt"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" --jq '.[].name' | sort > "$final_dir/public-assets.txt"
           diff -u "$final_dir/expected-assets.txt" "$final_dir/public-assets.txt"
 
           for attempt in 1 2 3 4 5; do
