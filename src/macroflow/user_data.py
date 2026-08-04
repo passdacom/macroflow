@@ -369,14 +369,19 @@ def _existing_import_destination(target: Path, source_hash: str) -> Path | None:
         _assert_safe_file(target, role="destination file")
         if _sha256(target) == source_hash:
             return target
-    for index in range(1, 1001):
-        candidate = _conflict_candidate(target, source_hash, index)
-        if not candidate.exists():
-            return None
+    prefix = f"{target.stem}.legacy-{source_hash[:12]}"
+    for candidate in target.parent.iterdir():
+        if candidate.suffix != target.suffix:
+            continue
+        candidate_stem = candidate.stem
+        if candidate_stem != prefix:
+            counter = candidate_stem.removeprefix(f"{prefix}-")
+            if candidate_stem == counter or not counter.isdigit():
+                continue
         _assert_safe_file(candidate, role="destination conflict file")
         if _sha256(candidate) == source_hash:
             return candidate
-    raise OSError(f"too many legacy user-data conflict files: {target}")
+    return None
 
 
 def _available_conflict_destination(target: Path, source_hash: str) -> Path:

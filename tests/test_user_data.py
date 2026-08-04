@@ -499,15 +499,25 @@ def test_occupied_conflict_name_uses_numbered_non_overwriting_destination(
     occupied = target_macros / f"same.legacy-{source_hash[:12]}.json"
     occupied.write_text('{"owner":"unrelated"}', encoding="utf-8")
 
+    settings = FakeSettings()
     prepare_user_data(
         executable_dir=executable_dir,
-        settings=FakeSettings(),
+        settings=settings,
         target_root=target,
     )
 
     preserved = target_macros / f"same.legacy-{source_hash[:12]}-2.json"
     assert json.loads(occupied.read_text(encoding="utf-8"))["owner"] == "unrelated"
     assert json.loads(preserved.read_text(encoding="utf-8"))["owner"] == "legacy"
+
+    occupied.unlink()
+    settings.setValue("last_file", str(legacy))
+    prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=target,
+    )
+    assert Path(str(settings.value("last_file"))) == preserved
 
 
 def test_manifest_noop_remaps_settings_to_preserved_conflict_file(
