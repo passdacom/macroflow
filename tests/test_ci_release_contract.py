@@ -102,16 +102,19 @@ def test_release_requires_manual_dispatch_and_publishes_provenance() -> None:
     assert names.index("Create release") < names.index("Verify draft release assets")
     assert names.index("Verify draft release assets") < names.index("Publish verified release")
     verification = _steps(release)["Verify draft release assets"]["run"]
-    assert "gh release download" in verification
-    assert "gh release view" in verification
-    assert "isDraft" in verification
+    assert "releases?per_page=100" in verification
+    assert "target_commitish" in verification
+    assert "releases/$release_id/assets?per_page=100" in verification
+    assert "application/octet-stream" in verification
     assert "sha256sum -c" in verification
     assert "EXPECTED_SHA" in verification
-    assert "resolve_tag_commit" in verification
+    assert "git/ref/tags/$TAG" not in verification
     publication = _steps(release)["Publish verified release"]["run"]
-    assert "gh release edit" in publication
-    assert "--draft=false" in publication
-    assert "--latest" in publication
+    assert "releases?per_page=100" in publication
+    assert "--method PATCH" in publication
+    assert '"repos/$GITHUB_REPOSITORY/releases/$release_id"' in publication
+    assert "-F draft=false" in publication
+    assert "-f make_latest=true" in publication
     assert "releases/latest" in publication
     assert "EXPECTED_SHA" in publication
     assert "digest" in publication
