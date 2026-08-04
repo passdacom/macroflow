@@ -72,6 +72,9 @@ def test_windows_job_proves_lgpl_library_replacement_without_mutating_release() 
     assert "$modifiedHash -eq $originalHash" in smoke
     assert "MainWindowTitle -like 'MacroFlow*'" in smoke
     assert "finally" in smoke
+    assert "Wait-Process -Id @($ownedIds)" in smoke
+    assert "$restoreDeadline" in smoke
+    assert "Start-Sleep -Milliseconds 200" in smoke
     assert "$restoredHash -ne $originalHash" in smoke
 
 

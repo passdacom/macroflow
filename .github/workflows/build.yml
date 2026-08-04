@@ -193,6 +193,7 @@ jobs:
           $originalHash = (Get-FileHash -Algorithm SHA256 $qtDll).Hash.ToLowerInvariant()
           Copy-Item $qtDll $backup -Force
           $process = $null
+          $ownedIds = [System.Collections.Generic.HashSet[int]]::new()
           try {
             $bytes = [System.IO.File]::ReadAllBytes($qtDll)
             if ($bytes.Length -lt 64) { throw 'Qt6Core.dll is not a valid PE file' }
@@ -223,7 +224,6 @@ jobs:
             $process = Start-Process -FilePath $exe -PassThru
             $deadline = (Get-Date).AddSeconds(30)
             $window = $null
-            $ownedIds = [System.Collections.Generic.HashSet[int]]::new()
             [void]$ownedIds.Add($process.Id)
             do {
               if ($process.HasExited) {
@@ -255,7 +255,21 @@ jobs:
             if ($process -and -not $process.HasExited) {
               & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
             }
-            Copy-Item $backup $qtDll -Force
+            if ($ownedIds.Count -gt 0) {
+              Wait-Process -Id @($ownedIds) -Timeout 10 -ErrorAction SilentlyContinue
+            }
+            $restoreDeadline = (Get-Date).AddSeconds(10)
+            $restored = $false
+            do {
+              try {
+                Copy-Item $backup $qtDll -Force
+                $restored = $true
+              }
+              catch {
+                if ((Get-Date) -ge $restoreDeadline) { throw }
+                Start-Sleep -Milliseconds 200
+              }
+            } while (-not $restored)
             Remove-Item $backup -Force
             $restoredHash = (Get-FileHash -Algorithm SHA256 $qtDll).Hash.ToLowerInvariant()
             if ($restoredHash -ne $originalHash) {
