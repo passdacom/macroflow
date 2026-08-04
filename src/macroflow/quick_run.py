@@ -105,6 +105,17 @@ def _sync_succeeded(settings: object) -> bool:
     return int(str(status_value)) == 0
 
 
+def _readback_matches(key: str, actual: object, expected: object) -> bool:
+    if not key.endswith("/speed"):
+        return actual == expected
+    if isinstance(actual, bool) or not isinstance(actual, (str, int, float)):
+        return False
+    try:
+        return float(actual) == expected
+    except ValueError:
+        return False
+
+
 def load_quick_run_slots(
     settings: Mapping[str, object] | SettingsStore,
     *,
@@ -171,7 +182,10 @@ def arm_quick_run_recovery(
             return False
     except (OSError, RuntimeError, TypeError, ValueError):
         return False
-    return all(_value(settings, key, object()) == value for key, value in expected.items())
+    return all(
+        _readback_matches(key, _value(settings, key, object()), value)
+        for key, value in expected.items()
+    )
 
 
 def save_quick_run_slots(

@@ -149,3 +149,17 @@ def test_armed_shared_recovery_restores_matching_old_slots_until_commit(
     assert load_quick_run_slots(settings) == tuple(old_slots)
     assert disarm_hotkey_config_recovery(settings)
     assert load_quick_run_slots(settings) == tuple(new_slots)
+
+
+def test_recovery_accepts_qsettings_numeric_string_readback(tmp_path: Path) -> None:
+    class StringifyingFloatSettings(FakeSettings):
+        def value(self, key: str, default: Any = None) -> Any:
+            value = super().value(key, default)
+            if key.endswith("/speed") and isinstance(value, float):
+                return str(value)
+            return value
+
+    slots = list(default_quick_run_slots())
+    slots[0] = QuickRunSlot(1, "빠른 슬롯", tmp_path / "macro.json", 2.5)
+
+    assert arm_quick_run_recovery(StringifyingFloatSettings(), tuple(slots))
