@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -481,6 +482,114 @@ def test_new_legacy_delta_is_imported_but_deleted_canonical_file_is_not_resurrec
     )
     assert third.mode is UserDataMode.STABLE
     assert not (target / "macros" / "a.json").exists()
+
+
+def test_occupied_conflict_name_uses_numbered_non_overwriting_destination(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy = executable_dir / "macros" / "same.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"owner":"legacy"}', encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_macros = target / "macros"
+    target_macros.mkdir(parents=True)
+    (target_macros / "same.json").write_text('{"owner":"current"}', encoding="utf-8")
+    source_hash = hashlib.sha256(legacy.read_bytes()).hexdigest()
+    occupied = target_macros / f"same.legacy-{source_hash[:12]}.json"
+    occupied.write_text('{"owner":"unrelated"}', encoding="utf-8")
+
+    prepare_user_data(
+        executable_dir=executable_dir,
+        settings=FakeSettings(),
+        target_root=target,
+    )
+
+    preserved = target_macros / f"same.legacy-{source_hash[:12]}-2.json"
+    assert json.loads(occupied.read_text(encoding="utf-8"))["owner"] == "unrelated"
+    assert json.loads(preserved.read_text(encoding="utf-8"))["owner"] == "legacy"
+
+
+def test_manifest_noop_remaps_settings_to_preserved_conflict_file(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy = executable_dir / "macros" / "same.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"owner":"legacy"}', encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    (target / "macros").mkdir(parents=True)
+    (target / "macros" / "same.json").write_text(
+        '{"owner":"current"}', encoding="utf-8"
+    )
+    settings = FakeSettings({"last_file": str(legacy)})
+
+    prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=target,
+    )
+    settings.setValue("last_file", str(legacy))
+    result = prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.STABLE
+    remapped = Path(str(settings.value("last_file")))
+    assert remapped.name.startswith("same.legacy-")
+    assert json.loads(remapped.read_text(encoding="utf-8"))["owner"] == "legacy"
+
+
+def test_index_only_delta_keeps_group_mapped_to_preserved_conflict(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy_favorites = executable_dir / "favorites"
+    legacy_favorites.mkdir(parents=True)
+    (legacy_favorites / "same.json").write_text(
+        '{"owner":"legacy"}', encoding="utf-8"
+    )
+    source_index = legacy_favorites / "_index.json"
+    source_index.write_text(
+        '{"version":1,"groups":[{"id":"old","name":"Old","items":["same.json"]}]}',
+        encoding="utf-8",
+    )
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_favorites = target / "favorites"
+    target_favorites.mkdir(parents=True)
+    (target_favorites / "same.json").write_text(
+        '{"owner":"current"}', encoding="utf-8"
+    )
+    (target_favorites / "_index.json").write_text(
+        '{"version":1,"groups":[]}', encoding="utf-8"
+    )
+    settings = FakeSettings()
+
+    prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=target,
+    )
+    source_index.write_text(
+        '{"version":1,"groups":[{"id":"new","name":"New","items":["same.json"]}]}',
+        encoding="utf-8",
+    )
+    prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=target,
+    )
+
+    merged = json.loads((target_favorites / "_index.json").read_text(encoding="utf-8"))
+    new_group = next(group for group in merged["groups"] if group["id"] == "new")
+    assert len(new_group["items"]) == 1
+    mapped_name = new_group["items"][0]
+    assert mapped_name.startswith("same.legacy-")
+    assert json.loads((target_favorites / mapped_name).read_text(encoding="utf-8"))[
+        "owner"
+    ] == "legacy"
 
 
 def test_stable_fast_path_repairs_legacy_qsettings_paths(tmp_path: Path) -> None:

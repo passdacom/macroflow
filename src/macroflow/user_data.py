@@ -184,6 +184,13 @@ def _assert_safe_directory(path: Path, *, role: str) -> None:
         raise OSError(f"{role} path is not a directory: {path}")
 
 
+def _assert_safe_file(path: Path, *, role: str) -> None:
+    if _is_link_or_reparse(path):
+        raise OSError(f"{role} cannot be a link or junction: {path}")
+    if not path.is_file():
+        raise OSError(f"{role} is not a file: {path}")
+
+
 def _exclusive_verified_copy(source: Path, target: Path, source_hash: str) -> None:
     """Copy without ever replacing an existing destination path."""
 
@@ -349,6 +356,40 @@ def _merge_favorites_index(
     return True, warning
 
 
+def _conflict_candidate(target: Path, source_hash: str, index: int = 1) -> Path:
+    counter = "" if index == 1 else f"-{index}"
+    return target.with_name(
+        f"{target.stem}.legacy-{source_hash[:12]}{counter}{target.suffix}"
+    )
+
+
+def _existing_import_destination(target: Path, source_hash: str) -> Path | None:
+    """Recover the exact destination selected by an earlier migration."""
+    if target.exists():
+        _assert_safe_file(target, role="destination file")
+        if _sha256(target) == source_hash:
+            return target
+    for index in range(1, 1001):
+        candidate = _conflict_candidate(target, source_hash, index)
+        if not candidate.exists():
+            return None
+        _assert_safe_file(candidate, role="destination conflict file")
+        if _sha256(candidate) == source_hash:
+            return candidate
+    raise OSError(f"too many legacy user-data conflict files: {target}")
+
+
+def _available_conflict_destination(target: Path, source_hash: str) -> Path:
+    for index in range(1, 1001):
+        candidate = _conflict_candidate(target, source_hash, index)
+        if not candidate.exists():
+            return candidate
+        _assert_safe_file(candidate, role="destination conflict file")
+        if _sha256(candidate) == source_hash:
+            return candidate
+    raise OSError(f"too many legacy user-data conflict files: {target}")
+
+
 def _copy_and_verify_tree(
     source: Path,
     destination: Path,
@@ -411,6 +452,11 @@ def _copy_and_verify_tree(
             source_hash = _sha256(item)
             source_manifest[manifest_key] = source_hash
             if previous.get(manifest_key) == source_hash:
+                existing_destination = _existing_import_destination(target, source_hash)
+                if existing_destination is not None:
+                    path_map[item.resolve(strict=False)] = existing_destination.resolve(
+                        strict=False
+                    )
                 continue
 
             is_favorites_index = (
@@ -449,9 +495,7 @@ def _copy_and_verify_tree(
                         copied += 1
                     continue
                 else:
-                    target = target.with_name(
-                        f"{target.stem}.legacy-{source_hash[:12]}{target.suffix}"
-                    )
+                    target = _available_conflict_destination(target, source_hash)
                 if target.exists():
                     if _is_link_or_reparse(target):
                         raise OSError(f"destination file cannot be a link or junction: {target}")
