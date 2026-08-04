@@ -256,14 +256,14 @@ class EventEditorWidget(QWidget):
         self._act_set_delay.setEnabled(False)
         edit_toolbar.addAction(self._act_set_delay)
 
-        self._act_undo = QAction("↩ 취소", self)
+        self._act_undo = QAction("↩취소", self)
         self._act_undo.setToolTip("실행 취소 (Ctrl+Z)")
         self._act_undo.triggered.connect(self._undo)
         self._act_undo.setEnabled(False)
         edit_toolbar.addSeparator()
         edit_toolbar.addAction(self._act_undo)
 
-        self._act_redo = QAction("↪ 재실행", self)
+        self._act_redo = QAction("↪재실행", self)
         self._act_redo.setToolTip("다시 실행 (Ctrl+Y)")
         self._act_redo.triggered.connect(self._redo)
         self._act_redo.setEnabled(False)
