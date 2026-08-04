@@ -878,7 +878,8 @@ def test_release_workflow_publishes_gpl_bundle_and_verified_source_assets() -> N
     assert "pyi-archive_viewer" in bundle_command
     assert "--app-dir" in bundle_command
     assert "Get-ChildItem 'dist/MacroFlow' -Recurse" in bundle_command
-    assert "--commit $env:GITHUB_SHA" in bundle_command
+    assert "--commit $sourceCommit" in bundle_command
+    assert "$sourceCommit = (git rev-parse HEAD).Trim()" in bundle_command
     assert "--source-date-epoch $sourceDateEpoch" in bundle_command
     assert "PYTHON_BUILD_SOURCE_SHA256" in bundle_command
     assert "Get-FileHash -Algorithm SHA256 $path" in bundle_command
