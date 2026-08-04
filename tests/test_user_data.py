@@ -602,6 +602,114 @@ def test_index_only_delta_keeps_group_mapped_to_preserved_conflict(
     ] == "legacy"
 
 
+def test_deleted_conflict_is_not_substituted_with_same_named_current_file(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy = executable_dir / "macros" / "same.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"owner":"legacy"}', encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_macros = target / "macros"
+    target_macros.mkdir(parents=True)
+    (target_macros / "same.json").write_text('{"owner":"current"}', encoding="utf-8")
+    settings = FakeSettings({"last_file": str(legacy)})
+
+    prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=target,
+    )
+    preserved = next(target_macros.glob("same.legacy-*.json"))
+    preserved.unlink()
+    settings.setValue("last_file", str(legacy))
+    prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=target,
+    )
+
+    assert Path(str(settings.value("last_file"))) == legacy
+    assert json.loads((target_macros / "same.json").read_text(encoding="utf-8"))[
+        "owner"
+    ] == "current"
+
+
+def test_index_only_delta_omits_deleted_legacy_conflict(
+    tmp_path: Path,
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    source_dir = executable_dir / "favorites"
+    source_dir.mkdir(parents=True)
+    (source_dir / "same.json").write_text('{"owner":"legacy"}', encoding="utf-8")
+    source_index = source_dir / "_index.json"
+    source_index.write_text(
+        '{"version":1,"groups":[{"id":"old","name":"Old","items":["same.json"]}]}',
+        encoding="utf-8",
+    )
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    target_dir = target / "favorites"
+    target_dir.mkdir(parents=True)
+    (target_dir / "same.json").write_text('{"owner":"current"}', encoding="utf-8")
+    (target_dir / "_index.json").write_text(
+        '{"version":1,"groups":[]}', encoding="utf-8"
+    )
+    settings = FakeSettings()
+
+    prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=target,
+    )
+    next(target_dir.glob("same.legacy-*.json")).unlink()
+    source_index.write_text(
+        '{"version":1,"groups":[{"id":"new","name":"New","items":["same.json"]}]}',
+        encoding="utf-8",
+    )
+    prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=target,
+    )
+
+    merged = json.loads((target_dir / "_index.json").read_text(encoding="utf-8"))
+    new_group = next(group for group in merged["groups"] if group["id"] == "new")
+    assert new_group["items"] == []
+    assert json.loads((target_dir / "same.json").read_text(encoding="utf-8"))[
+        "owner"
+    ] == "current"
+
+
+def test_manifest_noop_bounds_destination_directory_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable_dir = tmp_path / "legacy-app"
+    legacy = executable_dir / "macros" / "same.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("{}", encoding="utf-8")
+    target = tmp_path / "profile" / "MacroFlow" / "Data"
+    settings = FakeSettings()
+
+    prepare_user_data(
+        executable_dir=executable_dir,
+        settings=settings,
+        target_root=target,
+    )
+    (target / "macros" / "extra-1.json").write_text("{}", encoding="utf-8")
+    (target / "macros" / "extra-2.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("macroflow.user_data._MAX_FILES", 2)
+
+    result = prepare_user_data(
+        executable_dir=tmp_path / "new-app",
+        settings=settings,
+        target_root=target,
+    )
+
+    assert result.mode is UserDataMode.LEGACY_FALLBACK
+    assert result.error is not None
+    assert "destination user data exceeds" in result.error
+
+
 def test_stable_fast_path_repairs_legacy_qsettings_paths(tmp_path: Path) -> None:
     executable_dir = tmp_path / "legacy-app"
     legacy = executable_dir / "macros" / "a.json"

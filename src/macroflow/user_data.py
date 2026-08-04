@@ -74,7 +74,7 @@ class UserDataPreparation:
 @dataclass(frozen=True)
 class _CopyResult:
     copied_files: int
-    path_map: dict[Path, Path]
+    path_map: dict[Path, Path | None]
     source_manifest: dict[str, str]
     warning: str | None = None
 
@@ -191,6 +191,13 @@ def _assert_safe_file(path: Path, *, role: str) -> None:
         raise OSError(f"{role} is not a file: {path}")
 
 
+def _destination_hash(path: Path, *, role: str) -> str:
+    _assert_safe_file(path, role=role)
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        raise OSError(f"{role} exceeds the safe migration limits: {path}")
+    return _sha256(path)
+
+
 def _exclusive_verified_copy(source: Path, target: Path, source_hash: str) -> None:
     """Copy without ever replacing an existing destination path."""
 
@@ -285,7 +292,7 @@ def _merge_favorites_index(
     source_index: Path,
     target_index: Path,
     destination_root: Path,
-    path_map: Mapping[Path, Path],
+    path_map: Mapping[Path, Path | None],
 ) -> tuple[bool, str | None]:
     """Merge group metadata while preserving both pre-merge index documents."""
     source_data = _read_favorites_index(source_index)
@@ -332,12 +339,19 @@ def _merge_favorites_index(
         mapped_items: list[str] = []
         for item_name in group["items"]:
             source_item = (source_favorites / item_name).resolve(strict=False)
-            mapped = path_map.get(source_item)
-            mapped_name = (
-                mapped.relative_to(target_index.parent).as_posix()
-                if mapped is not None and mapped.is_relative_to(target_index.parent)
-                else item_name
-            )
+            if source_item in path_map:
+                mapped = path_map[source_item]
+                if mapped is None:
+                    continue
+                mapped_name = (
+                    mapped.relative_to(target_index.parent).as_posix()
+                    if mapped.is_relative_to(target_index.parent)
+                    else item_name
+                )
+            elif not source_item.exists():
+                continue
+            else:
+                mapped_name = item_name
             if mapped_name not in mapped_items:
                 mapped_items.append(mapped_name)
         group["items"] = mapped_items
@@ -363,14 +377,17 @@ def _conflict_candidate(target: Path, source_hash: str, index: int = 1) -> Path:
     )
 
 
-def _existing_import_destination(target: Path, source_hash: str) -> Path | None:
+def _existing_import_destination(
+    target: Path,
+    source_hash: str,
+    destination_entries: tuple[Path, ...],
+) -> Path | None:
     """Recover the exact destination selected by an earlier migration."""
     if target.exists():
-        _assert_safe_file(target, role="destination file")
-        if _sha256(target) == source_hash:
+        if _destination_hash(target, role="destination file") == source_hash:
             return target
     prefix = f"{target.stem}.legacy-{source_hash[:12]}"
-    for candidate in target.parent.iterdir():
+    for candidate in destination_entries:
         if candidate.suffix != target.suffix:
             continue
         candidate_stem = candidate.stem
@@ -378,8 +395,7 @@ def _existing_import_destination(target: Path, source_hash: str) -> Path | None:
             counter = candidate_stem.removeprefix(f"{prefix}-")
             if candidate_stem == counter or not counter.isdigit():
                 continue
-        _assert_safe_file(candidate, role="destination conflict file")
-        if _sha256(candidate) == source_hash:
+        if _destination_hash(candidate, role="destination conflict file") == source_hash:
             return candidate
     return None
 
@@ -389,8 +405,7 @@ def _available_conflict_destination(target: Path, source_hash: str) -> Path:
         candidate = _conflict_candidate(target, source_hash, index)
         if not candidate.exists():
             return candidate
-        _assert_safe_file(candidate, role="destination conflict file")
-        if _sha256(candidate) == source_hash:
+        if _destination_hash(candidate, role="destination conflict file") == source_hash:
             return candidate
     raise OSError(f"too many legacy user-data conflict files: {target}")
 
@@ -401,7 +416,8 @@ def _copy_and_verify_tree(
     known_manifest: Mapping[str, str] | None = None,
 ) -> _CopyResult:
     copied = 0
-    path_map: dict[Path, Path] = {}
+    path_map: dict[Path, Path | None] = {}
+    destination_cache: dict[Path, tuple[Path, ...]] = {}
     source_manifest: dict[str, str] = {}
     previous = {} if known_manifest is None else known_manifest
     file_count = 0
@@ -457,11 +473,25 @@ def _copy_and_verify_tree(
             source_hash = _sha256(item)
             source_manifest[manifest_key] = source_hash
             if previous.get(manifest_key) == source_hash:
-                existing_destination = _existing_import_destination(target, source_hash)
-                if existing_destination is not None:
-                    path_map[item.resolve(strict=False)] = existing_destination.resolve(
-                        strict=False
-                    )
+                entries = destination_cache.get(target.parent)
+                if entries is None:
+                    collected: list[Path] = []
+                    for destination_entry in target.parent.iterdir():
+                        if len(collected) >= _MAX_FILES:
+                            raise OSError(
+                                "destination user data exceeds the safe migration limits"
+                            )
+                        collected.append(destination_entry)
+                    entries = tuple(collected)
+                    destination_cache[target.parent] = entries
+                existing_destination = _existing_import_destination(
+                    target, source_hash, entries
+                )
+                path_map[item.resolve(strict=False)] = (
+                    existing_destination.resolve(strict=False)
+                    if existing_destination is not None
+                    else None
+                )
                 continue
 
             is_favorites_index = (
@@ -525,7 +555,7 @@ def _remapped_path(
     raw_value: object,
     old_root: Path,
     new_root: Path,
-    path_map: Mapping[Path, Path],
+    path_map: Mapping[Path, Path | None],
 ) -> object:
     if not isinstance(raw_value, str) or not raw_value:
         return raw_value
@@ -535,7 +565,8 @@ def _remapped_path(
     except (OSError, RuntimeError, ValueError):
         return raw_value
     if original in path_map:
-        return str(path_map[original])
+        mapped = path_map[original]
+        return raw_value if mapped is None else str(mapped)
     candidate = (new_root / relative).resolve(strict=False)
     return str(candidate) if candidate.exists() else raw_value
 
@@ -545,7 +576,7 @@ def _persist_root_and_remap_paths(
     *,
     old_root: Path | None,
     new_root: Path,
-    path_map: Mapping[Path, Path] | None = None,
+    path_map: Mapping[Path, Path | None] | None = None,
     source_manifest: Mapping[str, str] | None = None,
 ) -> bool:
     missing = object()
@@ -738,8 +769,12 @@ def prepare_user_data(
             except Exception:
                 shutil.rmtree(staging, ignore_errors=True)
                 raise
-            path_map = {
-                source: (stable_root / destination.relative_to(staging)).resolve(strict=False)
+            path_map: dict[Path, Path | None] = {
+                source: (
+                    (stable_root / destination.relative_to(staging)).resolve(strict=False)
+                    if destination is not None
+                    else None
+                )
                 for source, destination in copied.path_map.items()
             }
             copied = _CopyResult(
