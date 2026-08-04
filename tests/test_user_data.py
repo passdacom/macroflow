@@ -398,7 +398,8 @@ def test_symlinked_legacy_directory_fails_closed_without_copying_external_data(
         target_root=target,
     )
 
-    assert result.mode is UserDataMode.LEGACY_FALLBACK
+    assert result.mode is UserDataMode.STABLE
+    assert result.root == target
     assert not (target / "macros" / "secret.json").exists()
 
 

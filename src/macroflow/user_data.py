@@ -50,6 +50,10 @@ class UserDataMode(StrEnum):
     LEGACY_FALLBACK = "legacy_fallback"
 
 
+class _UnsafeLegacySource(OSError):
+    """Legacy data crossed a link or Windows reparse boundary."""
+
+
 @dataclass(frozen=True)
 class UserDataPreparation:
     root: Path
@@ -338,6 +342,10 @@ def _copy_and_verify_tree(
         source_dir = source / directory_name
         destination_dir = destination / directory_name
         if source_dir.exists():
+            if _is_link_or_reparse(source_dir):
+                raise _UnsafeLegacySource(
+                    f"legacy source cannot be a link or junction: {source_dir}"
+                )
             _assert_safe_directory(source_dir, role="legacy source")
         if destination_dir.exists():
             _assert_safe_directory(destination_dir, role="destination")
@@ -354,7 +362,9 @@ def _copy_and_verify_tree(
         )
         for item in items:
             if _is_link_or_reparse(item):
-                raise OSError(f"legacy user data contains an unsupported link: {item}")
+                raise _UnsafeLegacySource(
+                    f"legacy user data contains an unsupported link: {item}"
+                )
             relative = item.relative_to(source_dir)
             target = destination_dir / relative
             if item.is_dir():
@@ -630,5 +640,16 @@ def prepare_user_data(
             UserDataMode.MIGRATED,
             copied_files=copied.copied_files,
         )
+    except _UnsafeLegacySource as exc:
+        try:
+            _ensure_data_directories(stable_root)
+            _persist_root_and_remap_paths(
+                settings,
+                old_root=None,
+                new_root=stable_root,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError):
+            pass
+        return UserDataPreparation(stable_root, UserDataMode.STABLE, error=str(exc))
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         return _fallback(source_root or executable_root, exc)
