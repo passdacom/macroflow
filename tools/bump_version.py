@@ -15,7 +15,7 @@ _TARGETS = {
         r'(?m)(\[\[package\]\]\nname = "macroflow"\nversion = ")([^"]+)(")'
     ),
     "tools/build_release_bundle.py": re.compile(
-        r'(?m)(^\s*"macroflow":\s*")([^"]+)(",$)'
+        r'(?m)(^LOCKED_PACKAGE_VERSIONS = \{\n\s*"macroflow":\s*")([^"]+)(",$)'
     ),
 }
 

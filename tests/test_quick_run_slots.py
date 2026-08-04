@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from macroflow.hotkey_config import (
     DEFAULT_HOTKEY_CONFIG,
     arm_hotkey_config_recovery,
@@ -45,17 +47,23 @@ def test_default_quick_run_slots_are_five_named_empty_slots() -> None:
     assert [slot.index for slot in slots] == [1, 2, 3, 4, 5]
     assert [slot.name for slot in slots] == [f"슬롯 {index}" for index in range(1, 6)]
     assert [slot.macro_path for slot in slots] == [None] * 5
+    assert [slot.speed for slot in slots] == [1.0] * 5
     assert [slot.action_id for slot in slots] == [
         f"quick_run.slot_{index}" for index in range(1, 6)
     ]
 
 
-def test_quick_run_slots_round_trip_names_and_normalized_paths(tmp_path: Path) -> None:
+def test_quick_run_slots_round_trip_names_paths_and_speeds(tmp_path: Path) -> None:
     macro = tmp_path / "macros" / "step-one.json"
     macro.parent.mkdir()
     macro.write_text("{}", encoding="utf-8")
     slots = list(default_quick_run_slots())
-    slots[0] = QuickRunSlot(index=1, name="공통 전처리", macro_path=macro)
+    slots[0] = QuickRunSlot(
+        index=1,
+        name="공통 전처리",
+        macro_path=macro,
+        speed=2.5,
+    )
     settings = FakeSettings()
 
     assert save_quick_run_slots(settings, tuple(slots))
@@ -63,7 +71,27 @@ def test_quick_run_slots_round_trip_names_and_normalized_paths(tmp_path: Path) -
 
     assert loaded[0].name == "공통 전처리"
     assert loaded[0].macro_path == macro.resolve(strict=False)
+    assert loaded[0].speed == 2.5
     assert loaded[1:] == default_quick_run_slots()[1:]
+
+
+def test_legacy_quick_run_slots_without_speed_load_at_normal_speed() -> None:
+    settings = FakeSettings(
+        {
+            "quick_run/slot_1/name": "기존 슬롯",
+            "quick_run/slot_1/path": "/old/macro.json",
+        }
+    )
+
+    loaded = load_quick_run_slots(settings)
+
+    assert loaded[0].speed == 1.0
+
+
+@pytest.mark.parametrize("speed", [0.0, 10.1, float("nan"), float("inf"), True])
+def test_quick_run_slot_rejects_invalid_speed(speed: object) -> None:
+    with pytest.raises(ValueError, match="speed"):
+        QuickRunSlot(index=1, name="슬롯 1", speed=speed)  # type: ignore[arg-type]
 
 
 def test_corrupt_slot_settings_fail_closed_to_an_empty_slot() -> None:
