@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import uuid
 from collections.abc import Mapping, MutableMapping
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -220,6 +221,106 @@ def _parse_manifest(raw: object) -> dict[str, str]:
     }
 
 
+def _read_favorites_index(path: Path) -> dict[str, object] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("groups"), list):
+        return None
+    for group in data["groups"]:
+        if (
+            not isinstance(group, dict)
+            or not isinstance(group.get("id"), str)
+            or not isinstance(group.get("name"), str)
+            or not isinstance(group.get("items"), list)
+            or not all(isinstance(item, str) for item in group["items"])
+        ):
+            return None
+    return data
+
+
+def _replace_json_with_readback(target: Path, data: Mapping[str, object]) -> None:
+    payload = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+        if target.read_bytes() != payload:
+            raise OSError(f"favorites index readback failed: {target}")
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _merge_favorites_index(
+    source_index: Path,
+    target_index: Path,
+    destination_root: Path,
+    path_map: Mapping[Path, Path],
+) -> bool:
+    """Merge group metadata while preserving both pre-merge index documents."""
+    source_data = _read_favorites_index(source_index)
+    target_data = _read_favorites_index(target_index)
+    conflict_dir = destination_root / "migration-conflicts"
+    source_hash = _sha256(source_index)
+    target_hash = _sha256(target_index)
+    _exclusive_verified_copy(
+        source_index,
+        conflict_dir / f"favorites-index-legacy-{source_hash[:12]}.json",
+        source_hash,
+    )
+    if source_data is None or target_data is None:
+        return False
+    _exclusive_verified_copy(
+        target_index,
+        conflict_dir / f"favorites-index-current-{target_hash[:12]}.json",
+        target_hash,
+    )
+
+    merged = deepcopy(target_data)
+    merged_groups = merged["groups"]
+    assert isinstance(merged_groups, list)
+    groups_by_id = {
+        group["id"]: group
+        for group in merged_groups
+        if isinstance(group, dict) and isinstance(group.get("id"), str)
+    }
+    source_favorites = source_index.parent.resolve(strict=False)
+    source_groups = source_data["groups"]
+    assert isinstance(source_groups, list)
+    for raw_group in source_groups:
+        assert isinstance(raw_group, dict)
+        group = deepcopy(raw_group)
+        mapped_items: list[str] = []
+        for item_name in group["items"]:
+            source_item = (source_favorites / item_name).resolve(strict=False)
+            mapped = path_map.get(source_item)
+            mapped_name = (
+                mapped.relative_to(target_index.parent).as_posix()
+                if mapped is not None and mapped.is_relative_to(target_index.parent)
+                else item_name
+            )
+            if mapped_name not in mapped_items:
+                mapped_items.append(mapped_name)
+        group["items"] = mapped_items
+        existing = groups_by_id.get(group["id"])
+        if existing is None:
+            merged_groups.append(group)
+            groups_by_id[group["id"]] = group
+            continue
+        existing_items = existing["items"]
+        assert isinstance(existing_items, list)
+        for item_name in mapped_items:
+            if item_name not in existing_items:
+                existing_items.append(item_name)
+
+    _replace_json_with_readback(target_index, merged)
+    return True
+
+
 def _copy_and_verify_tree(
     source: Path,
     destination: Path,
@@ -244,7 +345,14 @@ def _copy_and_verify_tree(
         if not source_dir.exists():
             continue
 
-        for item in sorted(source_dir.rglob("*")):
+        items = sorted(
+            source_dir.rglob("*"),
+            key=lambda item: (
+                item.is_file() and item.name == "_index.json",
+                item.as_posix(),
+            ),
+        )
+        for item in items:
             if _is_link_or_reparse(item):
                 raise OSError(f"legacy user data contains an unsupported link: {item}")
             relative = item.relative_to(source_dir)
@@ -275,9 +383,10 @@ def _copy_and_verify_tree(
                     path_map[item.resolve(strict=False)] = target.resolve(strict=False)
                     continue
                 if directory_name == "favorites" and relative.as_posix() == "_index.json":
-                    target = destination / "migration-conflicts" / (
-                        f"favorites-index-legacy-{source_hash[:12]}.json"
-                    )
+                    if _merge_favorites_index(item, target, destination, path_map):
+                        path_map[item.resolve(strict=False)] = target.resolve(strict=False)
+                        copied += 1
+                    continue
                 else:
                     target = target.with_name(
                         f"{target.stem}.legacy-{source_hash[:12]}{target.suffix}"

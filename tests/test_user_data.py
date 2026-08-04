@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -257,7 +258,7 @@ def test_missing_configured_root_recovers_again_from_preserved_legacy_data(
     assert legacy.exists()
 
 
-def test_favorites_index_conflict_is_kept_outside_active_favorites(
+def test_favorites_index_conflict_is_merged_without_exposing_index_as_macro(
     tmp_path: Path,
 ) -> None:
     executable_dir = tmp_path / "legacy-app"
@@ -273,6 +274,7 @@ def test_favorites_index_conflict_is_kept_outside_active_favorites(
     target_favorites.mkdir(parents=True)
     current_index = '{"version":1,"groups":[]}'
     (target_favorites / "_index.json").write_text(current_index, encoding="utf-8")
+    (target_favorites / "업무.json").write_text('{"current":true}', encoding="utf-8")
 
     result = prepare_user_data(
         executable_dir=executable_dir,
@@ -281,11 +283,19 @@ def test_favorites_index_conflict_is_kept_outside_active_favorites(
     )
 
     assert result.mode is UserDataMode.MIGRATED
-    assert (target_favorites / "_index.json").read_text(encoding="utf-8") == current_index
+    merged = json.loads((target_favorites / "_index.json").read_text(encoding="utf-8"))
+    legacy_group = next(group for group in merged["groups"] if group["id"] == "legacy")
+    assert legacy_group["name"] == "기존"
+    imported = list(target_favorites.glob("업무.legacy-*.json"))
+    assert len(imported) == 1
+    assert legacy_group["items"] == [imported[0].name]
+    assert (target_favorites / "업무.json").read_text(encoding="utf-8") == (
+        '{"current":true}'
+    )
     assert not list(target_favorites.glob("_index.legacy-*.json"))
-    conflicts = list((target / "migration-conflicts").glob("favorites-index-legacy-*.json"))
-    assert len(conflicts) == 1
-    assert (target_favorites / "업무.json").exists()
+    conflicts = list((target / "migration-conflicts").glob("favorites-index-*.json"))
+    assert len(conflicts) == 2
+    assert imported[0].read_text(encoding="utf-8") == "{}"
 
 
 def test_partial_configured_migration_retries_instead_of_adopting_incomplete_target(
