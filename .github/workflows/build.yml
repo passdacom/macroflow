@@ -118,6 +118,60 @@ jobs:
             throw 'Qt runtime DLLs must remain outside the executable for LGPL replacement rights'
           }
 
+      - name: Smoke packaged legacy user-data migration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Get-ChildItem 'dist/MacroFlow/MacroFlow-v*.exe' | Select-Object -First 1).FullName
+          $legacyMacroDir = Join-Path (Split-Path $exe -Parent) 'macros'
+          $legacyFavoritesDir = Join-Path (Split-Path $exe -Parent) 'favorites'
+          $profileRoot = Join-Path $env:RUNNER_TEMP 'macroflow-migration-profile'
+          $targetRoot = Join-Path $profileRoot 'MacroFlow/data'
+          $targetMacro = Join-Path $targetRoot 'macros/migration-smoke.json'
+          $targetFavorite = Join-Path $targetRoot 'favorites/favorite-smoke.json'
+          $settingsKey = 'HKCU:\Software\MacroFlow\MacroFlow'
+          $originalLocalAppData = $env:LOCALAPPDATA
+          $process = $null
+          try {
+            Remove-Item $profileRoot -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $settingsKey -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item $legacyMacroDir -ItemType Directory -Force | Out-Null
+            New-Item $legacyFavoritesDir -ItemType Directory -Force | Out-Null
+            Set-Content (Join-Path $legacyMacroDir 'migration-smoke.json') '{"events":[]}' -Encoding utf8NoBOM
+            Set-Content (Join-Path $legacyFavoritesDir 'favorite-smoke.json') '{"events":[]}' -Encoding utf8NoBOM
+            Set-Content (Join-Path $legacyFavoritesDir '_index.json') '{"version":1,"groups":[]}' -Encoding utf8NoBOM
+            $sourceHash = (Get-FileHash (Join-Path $legacyMacroDir 'migration-smoke.json') -Algorithm SHA256).Hash
+            $env:LOCALAPPDATA = $profileRoot
+            $process = Start-Process -FilePath $exe -PassThru
+            $deadline = (Get-Date).AddSeconds(30)
+            while ((Get-Date) -lt $deadline -and -not (Test-Path $targetMacro)) {
+              if ($process.HasExited) {
+                throw "Packaged migration smoke exited with code $($process.ExitCode)"
+              }
+              Start-Sleep -Milliseconds 250
+              $process.Refresh()
+            }
+            if (-not (Test-Path $targetMacro) -or -not (Test-Path $targetFavorite)) {
+              throw 'Packaged EXE did not migrate legacy macros/favorites to LOCALAPPDATA'
+            }
+            if ((Get-FileHash $targetMacro -Algorithm SHA256).Hash -ne $sourceHash) {
+              throw 'Packaged migration target hash does not match its legacy source'
+            }
+            if (-not (Test-Path (Join-Path $legacyMacroDir 'migration-smoke.json'))) {
+              throw 'Packaged migration removed its legacy source'
+            }
+            Write-Host "PACKAGED_USER_DATA_MIGRATION_OK root=$targetRoot"
+          }
+          finally {
+            if ($process -and -not $process.HasExited) {
+              & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null
+            }
+            $env:LOCALAPPDATA = $originalLocalAppData
+            Remove-Item $settingsKey -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $legacyMacroDir -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $legacyFavoritesDir -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Smoke packaged EXE
         shell: pwsh
         run: |
