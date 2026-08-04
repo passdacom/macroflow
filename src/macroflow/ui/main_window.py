@@ -214,6 +214,12 @@ class MainWindow(QMainWindow):
                 "사용자 데이터 이전 실패; 기존 폴더를 계속 사용합니다: %s",
                 self._user_data.error,
             )
+        elif self._user_data.error:
+            self._sb_state.setText("기존 사용자 데이터 가져오기 중 안전 경고가 발생했습니다")
+            logger.warning(
+                "기존 사용자 데이터 가져오기를 건너뛰었습니다: %s",
+                self._user_data.error,
+            )
 
         # ── 신호 연결 ─────────────────────────────────────────────────────────
         self._sig_recording_done.connect(self._on_recording_done)

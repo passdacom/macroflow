@@ -400,6 +400,8 @@ def test_symlinked_legacy_directory_fails_closed_without_copying_external_data(
 
     assert result.mode is UserDataMode.STABLE
     assert result.root == target
+    assert result.error is not None
+    assert "link or junction" in result.error
     assert not (target / "macros" / "secret.json").exists()
 
 
