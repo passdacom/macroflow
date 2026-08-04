@@ -163,3 +163,16 @@ def test_recovery_accepts_qsettings_numeric_string_readback(tmp_path: Path) -> N
     slots[0] = QuickRunSlot(1, "빠른 슬롯", tmp_path / "macro.json", 2.5)
 
     assert arm_quick_run_recovery(StringifyingFloatSettings(), tuple(slots))
+
+
+def test_recovery_fails_closed_for_oversized_numeric_readback() -> None:
+    class OversizedSpeedSettings(FakeSettings):
+        def value(self, key: str, default: Any = None) -> Any:
+            if key.endswith("/speed"):
+                return 10**10_000
+            return super().value(key, default)
+
+    assert not arm_quick_run_recovery(
+        OversizedSpeedSettings(),
+        default_quick_run_slots(),
+    )

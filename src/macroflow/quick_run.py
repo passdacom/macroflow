@@ -112,7 +112,7 @@ def _readback_matches(key: str, actual: object, expected: object) -> bool:
         return False
     try:
         return float(actual) == expected
-    except ValueError:
+    except (OverflowError, ValueError):
         return False
 
 
