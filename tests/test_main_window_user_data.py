@@ -12,6 +12,7 @@ from pathlib import Path
 def test_frozen_main_window_migrates_and_uses_stable_user_data(tmp_path: Path) -> None:
     legacy = tmp_path / "legacy"
     appdata = tmp_path / "AppData" / "Roaming"
+    local_appdata = tmp_path / "AppData" / "Local"
     settings_dir = tmp_path / "settings"
     macro = legacy / "macros" / "업무.json"
     favorite = legacy / "favorites" / "즐겨찾기.json"
@@ -29,6 +30,7 @@ def test_frozen_main_window_migrates_and_uses_stable_user_data(tmp_path: Path) -
         from pathlib import Path
 
         os.environ["APPDATA"] = {str(appdata)!r}
+        os.environ["LOCALAPPDATA"] = {str(local_appdata)!r}
         os.environ["XDG_CONFIG_HOME"] = {str(settings_dir)!r}
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         sys.frozen = True
@@ -37,6 +39,12 @@ def test_frozen_main_window_migrates_and_uses_stable_user_data(tmp_path: Path) -
         from PyQt6.QtCore import QSettings
         from PyQt6.QtWidgets import QApplication
 
+        QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+        QSettings.setPath(
+            QSettings.Format.IniFormat,
+            QSettings.Scope.UserScope,
+            {str(settings_dir)!r},
+        )
         initial = QSettings("MacroFlow", "MacroFlow")
         initial.setValue("last_file", str(Path({str(macro)!r})))
         initial.setValue("quick_run/slot_1/path", str(Path({str(favorite)!r})))
@@ -47,7 +55,7 @@ def test_frozen_main_window_migrates_and_uses_stable_user_data(tmp_path: Path) -
         app = QApplication.instance() or QApplication([])
         MainWindow._restore_settings = lambda self: None
         window = MainWindow()
-        expected = Path({str(appdata / 'MacroFlow' / 'Data')!r}).resolve()
+        expected = Path({str(local_appdata / 'MacroFlow' / 'data')!r}).resolve()
         assert window._get_macros_dir() == expected / "macros", window._get_macros_dir()
         assert window._get_favorites_dir() == expected / "favorites", window._get_favorites_dir()
         assert window._favorites._favorites_dir == expected / "favorites", window._favorites._favorites_dir
