@@ -697,63 +697,67 @@ def test_stale_repeat_completion_cannot_finish_a_new_playback() -> None:
         from macroflow.ui.playback_repeat import PlaybackStartOptions, RepeatPlaybackSession
 
         app = QApplication.instance() or QApplication([])
+        original_cwd = os.getcwd()
         with tempfile.TemporaryDirectory() as directory:
-            os.chdir(directory)
-            QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-            QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, directory)
-            MainWindow._restore_settings = lambda self: None
-            window = MainWindow()
-            event = WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=1)
-            window._macro = MacroData(
-                meta=MacroMeta(
-                    version="1", app_version="test", created_at="now",
-                    screen_width=1920, screen_height=1080, dpi_scale=1.0,
-                ),
-                settings=MacroSettings(), raw_events=[event], events=[event],
-            )
+            try:
+                os.chdir(directory)
+                QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+                QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, directory)
+                MainWindow._restore_settings = lambda self: None
+                window = MainWindow()
+                event = WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=1)
+                window._macro = MacroData(
+                    meta=MacroMeta(
+                        version="1", app_version="test", created_at="now",
+                        screen_width=1920, screen_height=1080, dpi_scale=1.0,
+                    ),
+                    settings=MacroSettings(), raw_events=[event], events=[event],
+                )
 
-            first_terminal_entered = threading.Event()
-            release_first_terminal = threading.Event()
-            second_started = threading.Event()
-            play_calls = [0]
-            original_mark_finished = RepeatPlaybackSession.mark_finished
+                first_terminal_entered = threading.Event()
+                release_first_terminal = threading.Event()
+                second_started = threading.Event()
+                play_calls = [0]
+                original_mark_finished = RepeatPlaybackSession.mark_finished
 
-            def blocked_mark_finished(session):
-                if threading.current_thread().name == "RepeatPlayWorker" and not first_terminal_entered.is_set():
-                    first_terminal_entered.set()
-                    assert release_first_terminal.wait(2)
-                return original_mark_finished(session)
+                def blocked_mark_finished(session):
+                    if threading.current_thread().name == "RepeatPlayWorker" and not first_terminal_entered.is_set():
+                        first_terminal_entered.set()
+                        assert release_first_terminal.wait(2)
+                    return original_mark_finished(session)
 
-            def fake_play(_macro, **kwargs):
-                play_calls[0] += 1
-                if play_calls[0] == 1:
-                    kwargs["on_complete"]()
-                else:
-                    second_started.set()
-                return Mock()
+                def fake_play(_macro, **kwargs):
+                    play_calls[0] += 1
+                    if play_calls[0] == 1:
+                        kwargs["on_complete"]()
+                    else:
+                        second_started.set()
+                    return Mock()
 
-            with patch("macroflow.win32.start_emergency_hook"), \
-                 patch("macroflow.win32.stop_emergency_hook"), \
-                 patch("macroflow.player.play", side_effect=fake_play), \
-                 patch("macroflow.player.stop", return_value=True), \
-                 patch("macroflow.player.is_playing", return_value=False), \
-                 patch.object(RepeatPlaybackSession, "mark_finished", blocked_mark_finished):
-                options = PlaybackStartOptions(event_range=None, repeat_count=1, confirm_repeat=False)
-                window._start_playback(options=options)
-                assert first_terminal_entered.wait(1)
-                assert window._stop_playback()
-                window._start_playback(options=options)
-                assert second_started.wait(1)
-                release_first_terminal.set()
-                deadline = time.monotonic() + 1
-                while time.monotonic() < deadline:
-                    app.processEvents()
-                    time.sleep(0.005)
-                assert window._state == "playing"
+                with patch("macroflow.win32.start_emergency_hook"), \
+                     patch("macroflow.win32.stop_emergency_hook"), \
+                     patch("macroflow.player.play", side_effect=fake_play), \
+                     patch("macroflow.player.stop", return_value=True), \
+                     patch("macroflow.player.is_playing", return_value=False), \
+                     patch.object(RepeatPlaybackSession, "mark_finished", blocked_mark_finished):
+                    options = PlaybackStartOptions(event_range=None, repeat_count=1, confirm_repeat=False)
+                    window._start_playback(options=options)
+                    assert first_terminal_entered.wait(1)
+                    assert window._stop_playback()
+                    window._start_playback(options=options)
+                    assert second_started.wait(1)
+                    release_first_terminal.set()
+                    deadline = time.monotonic() + 1
+                    while time.monotonic() < deadline:
+                        app.processEvents()
+                        time.sleep(0.005)
+                    assert window._state == "playing"
 
-                assert window._repeat_session is not None
-                window._repeat_session.request_stop()
-            window.close()
+                    assert window._repeat_session is not None
+                    window._repeat_session.request_stop()
+                window.close()
+            finally:
+                os.chdir(original_cwd)
         """
     )
 
