@@ -16,7 +16,6 @@ import copy
 import dataclasses
 import logging
 import secrets
-import sys
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -351,8 +350,14 @@ class MacroSequencerWidget(QWidget):
     _sequence_finished = pyqtSignal(int, str)
     _sequence_failed = pyqtSignal(int, str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        default_dir: Path | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._default_dir = Path.cwd() if default_dir is None else default_dir
         self._items: list[SequenceItem] = []
         self._engine: FlowEngine | None = None
         self._run_generation = 0
@@ -921,9 +926,7 @@ class MacroSequencerWidget(QWidget):
 
     def _get_default_dir(self) -> str:
         """파일 다이얼로그 초기 폴더를 반환한다."""
-        if getattr(sys, "frozen", False):
-            return str(Path(sys.executable).parent)
-        return str(Path.cwd())
+        return str(self._default_dir)
 
     def _prompt_text_action(self) -> None:
         text, ok = QInputDialog.getMultiLineText(

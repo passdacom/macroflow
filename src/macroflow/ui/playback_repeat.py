@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import threading
+from collections.abc import Callable
 
 
 @dataclasses.dataclass(frozen=True)
@@ -56,12 +57,16 @@ class RepeatPlaybackSession:
     cycle_index: int = 0
     is_active: bool = False
     _stop_requested: threading.Event = dataclasses.field(default_factory=threading.Event)
+    _start_gate: threading.Lock = dataclasses.field(
+        default_factory=threading.Lock, init=False, repr=False
+    )
 
     def mark_started(self) -> None:
         """Mark the repeat worker as active."""
-        self.is_active = True
-        self._stop_requested.clear()
-        self.cycle_index = 0
+        with self._start_gate:
+            self.is_active = True
+            self._stop_requested.clear()
+            self.cycle_index = 0
 
     def mark_cycle_started(self, cycle_index: int) -> None:
         """Update the currently running repeat cycle."""
@@ -78,7 +83,24 @@ class RepeatPlaybackSession:
 
     def request_stop(self) -> None:
         """Request complete repeat-session stop, not just current cycle stop."""
-        self._stop_requested.set()
+        # Serialize with ``start_player_if_allowed`` so this method cannot
+        # return while a worker is still between its final stop check and the
+        # actual player start call.
+        with self._start_gate:
+            self._stop_requested.set()
+
+    def start_player_if_allowed(self, start_player: Callable[[], object]) -> bool:
+        """Atomically reject a stopped cycle or start its player.
+
+        The callback must only perform the short player-start operation; it is
+        intentionally invoked while the gate is held so ``request_stop`` can
+        never report success before an in-flight start has completed.
+        """
+        with self._start_gate:
+            if self._stop_requested.is_set():
+                return False
+            start_player()
+            return True
 
     @property
     def was_stopped(self) -> bool:
@@ -103,4 +125,4 @@ class RepeatPlaybackSession:
         between cycles. The UI must keep overlay/state alive until the repeat
         worker itself finishes.
         """
-        return self.is_active and not player_is_playing
+        return self.is_active and not self.was_stopped and not player_is_playing

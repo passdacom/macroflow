@@ -6,6 +6,7 @@ small, deterministic, and testable on Linux CI without loading Qt libraries.
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -33,14 +34,18 @@ def move_filenames_to_group(
 
     target: dict[str, Any] | None = None
     for group in index.get("groups", []):
-        items: list[str] = group.get("items", [])
         if group.get("id") == target_gid:
             target = group
-            continue
-        group["items"] = [filename for filename in items if filename not in filename_set]
+            break
 
     if target is None:
         return
+
+    for group in index.get("groups", []):
+        items: list[str] = group.get("items", [])
+        if group is target:
+            continue
+        group["items"] = [filename for filename in items if filename not in filename_set]
 
     existing: list[str] = target.get("items", [])
     target["items"] = existing + [
@@ -55,3 +60,63 @@ def remove_filenames_from_groups(index: dict[str, Any], filenames: set[str]) -> 
     for group in index.get("groups", []):
         items: list[str] = group.get("items", [])
         group["items"] = [filename for filename in items if filename not in filenames]
+
+
+def delete_favorite_paths(
+    paths: list[Path],
+) -> tuple[set[str], list[tuple[Path, OSError]]]:
+    """Delete paths and report exactly which index entries may be removed."""
+    deleted: set[str] = set()
+    failures: list[tuple[Path, OSError]] = []
+    for path in paths:
+        if not path.exists():
+            deleted.add(path.name)
+            continue
+        try:
+            path.unlink()
+        except OSError as error:
+            failures.append((path, error))
+        else:
+            deleted.add(path.name)
+    return deleted, failures
+
+
+def stage_favorite_paths(
+    paths: list[Path],
+) -> tuple[list[tuple[Path, Path]], list[tuple[Path, OSError]]]:
+    """Atomically hide files beside their originals before an index commit."""
+    staged: list[tuple[Path, Path]] = []
+    failures: list[tuple[Path, OSError]] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        stage_path = path.with_name(f".{path.name}.delete-{uuid.uuid4().hex}.tmp")
+        try:
+            path.replace(stage_path)
+        except OSError as exc:
+            failures.append((path, exc))
+        else:
+            staged.append((path, stage_path))
+    return staged, failures
+
+
+def rollback_staged_favorites(staged: list[tuple[Path, Path]]) -> list[OSError]:
+    """Restore staged files to their original paths after an index failure."""
+    failures: list[OSError] = []
+    for original, stage_path in reversed(staged):
+        try:
+            stage_path.replace(original)
+        except OSError as exc:
+            failures.append(exc)
+    return failures
+
+
+def commit_staged_favorites(staged: list[tuple[Path, Path]]) -> list[OSError]:
+    """Permanently delete files only after their index removal is durable."""
+    failures: list[OSError] = []
+    for _original, stage_path in staged:
+        try:
+            stage_path.unlink()
+        except OSError as exc:
+            failures.append(exc)
+    return failures

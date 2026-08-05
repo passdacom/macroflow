@@ -17,8 +17,15 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QByteArray, QSettings, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QCloseEvent, QKeyEvent, QKeySequence, QShowEvent
+from PyQt6.QtCore import QByteArray, QSettings, Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QKeyEvent,
+    QKeySequence,
+    QShowEvent,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -52,6 +59,7 @@ from macroflow.quick_run import (
     save_quick_run_slots,
 )
 from macroflow.types import MacroData
+from macroflow.user_data import UserDataMode, prepare_application_user_data
 from macroflow.win32.hotkeys import (
     NativeHotkeySet,
     RegistrationResult,
@@ -119,11 +127,12 @@ class MainWindow(QMainWindow):
     # 워커 스레드 → 메인 스레드 신호
     _sig_recording_done = pyqtSignal(object)  # MacroData
     _sig_recording_save_warning = pyqtSignal(str)
-    _sig_play_complete = pyqtSignal()
+    _sig_play_complete = pyqtSignal(object)  # RepeatPlaybackSession owner
     _sig_play_error = pyqtSignal(str)
+    _sig_playback_error = pyqtSignal(object, str)
     _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
-    _sig_play_event = pyqtSignal(int)   # 재생 중 이벤트 인덱스 알림
-    _sig_repeat_cycle = pyqtSignal(int, int)  # current, total
+    _sig_play_event = pyqtSignal(object, int)   # owner, event index
+    _sig_repeat_cycle = pyqtSignal(object, int, int)  # owner, current, total
 
     def __init__(self) -> None:
         super().__init__()
@@ -135,6 +144,7 @@ class MainWindow(QMainWindow):
         self._current_file: Path | None = None
         self._hotkeys_registered: bool = False
         app_settings = QSettings("MacroFlow", "MacroFlow")
+        self._user_data = prepare_application_user_data(settings=app_settings)
         self._hotkey_config: HotkeyConfig = load_hotkey_config(app_settings)
         self._quick_run_slots: tuple[QuickRunSlot, ...] = load_quick_run_slots(
             app_settings
@@ -143,6 +153,7 @@ class MainWindow(QMainWindow):
         self._hotkey_runtime: HotkeyRuntime | None = None
         self._paused: bool = False
         self._quick_text_session_active: bool = False
+        self._recording_generation: int = 0
         self._hotkey_settings_active: bool = False
         self._quick_run_hotkey_editing: bool = False
         self._playback_pause_event = threading.Event()
@@ -164,9 +175,13 @@ class MainWindow(QMainWindow):
 
         # ── 하위 위젯 ─────────────────────────────────────────────────────────
         self._editor = EventEditorWidget()
-        self._sequencer = MacroSequencerWidget()
+        self._sequencer = MacroSequencerWidget(default_dir=self._user_data.macros_dir)
         self._favorites = FavoritesWidget()
-        self._quick_run = QuickRunWidget(self._quick_run_slots, self._hotkey_config)
+        self._quick_run = QuickRunWidget(
+            self._quick_run_slots,
+            self._hotkey_config,
+            default_dir=self._user_data.macros_dir,
+        )
         self._overlay = OverlayWindow()
 
         # ── UI 구성 ───────────────────────────────────────────────────────────
@@ -186,15 +201,40 @@ class MainWindow(QMainWindow):
         self._favorites.set_favorites_dir(self._get_favorites_dir())
 
         self._setup_statusbar()
+        if self._user_data.mode is UserDataMode.MIGRATED:
+            suffix = " — 일부 즐겨찾기 index 경고 확인 필요" if self._user_data.error else ""
+            self._sb_state.setText(
+                f"기존 사용자 데이터 {self._user_data.copied_files}개 이전 완료{suffix}"
+            )
+            logger.info(
+                "기존 사용자 데이터를 안전한 경로로 복사했습니다: %s (%d files)",
+                self._user_data.root,
+                self._user_data.copied_files,
+            )
+            if self._user_data.error:
+                logger.warning("사용자 데이터 이전 경고: %s", self._user_data.error)
+        elif self._user_data.mode is UserDataMode.LEGACY_FALLBACK:
+            self._sb_state.setText("사용자 데이터 이전 실패 — 기존 폴더를 계속 사용합니다")
+            logger.error(
+                "사용자 데이터 이전 실패; 기존 폴더를 계속 사용합니다: %s",
+                self._user_data.error,
+            )
+        elif self._user_data.error:
+            self._sb_state.setText("기존 사용자 데이터 가져오기 중 안전 경고가 발생했습니다")
+            logger.warning(
+                "기존 사용자 데이터 가져오기를 건너뛰었습니다: %s",
+                self._user_data.error,
+            )
 
         # ── 신호 연결 ─────────────────────────────────────────────────────────
         self._sig_recording_done.connect(self._on_recording_done)
         self._sig_recording_save_warning.connect(self._on_recording_save_warning)
         self._sig_play_complete.connect(self._on_play_complete)
         self._sig_play_error.connect(self._on_play_error)
+        self._sig_playback_error.connect(self._on_session_play_error)
         self._sig_emergency_stop.connect(self._emergency_stop)
-        self._sig_play_event.connect(self._on_play_event)
-        self._sig_repeat_cycle.connect(self._overlay.set_repeat)
+        self._sig_play_event.connect(self._on_session_play_event)
+        self._sig_repeat_cycle.connect(self._on_session_repeat_cycle)
         self._editor.macro_changed.connect(self._on_macro_changed)
         # 에디터 단일 이벤트 실행 요청
         self._editor.play_event_range.connect(self._on_play_event_range)
@@ -298,6 +338,12 @@ class MainWindow(QMainWindow):
         self._recent_menu = QMenu("최근 녹화", self)
         file_menu.addMenu(self._recent_menu)
         self._refresh_recent_menu()
+
+        file_menu.addSeparator()
+
+        self._act_open_user_data = QAction("사용자 데이터 폴더 열기", self)
+        self._act_open_user_data.triggered.connect(self._open_user_data_dir)
+        file_menu.addAction(self._act_open_user_data)
 
         file_menu.addSeparator()
 
@@ -887,6 +933,20 @@ class MainWindow(QMainWindow):
         if self._playback_highlights_editor:
             self._editor.highlight_event(index)
 
+    def _on_session_play_event(self, owner: object, index: int) -> None:
+        if owner is self._repeat_session:
+            self._on_play_event(index)
+
+    def _on_session_repeat_cycle(
+        self, owner: object, current: int, total: int
+    ) -> None:
+        if owner is self._repeat_session:
+            self._overlay.set_repeat(current, total)
+
+    def _on_session_play_error(self, owner: object, msg: str) -> None:
+        if owner is self._repeat_session:
+            self._on_play_error(msg)
+
     def _dispatch_editor_insert(self, callback: Any) -> None:
         if (
             self._state == "idle"
@@ -1022,6 +1082,15 @@ class MainWindow(QMainWindow):
         from macroflow import recorder, win32
 
         self._quick_text_session_active = True
+        recording_generation = self._recording_generation
+
+        def _owns_recording_session() -> bool:
+            return (
+                self._state == "recording"
+                and self._quick_text_session_active
+                and self._recording_generation == recording_generation
+            )
+
         owns_pause = False
         target_hwnd = 0
         restored = False
@@ -1036,6 +1105,10 @@ class MainWindow(QMainWindow):
             dialog = QuickTextDialog(self, trigger_label=quick_text_key)
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
+            # ``dialog.exec()`` runs a nested Qt event loop. Stop/close can be
+            # delivered while it is open, so stale acceptance must not commit.
+            if not _owns_recording_session():
+                return
             text = dialog.text()
             if not text:
                 self._sb_state.setText("빈 텍스트는 기록하지 않았습니다")
@@ -1048,6 +1121,8 @@ class MainWindow(QMainWindow):
                 )
                 return
 
+            if not _owns_recording_session():
+                return
             restored = (
                 target_hwnd > 0
                 and win32.bring_window_to_foreground(target_hwnd)
@@ -1061,12 +1136,25 @@ class MainWindow(QMainWindow):
                     "원래 텍스트 입력 창을 확인할 수 없어 문구를 기록하지 않았습니다.",
                 )
                 return
-            if not _set_quick_text_clipboard(text) or not win32.send_paste():
+            if not _owns_recording_session():
+                return
+            if not _set_quick_text_clipboard(text):
                 QMessageBox.warning(
                     self,
                     "텍스트 입력 실패",
                     "대상 창에 텍스트를 모두 입력하지 못해 매크로에는 기록하지 않았습니다.",
                 )
+                return
+            if not _owns_recording_session():
+                return
+            if not win32.send_paste():
+                QMessageBox.warning(
+                    self,
+                    "텍스트 입력 실패",
+                    "대상 창에 텍스트를 모두 입력하지 못해 매크로에는 기록하지 않았습니다.",
+                )
+                return
+            if not _owns_recording_session():
                 return
             if not recorder.inject_text_input(
                 text,
@@ -1080,15 +1168,18 @@ class MainWindow(QMainWindow):
                 return
             self._sb_state.setText("텍스트 동작을 기록했습니다")
         finally:
-            final_focus_restored = (
-                target_hwnd > 0
-                and win32.bring_window_to_foreground(target_hwnd)
-                and win32.is_foreground_window(target_hwnd)
-            )
+            still_owns_session = _owns_recording_session()
+            final_focus_restored = False
+            if still_owns_session:
+                final_focus_restored = (
+                    target_hwnd > 0
+                    and win32.bring_window_to_foreground(target_hwnd)
+                    and win32.is_foreground_window(target_hwnd)
+                )
             if (
-                not final_focus_restored
+                still_owns_session
+                and not final_focus_restored
                 and not focus_failure_warned
-                and self._state == "recording"
             ):
                 QMessageBox.warning(
                     self,
@@ -1096,8 +1187,8 @@ class MainWindow(QMainWindow):
                     "원래 입력 창을 다시 확인할 수 없어 녹화를 일시중지 상태로 유지합니다.",
                 )
             if (
-                owns_pause
-                and self._state == "recording"
+                still_owns_session
+                and owns_pause
                 and final_focus_restored
             ):
                 # Ctrl+Enter는 dialog를 Ctrl key-up보다 먼저 닫을 수 있다.
@@ -1107,9 +1198,9 @@ class MainWindow(QMainWindow):
                     self._set_recording_paused_ui(False)
                 else:
                     self._set_recording_paused_ui(True)
-            elif owns_pause and self._state == "recording":
+            elif still_owns_session and owns_pause:
                 self._set_recording_paused_ui(True)
-            elif not owns_pause and self._state == "recording":
+            elif still_owns_session and not owns_pause:
                 self._set_recording_paused_ui(True)
             self._quick_text_session_active = False
 
@@ -1236,6 +1327,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "녹화 시작 오류", f"녹화를 시작할 수 없습니다.\n\n{exc}")
             return
         self._paused = False
+        self._recording_generation += 1
         self._state = "recording"
         self._overlay.start_recording()
         self._poll_timer.start()
@@ -1504,8 +1596,9 @@ class MainWindow(QMainWindow):
         self._playback_highlights_editor = playback_macro is None
         self._playback_source_label = source_label
         self._playback_pause_event.clear()
-        self._repeat_session = RepeatPlaybackSession(total=repeat_count)
-        self._repeat_session.mark_started()
+        repeat_session = RepeatPlaybackSession(total=repeat_count)
+        self._repeat_session = repeat_session
+        repeat_session.mark_started()
         self._overlay.start_playing(speed, repeat_current=1, repeat_total=repeat_count)
         self._poll_timer.start()
         self._update_toolbar()
@@ -1522,23 +1615,21 @@ class MainWindow(QMainWindow):
         )
 
         def _on_event(idx: int, _event: object) -> None:
-            self._sig_play_event.emit(idx)
+            self._sig_play_event.emit(repeat_session, idx)
 
         def _repeat_worker(
             _range: tuple[int, int] | None = event_range,
         ) -> None:
             from macroflow import player
             for i in range(repeat_count):
-                session = self._repeat_session
-                if session is None or not session.should_start_cycle(i):
+                if not repeat_session.should_start_cycle(i):
                     break
                 while self._playback_pause_event.is_set():
-                    session = self._repeat_session
-                    if session is None or session.was_stopped:
+                    if repeat_session.was_stopped:
                         return
                     time.sleep(0.02)
-                session.mark_cycle_started(i)
-                self._sig_repeat_cycle.emit(i + 1, repeat_count)
+                repeat_session.mark_cycle_started(i)
+                self._sig_repeat_cycle.emit(repeat_session, i + 1, repeat_count)
 
                 done_event = threading.Event()
                 error_holder: list[str] = []
@@ -1551,40 +1642,40 @@ class MainWindow(QMainWindow):
                     _ev.set()
 
                 try:
-                    player.play(
-                        macro,
-                        speed=speed,
-                        on_event_start=_on_event,
-                        on_complete=_on_complete,
-                        on_error=_on_error,
-                        event_range=_range,
-                        start_pause_requested=self._playback_pause_event.is_set,
+                    started = repeat_session.start_player_if_allowed(
+                        lambda: player.play(
+                            macro,
+                            speed=speed,
+                            on_event_start=_on_event,
+                            on_complete=_on_complete,
+                            on_error=_on_error,
+                            event_range=_range,
+                            start_pause_requested=self._playback_pause_event.is_set,
+                        )
                     )
                 except Exception as exc:
-                    self._sig_play_error.emit(str(exc))
+                    self._sig_playback_error.emit(repeat_session, str(exc))
+                    return
+                if not started:
                     return
 
                 # 재생 완료 대기
                 while not done_event.is_set():
-                    session = self._repeat_session
-                    if session is None or session.was_stopped:
+                    if repeat_session.was_stopped:
                         return
                     time.sleep(0.05)
 
                 if error_holder:
-                    self._sig_play_error.emit(error_holder[0])
+                    self._sig_playback_error.emit(repeat_session, error_holder[0])
                     return
 
                 # 마지막 반복이 아니면 interval 대기
                 if i < repeat_count - 1 and interval_ms > 0:
-                    session = self._repeat_session
-                    if session is not None:
-                        session.mark_between_cycles()
+                    repeat_session.mark_between_cycles()
                     remaining_s = interval_ms / 1000.0
                     last_active = time.monotonic()
                     while remaining_s > 0:
-                        session = self._repeat_session
-                        if session is None or session.was_stopped:
+                        if repeat_session.was_stopped:
                             return
                         now = time.monotonic()
                         if self._playback_pause_event.is_set():
@@ -1595,10 +1686,8 @@ class MainWindow(QMainWindow):
                         last_active = now
                         time.sleep(min(0.05, max(0.0, remaining_s)))
 
-            session = self._repeat_session
-            if session is not None:
-                session.mark_finished()
-            self._sig_play_complete.emit()
+            repeat_session.mark_finished()
+            self._sig_play_complete.emit(repeat_session)
 
         threading.Thread(
             target=_repeat_worker, daemon=True, name="RepeatPlayWorker"
@@ -1650,7 +1739,9 @@ class MainWindow(QMainWindow):
         logger.info("재생 중지")
         return True
 
-    def _on_play_complete(self) -> None:
+    def _on_play_complete(self, owner: object | None = None) -> None:
+        if owner is not None and owner is not self._repeat_session:
+            return
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
         if self._repeat_session is not None:
@@ -2312,15 +2403,8 @@ class MainWindow(QMainWindow):
         return True
 
     def _get_default_dir(self) -> str:
-        """파일 다이얼로그 초기 폴더를 반환한다.
-
-        PyInstaller 패키징 상태이면 exe 파일이 있는 폴더,
-        개발 환경이면 현재 작업 디렉토리를 반환한다.
-        """
-        if getattr(sys, "frozen", False):
-            # PyInstaller 패키징 상태: sys.executable = ...MacroFlow.exe
-            return str(Path(sys.executable).parent)
-        return str(Path.cwd())
+        """매크로 파일 다이얼로그의 안정적인 초기 폴더를 반환한다."""
+        return str(self._user_data.macros_dir)
 
     def _open_file(self) -> None:
         if self._sequence_file_mutation_blocked():
@@ -2454,23 +2538,30 @@ class MainWindow(QMainWindow):
         return True
 
     def _get_macros_dir(self) -> Path:
-        """영구 저장용 macros 디렉토리 경로를 반환한다.
-
-        PyInstaller 패키징 상태이면 exe 파일 옆 macros/ 폴더,
-        개발 환경이면 현재 작업 디렉토리 아래 macros/ 폴더를 사용한다.
-        """
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "macros"
-        return Path.cwd() / "macros"
+        """현재 사용자 데이터 루트의 영구 macros 디렉토리를 반환한다."""
+        return self._user_data.macros_dir
 
     def _get_favorites_dir(self) -> Path:
-        """즐겨찾기 저장용 favorites 디렉토리 경로를 반환한다.
+        """현재 사용자 데이터 루트의 영구 favorites 디렉토리를 반환한다."""
+        return self._user_data.favorites_dir
 
-        macros/ 와 별도의 favorites/ 폴더를 사용한다.
-        """
-        if getattr(sys, "frozen", False):
-            return Path(sys.executable).parent / "favorites"
-        return Path.cwd() / "favorites"
+    def _open_user_data_dir(self) -> None:
+        """파일 탐색기에서 현재 사용자 데이터 루트를 연다."""
+        try:
+            self._user_data.root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.warning(
+                self,
+                "사용자 데이터 폴더",
+                f"사용자 데이터 폴더를 준비하지 못했습니다:\n{exc}",
+            )
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._user_data.root))):
+            QMessageBox.warning(
+                self,
+                "사용자 데이터 폴더",
+                f"파일 탐색기에서 폴더를 열지 못했습니다:\n{self._user_data.root}",
+            )
 
     def _save_and_add_to_favorites(self) -> None:
         """현재 매크로를 이름 입력 후 즐겨찾기 폴더에 저장하고 즐겨찾기 탭에 추가한다."""

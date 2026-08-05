@@ -523,8 +523,10 @@ class EventEditorWidget(QWidget):
             return False
         cb = self._f6_capture_cb
         self._f6_capture_cb = None
-        cb(x_ratio, y_ratio, color_hex)
-        self.f6_capture_ended.emit()
+        try:
+            cb(x_ratio, y_ratio, color_hex)
+        finally:
+            self.f6_capture_ended.emit()
         return True
 
     def cancel_f6_capture(self) -> None:

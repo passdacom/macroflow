@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import threading
 import time
 from pathlib import Path
@@ -16,6 +18,8 @@ from macroflow.script_engine import (
     MacroFlow,
     MacroNode,
     WaitFixedNode,
+    load_flow,
+    save_flow,
 )
 from macroflow.types import MacroSettings, TextInputEvent
 
@@ -189,6 +193,179 @@ def test_color_timeout_without_failure_edge_is_terminal_failure(
     assert done_calls == [("color", False, "색 감지 타임아웃")]
     assert completed == []
     assert errors == ["색 감지 타임아웃"]
+
+
+def test_strict_flow_rejects_invalid_color_domain_values(tmp_path: Path) -> None:
+    flow = MacroFlow(
+        version="1.0",
+        name="invalid color",
+        created_at="2026-08-05T00:00:00",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="BAD",
+                tolerance=-1,
+                timeout_ms=-1,
+                check_interval_ms=0,
+            )
+        },
+    )
+    path = tmp_path / "invalid-color.macroflow"
+    path.write_text(json.dumps({
+        "meta": {
+            "version": flow.version,
+            "name": flow.name,
+            "created_at": flow.created_at,
+        },
+        "start_node_id": flow.start_node_id,
+        "nodes": {
+            "color": {
+                "id": "color",
+                "type": "color_check",
+                "label": "color",
+                "position": {},
+                "x_ratio": 0.5,
+                "y_ratio": 0.5,
+                "target_color": "BAD",
+                "tolerance": -1,
+                "timeout_ms": -1,
+                "check_interval_ms": 0,
+                "on_match": None,
+                "on_timeout": None,
+            }
+        },
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        load_flow(str(path), strict=True)
+
+
+def test_save_flow_rejects_strict_invalid_flow_without_replacing_last_good(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "last-good.macroflow"
+    good = MacroFlow(
+        version="1.0",
+        name="good",
+        created_at="now",
+        start_node_id="wait",
+        nodes={
+            "wait": WaitFixedNode(
+                id="wait", label="wait", duration_ms=1, next=None
+            )
+        },
+    )
+    save_flow(good, str(path))
+    original = path.read_bytes()
+    invalid = MacroFlow(
+        version="1.0",
+        name="invalid",
+        created_at="now",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="BAD",
+                tolerance=-1,
+                timeout_ms=-1,
+                check_interval_ms=0,
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        save_flow(invalid, str(path))
+
+    assert path.read_bytes() == original
+    assert load_flow(str(path), strict=True) == good
+
+
+@dataclasses.dataclass
+class _UnsupportedNode:
+    id: str
+    label: str
+
+
+@pytest.mark.parametrize("variant", ["node-key", "unsupported"])
+def test_save_flow_strict_closure_preserves_last_good_for_all_node_shapes(
+    tmp_path: Path, variant: str
+) -> None:
+    path = tmp_path / "last-good.macroflow"
+    good = MacroFlow(
+        version="1.0",
+        name="good",
+        created_at="now",
+        start_node_id="wait",
+        nodes={"wait": WaitFixedNode(id="wait", label="wait", duration_ms=1)},
+    )
+    save_flow(good, str(path))
+    original = path.read_bytes()
+    if variant == "node-key":
+        invalid = MacroFlow(
+            version="1.0",
+            name="bad-key",
+            created_at="now",
+            start_node_id="dictionary-key",
+            nodes={
+                "dictionary-key": WaitFixedNode(
+                    id="different-node-id", label="wait", duration_ms=1
+                )
+            },
+        )
+    else:
+        invalid = MacroFlow(
+            version="1.0",
+            name="unsupported",
+            created_at="now",
+            start_node_id="custom",
+            nodes={"custom": _UnsupportedNode("custom", "custom")},  # type: ignore[dict-item]
+        )
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        save_flow(invalid, str(path))
+
+    assert path.read_bytes() == original
+    assert load_flow(str(path), strict=True) == good
+
+
+def test_unexpected_node_error_reports_failed_node_done_once(tmp_path: Path) -> None:
+    flow = MacroFlow(
+        version="1.0",
+        name="runtime invalid color",
+        created_at="2026-08-05T00:00:00",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="BAD",
+                timeout_ms=1,
+                check_interval_ms=1,
+            )
+        },
+    )
+    done_calls: list[tuple[str, bool, str]] = []
+    errors: list[str] = []
+    engine = FlowEngine(
+        str(tmp_path / "runtime-invalid.macroflow"),
+        on_node_done=lambda *args: done_calls.append(args),
+        on_error=errors.append,
+    )
+
+    engine._run(flow)
+
+    assert len(done_calls) == 1
+    assert done_calls[0][0:2] == ("color", False)
+    assert len(errors) == 1
 
 
 def test_synchronous_player_start_failure_reports_node_done_once(

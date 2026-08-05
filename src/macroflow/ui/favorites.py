@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import uuid
@@ -34,9 +35,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.favorites_index import save_index
 from macroflow.ui.favorites_batch import (
+    commit_staged_favorites,
     move_filenames_to_group,
     remove_filenames_from_groups,
+    rollback_staged_favorites,
+    stage_favorite_paths,
     unique_filenames,
 )
 
@@ -128,6 +133,7 @@ class FavoritesWidget(QWidget):
         super().__init__(parent)
         self._favorites_dir: Path | None = None
         self._index: dict[str, Any] = {}
+        self._refresh_in_progress = False
         self._setup_ui()
 
     # ── UI 구성 ──────────────────────────────────────────────────────────────
@@ -278,16 +284,52 @@ class FavoritesWidget(QWidget):
             self._index = {"version": 1, "groups": []}
         self._ensure_default_group()
 
-    def _save_index(self) -> None:
-        """self._index 를 _index.json 에 저장한다."""
+    def _save_index(self) -> bool:
+        """Persist the current index and report whether it became durable."""
         idx_path = self._index_path()
         if idx_path is None:
-            return
+            return False
         try:
-            with open(idx_path, "w", encoding="utf-8") as f:
-                json.dump(self._index, f, ensure_ascii=False, indent=2)
-        except OSError as e:
+            save_index(self._index, idx_path)
+        except (OSError, TypeError, ValueError) as e:
             logger.error(f"즐겨찾기 인덱스 저장 오류: {e}")
+            return False
+        return True
+
+    def _restore_failed_index_change(
+        self,
+        preimage: dict[str, Any],
+        operation: str,
+        rollback_errors: list[OSError] | None = None,
+    ) -> None:
+        """Restore durable UI state after an index commit failure."""
+        self._index = preimage
+        self._refresh_tree(persist=False)
+        if rollback_errors:
+            reconciled = self._save_index()
+            detail = "; ".join(str(error) for error in rollback_errors)
+            status = (
+                "현재 파일 상태에 맞춰 인덱스를 다시 저장했습니다."
+                if reconciled
+                else "인덱스도 저장하지 못했습니다. 파일과 그룹 배치를 확인해 주세요."
+            )
+            recovery_note = (
+                "\n삭제 원본은 즐겨찾기 폴더의 숨김 .delete-*.tmp staging 파일로 보존했습니다."
+                if operation == "삭제"
+                else ""
+            )
+            QMessageBox.critical(
+                self,
+                "즐겨찾기 복원 실패",
+                f"{operation} 작업을 완전히 복원하지 못했습니다.\n"
+                f"{status}{recovery_note}\n{detail}",
+            )
+            return
+        QMessageBox.warning(
+            self,
+            "즐겨찾기 저장 오류",
+            f"{operation} 변경을 디스크에 저장하지 못해 이전 상태로 복원했습니다.",
+        )
 
     def _ensure_default_group(self) -> None:
         """기본 그룹이 없으면 인덱스 맨 앞에 생성한다."""
@@ -324,8 +366,18 @@ class FavoritesWidget(QWidget):
 
     # ── 트리 갱신 ────────────────────────────────────────────────────────────
 
-    def _refresh_tree(self) -> None:
+    def _refresh_tree(self, *, persist: bool = True) -> None:
         """인덱스를 기반으로 트리를 재구성한다."""
+        was_refreshing = self._refresh_in_progress
+        self._refresh_in_progress = True
+        try:
+            self._rebuild_tree(persist=persist)
+        finally:
+            self._refresh_in_progress = was_refreshing
+
+    def _rebuild_tree(self, *, persist: bool) -> None:
+        """Rebuild tree while expansion persistence signals are suppressed."""
+        preimage = copy.deepcopy(self._index)
         self._tree.clear()
         if self._favorites_dir is None:
             self._summary.setText("즐겨찾기 없음")
@@ -388,7 +440,10 @@ class FavoritesWidget(QWidget):
                 )
                 total_items += 1
 
-        self._save_index()
+        if persist and not self._save_index():
+            self._index = preimage
+            self._refresh_tree(persist=False)
+            return
         self._summary.setText(
             f"즐겨찾기 {total_items}개"
             if total_items > 0 else "즐겨찾기 없음"
@@ -442,6 +497,7 @@ class FavoritesWidget(QWidget):
         name, ok = QInputDialog.getText(self, "새 그룹", "그룹 이름:")
         if not ok or not name.strip():
             return
+        preimage = copy.deepcopy(self._index)
         gid = f"group_{uuid.uuid4().hex[:8]}"
         self._index.setdefault("groups", []).append({
             "id": gid,
@@ -449,7 +505,9 @@ class FavoritesWidget(QWidget):
             "expanded": True,
             "items": [],
         })
-        self._save_index()
+        if not self._save_index():
+            self._restore_failed_index_change(preimage, "그룹 추가")
+            return
         self._refresh_tree()
 
     def _rename_group(self, gid: str) -> None:
@@ -462,8 +520,11 @@ class FavoritesWidget(QWidget):
         )
         if not ok or not new_name.strip():
             return
+        preimage = copy.deepcopy(self._index)
         group["name"] = new_name.strip()
-        self._save_index()
+        if not self._save_index():
+            self._restore_failed_index_change(preimage, "그룹 이름 변경")
+            return
         self._refresh_tree()
 
     def _delete_group(self, gid: str) -> None:
@@ -486,6 +547,7 @@ class FavoritesWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
+        preimage = copy.deepcopy(self._index)
         # 항목을 기본 그룹 앞으로 이동
         default = self._find_group(_DEFAULT_GROUP_ID)
         if default is not None and items:
@@ -495,20 +557,27 @@ class FavoritesWidget(QWidget):
             g for g in self._index.get("groups", [])
             if g.get("id") != gid
         ]
-        self._save_index()
+        if not self._save_index():
+            self._restore_failed_index_change(preimage, "그룹 삭제")
+            return
         self._refresh_tree()
 
     def _move_item_to_group(self, filename: str, target_gid: str) -> None:
         """파일을 다른 그룹으로 이동한다."""
+        if self._find_group(target_gid) is None:
+            return
+        preimage = copy.deepcopy(self._index)
         for g in self._index.get("groups", []):
             items: list[str] = g.get("items", [])
             if filename in items:
                 items.remove(filename)
                 break
         target = self._find_group(target_gid)
-        if target is not None:
-            target["items"].append(filename)
-        self._save_index()
+        assert target is not None
+        target["items"].append(filename)
+        if not self._save_index():
+            self._restore_failed_index_change(preimage, "그룹 이동")
+            return
         self._refresh_tree()
 
     # ── 이벤트 핸들러 ────────────────────────────────────────────────────────
@@ -549,6 +618,8 @@ class FavoritesWidget(QWidget):
 
     def _on_expand_change(self, item: QTreeWidgetItem) -> None:
         """그룹 펼침/접힘 상태를 인덱스에 즉시 반영한다."""
+        if self._refresh_in_progress:
+            return
         data: dict[str, Any] = item.data(0, _ROLE) or {}
         if data.get("type") == "group":
             gid: str = data.get("id", "")
@@ -559,6 +630,7 @@ class FavoritesWidget(QWidget):
 
     def _on_item_moved(self) -> None:
         """드래그앤드롭 완료 후 트리 순서를 인덱스에 반영한다."""
+        preimage = copy.deepcopy(self._index)
         root = self._tree.invisibleRootItem()
         if root is None:
             return
@@ -590,7 +662,9 @@ class FavoritesWidget(QWidget):
             new_groups.append(group)
 
         self._index["groups"] = new_groups
-        self._save_index()
+        if not self._save_index():
+            self._restore_failed_index_change(preimage, "드래그 이동")
+            return
 
         # 그룹 텍스트(카운트) 업데이트 — 트리 재구성 없이 텍스트만 갱신
         for gi in range(root.childCount()):
@@ -774,8 +848,13 @@ class FavoritesWidget(QWidget):
         filenames = self._selected_item_filenames()
         if not filenames:
             return
+        preimage = copy.deepcopy(self._index)
         move_filenames_to_group(self._index, filenames, target_gid)
-        self._save_index()
+        if self._index == preimage:
+            return
+        if not self._save_index():
+            self._restore_failed_index_change(preimage, "일괄 그룹 이동")
+            return
         self._refresh_tree()
 
     def _remove_selected(self) -> None:
@@ -825,6 +904,7 @@ class FavoritesWidget(QWidget):
             )
             return
 
+        preimage = copy.deepcopy(self._index)
         try:
             old_path.rename(new_path)
         except OSError as e:
@@ -841,7 +921,17 @@ class FavoritesWidget(QWidget):
                 items[idx] = new_filename
                 break
 
-        self._save_index()
+        if not self._save_index():
+            rollback_errors: list[OSError] = []
+            try:
+                new_path.replace(old_path)
+            except OSError as rollback_error:
+                logger.error(f"즐겨찾기 이름 변경 rollback 실패: {rollback_error}")
+                rollback_errors.append(rollback_error)
+            self._restore_failed_index_change(
+                preimage, "이름 변경", rollback_errors or None
+            )
+            return
         self._refresh_tree()
         logger.info(f"즐겨찾기 이름 변경: {old_filename} → {new_filename}")
 
@@ -862,20 +952,38 @@ class FavoritesWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        filenames = {path.name for path in paths}
-        remove_filenames_from_groups(self._index, filenames)
+        preimage = copy.deepcopy(self._index)
+        staged, failures = stage_favorite_paths(paths)
+        removed = {path.name for path in paths if not path.exists()}
+        removed.update(original.name for original, _stage in staged)
+        remove_filenames_from_groups(self._index, removed)
+        if not self._save_index():
+            rollback_failures = rollback_staged_favorites(staged)
+            if rollback_failures:
+                logger.error(
+                    "즐겨찾기 삭제 rollback 실패: %s",
+                    "; ".join(str(error) for error in rollback_failures),
+                )
+            self._restore_failed_index_change(
+                preimage, "삭제", rollback_failures or None
+            )
+            return
 
-        for file_path in paths:
-            if file_path.exists():
-                try:
-                    file_path.unlink()
-                    logger.info(f"즐겨찾기 파일 삭제: {file_path}")
-                except OSError as e:
-                    QMessageBox.warning(self, "삭제 오류", str(e))
-                    return
-
-        self._save_index()
+        cleanup_failures = commit_staged_favorites(staged)
         self._refresh_tree()
+        for path in paths:
+            if path.name in removed:
+                logger.info(f"즐겨찾기 파일 삭제: {path}")
+        if failures or cleanup_failures:
+            details = "\n".join(
+                [f"{path.name}: {error}" for path, error in failures]
+                + [f"staged file: {error}" for error in cleanup_failures]
+            )
+            QMessageBox.warning(
+                self,
+                "삭제 오류",
+                f"일부 파일을 삭제하지 못했습니다. 나머지 항목은 유지했습니다.\n{details}",
+            )
 
     def _remove_item(self, item: QTreeWidgetItem) -> None:
         data: dict[str, Any] = item.data(0, _ROLE) or {}
@@ -894,23 +1002,29 @@ class FavoritesWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # 인덱스에서 제거
-        for g in self._index.get("groups", []):
-            items: list[str] = g.get("items", [])
-            if filename in items:
-                items.remove(filename)
-                break
-
         file_path = Path(path)
-        if file_path.exists():
-            try:
-                file_path.unlink()
-                logger.info(f"즐겨찾기 파일 삭제: {file_path}")
-            except OSError as e:
-                QMessageBox.warning(self, "삭제 오류", str(e))
-                return
+        preimage = copy.deepcopy(self._index)
+        staged, failures = stage_favorite_paths([file_path])
+        if failures:
+            QMessageBox.warning(self, "삭제 오류", str(failures[0][1]))
+            return
 
-        self._save_index()
+        # 파일이 staging되었거나 이미 없을 때만 인덱스를 변경한다.
+        remove_filenames_from_groups(self._index, {filename})
+        if not self._save_index():
+            rollback_failures = rollback_staged_favorites(staged)
+            if rollback_failures:
+                logger.error(f"즐겨찾기 삭제 rollback 실패: {rollback_failures[0]}")
+            self._restore_failed_index_change(
+                preimage, "삭제", rollback_failures or None
+            )
+            return
+
+        cleanup_failures = commit_staged_favorites(staged)
+        if cleanup_failures:
+            logger.error(f"즐겨찾기 staging 파일 정리 실패: {cleanup_failures[0]}")
+        else:
+            logger.info(f"즐겨찾기 파일 삭제: {file_path}")
         self._refresh_tree()
 
 

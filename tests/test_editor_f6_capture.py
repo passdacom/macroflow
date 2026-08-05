@@ -122,6 +122,22 @@ def test_consume_f6_capture_runs_once_and_emits_end(
     assert widget.consume_f6_capture(0.1, 0.2, "#000000") is False
 
 
+def test_consume_f6_capture_emits_end_when_callback_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    editor = _import_editor(monkeypatch, request)
+    widget = _make_widget(editor)
+    callback = MagicMock(side_effect=RuntimeError("capture failed"))
+    widget._start_f6_capture(callback)
+
+    with pytest.raises(RuntimeError, match="capture failed"):
+        widget.consume_f6_capture(0.25, 0.75, "#AABBCC")
+
+    assert widget._f6_capture_cb is None
+    widget.f6_capture_ended.emit.assert_called_once_with()
+
+
 def test_cancel_f6_capture_only_emits_when_active(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,

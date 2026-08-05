@@ -95,9 +95,8 @@ def test_strict_wait_load_rejects_negative_but_keeps_general_long_waits(
     tmp_path: Path,
 ) -> None:
     target = tmp_path / "wait.macroflow"
-    save_flow(_wait_flow(-1), str(target))
     with pytest.raises(ValueError, match="정규 형식"):
-        load_flow(str(target), strict=True)
+        save_flow(_wait_flow(-1), str(target))
 
     long_wait = _wait_flow(45_000)
     save_flow(long_wait, str(target))
@@ -177,9 +176,8 @@ def test_v10_rejects_inline_node_and_v11_rejects_non_mvp_event(tmp_path: Path) -
     target = tmp_path / "invalid-inline.macroflow"
     flow = _inline_flow()
     flow.version = "1.0"
-    save_flow(flow, str(target))
-    with pytest.raises(ValueError, match="v1.0.*inline_events"):
-        load_flow(str(target), strict=True)
+    with pytest.raises(ValueError, match="정규 형식"):
+        save_flow(flow, str(target))
 
     flow.version = "1.1"
     inline = flow.nodes["inline_000"]
@@ -193,9 +191,8 @@ def test_v10_rejects_inline_node_and_v11_rejects_non_mvp_event(tmp_path: Path) -
             vk_code=13,
         )
     ]
-    save_flow(flow, str(target))
     with pytest.raises(ValueError, match="정규 형식"):
-        load_flow(str(target), strict=True)
+        save_flow(flow, str(target))
 
 
 def test_strict_rejects_invalid_terminal_and_inline_semantics(tmp_path: Path) -> None:
@@ -223,7 +220,7 @@ def test_flow_save_rejects_non_finite_json_numbers(tmp_path: Path) -> None:
     assert isinstance(mouse, MouseButtonEvent)
     mouse.x_ratio = float("inf")
 
-    with pytest.raises(ValueError, match="Out of range float"):
+    with pytest.raises(ValueError, match="정규 형식"):
         save_flow(flow, str(tmp_path / "non-finite.macroflow"))
 
 

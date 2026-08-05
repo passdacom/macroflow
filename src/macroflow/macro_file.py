@@ -521,6 +521,21 @@ def save(macro: MacroData, path: str) -> None:
         macro: 저장할 MacroData.
         path: 저장 경로.
     """
+    if (
+        not _metadata_types_valid(macro.meta)
+        or not settings_types_valid(macro.settings)
+        or type(macro.raw_events) is not list
+        or type(macro.events) is not list
+        or type(macro.is_edited) is not bool
+        or not all(
+            event_types_valid(event)
+            for event in (*macro.raw_events, *macro.events)
+        )
+    ):
+        raise ValueError(f"매크로 field types 오류 ({path})")
+    if not _event_ids_unique(macro.raw_events) or not _event_ids_unique(macro.events):
+        raise ValueError(f"매크로 duplicate event id 오류 ({path})")
+
     p = Path(path)
 
     try:

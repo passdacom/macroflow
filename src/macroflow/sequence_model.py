@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+from macroflow.macro_file import inline_event_block_valid, settings_types_valid
 from macroflow.script_engine import (
     AnyFlowNode,
     EndNode,
@@ -69,6 +70,11 @@ def build_sequence_flow(
             raise ValueError(
                 f"{index}번 대기 시간은 0~{MAX_SEQUENCE_WAIT_MS}ms 정수여야 합니다."
             )
+        if isinstance(item, InlineActionItem) and (
+            not inline_event_block_valid(item.events)
+            or not settings_types_valid(item.playback_settings)
+        ):
+            raise ValueError(f"{index}번 인라인 액션이 정규 형식이 아닙니다.")
 
     base = Path(save_path).parent
     nodes: dict[str, AnyFlowNode] = {}

@@ -78,6 +78,31 @@ def test_windows_job_proves_lgpl_library_replacement_without_mutating_release() 
     assert "$restoredHash -ne $originalHash" in smoke
 
 
+def test_pr_build_and_provenance_use_the_exact_checked_out_head() -> None:
+    jobs = _workflow()["jobs"]
+    expected_ref = "${{ github.event.pull_request.head.sha || github.sha }}"
+    lint_checkout = next(
+        step
+        for step in jobs["lint-test"]["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert "ref" not in lint_checkout["with"]
+
+    build_checkout = next(
+        step
+        for step in jobs["build-exe"]["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert build_checkout["with"]["ref"] == expected_ref
+
+    bundle = _steps(jobs["build-exe"])["Build GPL distribution bundle"]["run"]
+    assert "$sourceCommit = (git rev-parse HEAD).Trim()" in bundle
+    assert "--commit $sourceCommit" in bundle
+    assert "git -c core.autocrlf=false archive" in bundle
+    assert '"release/$macroflowSourceName" $sourceCommit' in bundle
+    assert "--commit $env:GITHUB_SHA" not in bundle
+
+
 def test_release_requires_manual_dispatch_and_publishes_provenance() -> None:
     workflow = _workflow()
     release = workflow["jobs"]["release"]
