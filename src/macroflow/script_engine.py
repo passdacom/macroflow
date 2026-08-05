@@ -505,10 +505,18 @@ def save_flow(flow: MacroFlow, path: str) -> None:
         flow: 저장할 MacroFlow.
         path: 저장 경로.
     """
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
+    if (
+        flow.version not in {"1.0", "1.1"}
+        or not _strict_flow_types_valid(flow)
+        or (flow.version == "1.1" and not _strict_flow_graph_valid(flow))
+    ):
+        raise ValueError(
+            "정규 형식이 아닌 필드가 있어 손실 방지를 위해 저장을 거부했습니다."
+        )
 
     data = _flow_to_dict(flow)
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
 
     temp_path: Path | None = None
     try:

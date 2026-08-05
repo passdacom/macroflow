@@ -7,12 +7,15 @@ index mutations live in a pure helper module.
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+from PyQt6.QtWidgets import QMessageBox
 
+from macroflow.ui.favorites import FavoritesWidget
 from macroflow.ui.favorites_batch import (
     delete_favorite_paths,
     move_filenames_to_group,
@@ -126,3 +129,87 @@ def test_partial_batch_delete_reports_only_successful_deletions(
     assert [path for path, _error in failures] == [second]
     assert not first.exists()
     assert second.exists()
+
+
+def _configured_widget(tmp_path: Path, qtbot) -> FavoritesWidget:
+    widget = FavoritesWidget()
+    qtbot.addWidget(widget)
+    widget.set_favorites_dir(tmp_path)
+    (tmp_path / "a.json").write_text("{}", encoding="utf-8")
+    widget._index = {
+        "version": 1,
+        "groups": [
+            {"id": "default", "name": "기본", "expanded": True, "items": ["a.json"]},
+            {"id": "target", "name": "대상", "expanded": True, "items": []},
+        ],
+    }
+    widget._refresh_tree()
+    return widget
+
+
+def test_move_save_failure_restores_durable_index_and_ui(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    original = copy.deepcopy(widget._index)
+    warnings: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.save_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QMessageBox.warning",
+        lambda *args: warnings.append(args),
+    )
+
+    widget._move_item_to_group("a.json", "target")
+
+    assert widget._index == original
+    assert widget._summary.text() == "즐겨찾기 1개"
+    assert warnings
+
+
+def test_rename_save_failure_rolls_back_file_index_and_ui(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    original = copy.deepcopy(widget._index)
+    item = widget._tree.topLevelItem(0).child(0)
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QInputDialog.getText",
+        lambda *_args, **_kwargs: ("renamed", True),
+    )
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.save_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    monkeypatch.setattr("macroflow.ui.favorites.QMessageBox.warning", lambda *_args: None)
+
+    widget._rename_item(item)
+
+    assert (tmp_path / "a.json").exists()
+    assert not (tmp_path / "renamed.json").exists()
+    assert widget._index == original
+    assert widget._summary.text() == "즐겨찾기 1개"
+
+
+def test_delete_save_failure_restores_files_index_and_ui(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    original = copy.deepcopy(widget._index)
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QMessageBox.question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.save_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    monkeypatch.setattr("macroflow.ui.favorites.QMessageBox.warning", lambda *_args: None)
+
+    widget._remove_paths([tmp_path / "a.json"])
+
+    assert (tmp_path / "a.json").exists()
+    assert widget._index == original
+    assert widget._summary.text() == "즐겨찾기 1개"

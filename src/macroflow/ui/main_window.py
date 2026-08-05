@@ -153,6 +153,7 @@ class MainWindow(QMainWindow):
         self._hotkey_runtime: HotkeyRuntime | None = None
         self._paused: bool = False
         self._quick_text_session_active: bool = False
+        self._recording_generation: int = 0
         self._hotkey_settings_active: bool = False
         self._quick_run_hotkey_editing: bool = False
         self._playback_pause_event = threading.Event()
@@ -1081,6 +1082,15 @@ class MainWindow(QMainWindow):
         from macroflow import recorder, win32
 
         self._quick_text_session_active = True
+        recording_generation = self._recording_generation
+
+        def _owns_recording_session() -> bool:
+            return (
+                self._state == "recording"
+                and self._quick_text_session_active
+                and self._recording_generation == recording_generation
+            )
+
         owns_pause = False
         target_hwnd = 0
         restored = False
@@ -1097,7 +1107,7 @@ class MainWindow(QMainWindow):
                 return
             # ``dialog.exec()`` runs a nested Qt event loop. Stop/close can be
             # delivered while it is open, so stale acceptance must not commit.
-            if self._state != "recording" or not self._quick_text_session_active:
+            if not _owns_recording_session():
                 return
             text = dialog.text()
             if not text:
@@ -1111,6 +1121,8 @@ class MainWindow(QMainWindow):
                 )
                 return
 
+            if not _owns_recording_session():
+                return
             restored = (
                 target_hwnd > 0
                 and win32.bring_window_to_foreground(target_hwnd)
@@ -1124,12 +1136,25 @@ class MainWindow(QMainWindow):
                     "원래 텍스트 입력 창을 확인할 수 없어 문구를 기록하지 않았습니다.",
                 )
                 return
-            if not _set_quick_text_clipboard(text) or not win32.send_paste():
+            if not _owns_recording_session():
+                return
+            if not _set_quick_text_clipboard(text):
                 QMessageBox.warning(
                     self,
                     "텍스트 입력 실패",
                     "대상 창에 텍스트를 모두 입력하지 못해 매크로에는 기록하지 않았습니다.",
                 )
+                return
+            if not _owns_recording_session():
+                return
+            if not win32.send_paste():
+                QMessageBox.warning(
+                    self,
+                    "텍스트 입력 실패",
+                    "대상 창에 텍스트를 모두 입력하지 못해 매크로에는 기록하지 않았습니다.",
+                )
+                return
+            if not _owns_recording_session():
                 return
             if not recorder.inject_text_input(
                 text,
@@ -1143,15 +1168,18 @@ class MainWindow(QMainWindow):
                 return
             self._sb_state.setText("텍스트 동작을 기록했습니다")
         finally:
-            final_focus_restored = (
-                target_hwnd > 0
-                and win32.bring_window_to_foreground(target_hwnd)
-                and win32.is_foreground_window(target_hwnd)
-            )
+            still_owns_session = _owns_recording_session()
+            final_focus_restored = False
+            if still_owns_session:
+                final_focus_restored = (
+                    target_hwnd > 0
+                    and win32.bring_window_to_foreground(target_hwnd)
+                    and win32.is_foreground_window(target_hwnd)
+                )
             if (
-                not final_focus_restored
+                still_owns_session
+                and not final_focus_restored
                 and not focus_failure_warned
-                and self._state == "recording"
             ):
                 QMessageBox.warning(
                     self,
@@ -1159,8 +1187,8 @@ class MainWindow(QMainWindow):
                     "원래 입력 창을 다시 확인할 수 없어 녹화를 일시중지 상태로 유지합니다.",
                 )
             if (
-                owns_pause
-                and self._state == "recording"
+                still_owns_session
+                and owns_pause
                 and final_focus_restored
             ):
                 # Ctrl+Enter는 dialog를 Ctrl key-up보다 먼저 닫을 수 있다.
@@ -1170,9 +1198,9 @@ class MainWindow(QMainWindow):
                     self._set_recording_paused_ui(False)
                 else:
                     self._set_recording_paused_ui(True)
-            elif owns_pause and self._state == "recording":
+            elif still_owns_session and owns_pause:
                 self._set_recording_paused_ui(True)
-            elif not owns_pause and self._state == "recording":
+            elif still_owns_session and not owns_pause:
                 self._set_recording_paused_ui(True)
             self._quick_text_session_active = False
 
@@ -1299,6 +1327,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "녹화 시작 오류", f"녹화를 시작할 수 없습니다.\n\n{exc}")
             return
         self._paused = False
+        self._recording_generation += 1
         self._state = "recording"
         self._overlay.start_recording()
         self._poll_timer.start()
@@ -1613,17 +1642,21 @@ class MainWindow(QMainWindow):
                     _ev.set()
 
                 try:
-                    player.play(
-                        macro,
-                        speed=speed,
-                        on_event_start=_on_event,
-                        on_complete=_on_complete,
-                        on_error=_on_error,
-                        event_range=_range,
-                        start_pause_requested=self._playback_pause_event.is_set,
+                    started = repeat_session.start_player_if_allowed(
+                        lambda: player.play(
+                            macro,
+                            speed=speed,
+                            on_event_start=_on_event,
+                            on_complete=_on_complete,
+                            on_error=_on_error,
+                            event_range=_range,
+                            start_pause_requested=self._playback_pause_event.is_set,
+                        )
                     )
                 except Exception as exc:
                     self._sig_playback_error.emit(repeat_session, str(exc))
+                    return
+                if not started:
                     return
 
                 # 재생 완료 대기

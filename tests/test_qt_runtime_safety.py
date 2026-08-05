@@ -664,7 +664,7 @@ def test_quick_text_accept_after_runtime_stop_has_no_clipboard_or_paste_side_eff
              patch("macroflow.recorder.pause_recording", return_value=True), \
              patch("macroflow.recorder.resume_recording") as resume, \
              patch("macroflow.win32.get_foreground_window", return_value=777), \
-             patch("macroflow.win32.bring_window_to_foreground", return_value=True), \
+             patch("macroflow.win32.bring_window_to_foreground", return_value=True) as bring, \
              patch("macroflow.win32.is_foreground_window", return_value=True), \
              patch("macroflow.ui.main_window._set_quick_text_clipboard", return_value=True) as clipboard, \
              patch("macroflow.win32.send_paste", return_value=True) as paste, \
@@ -675,6 +675,60 @@ def test_quick_text_accept_after_runtime_stop_has_no_clipboard_or_paste_side_eff
         clipboard.assert_not_called()
         paste.assert_not_called()
         resume.assert_not_called()
+        bring.assert_not_called()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_quick_text_from_old_recording_cannot_commit_after_stop_and_restart() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtWidgets import QDialog
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "recording"
+        host._recording_generation = 1
+        host._paused = False
+        host._append_recording_mode = False
+        host._quick_text_session_active = False
+        dialog = Mock()
+
+        def modal_exec():
+            host._state = "stopping"
+            host._state = "idle"
+            host._recording_generation = 2
+            host._state = "recording"
+            host._set_recording_paused_ui.reset_mock()
+            return QDialog.DialogCode.Accepted
+
+        dialog.exec.side_effect = modal_exec
+        dialog.text.return_value = "stale-text"
+
+        with patch("macroflow.recorder.is_paused", return_value=False), \
+             patch("macroflow.recorder.pause_recording", return_value=True), \
+             patch("macroflow.recorder.resume_recording") as resume, \
+             patch("macroflow.recorder.inject_text_input") as inject, \
+             patch("macroflow.win32.get_foreground_window", return_value=777), \
+             patch("macroflow.win32.bring_window_to_foreground", return_value=True) as bring, \
+             patch("macroflow.win32.is_foreground_window", return_value=True), \
+             patch("macroflow.ui.main_window._set_quick_text_clipboard", return_value=True) as clipboard, \
+             patch("macroflow.win32.send_paste", return_value=True) as paste, \
+             patch("macroflow.ui.main_window.QuickTextDialog", return_value=dialog), \
+             patch("macroflow.ui.main_window.QMessageBox.warning") as warning:
+            MainWindow._capture_quick_text(host)
+
+        bring.assert_not_called()
+        clipboard.assert_not_called()
+        paste.assert_not_called()
+        inject.assert_not_called()
+        resume.assert_not_called()
+        host._set_recording_paused_ui.assert_not_called()
+        warning.assert_not_called()
         """
     )
 

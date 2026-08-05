@@ -406,6 +406,7 @@ def test_lossy_flow_projection_is_rejected() -> None:
 def test_linear_flow_with_noncanonical_document_data_is_rejected() -> None:
     _run_offscreen(
         """
+        import json
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
@@ -424,7 +425,7 @@ def test_linear_flow_with_noncanonical_document_data_is_rejected() -> None:
             flow_path = root / "custom.macroflow"
             save_flow(
                 MacroFlow(
-                    version="2.5",
+                    version="1.0",
                     name="operator-authored flow",
                     created_at="2024-01-02T03:04:05",
                     start_node_id="custom-start",
@@ -452,6 +453,11 @@ def test_linear_flow_with_noncanonical_document_data_is_rejected() -> None:
                     },
                 ),
                 str(flow_path),
+            )
+            raw = json.loads(flow_path.read_text(encoding="utf-8"))
+            raw["meta"]["version"] = "2.5"
+            flow_path.write_text(
+                json.dumps(raw, ensure_ascii=False), encoding="utf-8"
             )
 
             widget = MacroSequencerWidget()

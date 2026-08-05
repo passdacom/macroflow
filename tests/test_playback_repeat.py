@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 from macroflow.ui.playback_repeat import (
     PlaybackStartOptions,
     RepeatPlaybackSession,
@@ -27,6 +30,49 @@ def test_stop_request_releases_polling_after_player_exits() -> None:
     session.request_stop()
 
     assert not session.should_poll_wait_for_worker(player_is_playing=False)
+
+
+def test_stop_cannot_return_while_player_start_gate_is_in_flight() -> None:
+    session = RepeatPlaybackSession(total=1)
+    session.mark_started()
+    start_entered = threading.Event()
+    release_start = threading.Event()
+    start_returned = threading.Event()
+    stop_returned = threading.Event()
+
+    def start_player() -> None:
+        start_entered.set()
+        assert release_start.wait(1)
+        start_returned.set()
+
+    launcher = threading.Thread(
+        target=lambda: session.start_player_if_allowed(start_player)
+    )
+    launcher.start()
+    assert start_entered.wait(1)
+
+    stopper = threading.Thread(
+        target=lambda: (session.request_stop(), stop_returned.set())
+    )
+    stopper.start()
+    time.sleep(0.02)
+    assert not stop_returned.is_set()
+
+    release_start.set()
+    launcher.join(timeout=1)
+    stopper.join(timeout=1)
+    assert start_returned.is_set()
+    assert stop_returned.is_set()
+
+
+def test_stopped_session_rejects_player_start_gate() -> None:
+    session = RepeatPlaybackSession(total=1)
+    session.mark_started()
+    session.request_stop()
+    starts: list[bool] = []
+
+    assert not session.start_player_if_allowed(lambda: starts.append(True))
+    assert starts == []
 
 
 def test_repeat_session_stays_active_between_cycles() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from pathlib import Path
@@ -213,10 +214,76 @@ def test_strict_flow_rejects_invalid_color_domain_values(tmp_path: Path) -> None
         },
     )
     path = tmp_path / "invalid-color.macroflow"
-    save_flow(flow, str(path))
+    path.write_text(json.dumps({
+        "meta": {
+            "version": flow.version,
+            "name": flow.name,
+            "created_at": flow.created_at,
+        },
+        "start_node_id": flow.start_node_id,
+        "nodes": {
+            "color": {
+                "id": "color",
+                "type": "color_check",
+                "label": "color",
+                "position": {},
+                "x_ratio": 0.5,
+                "y_ratio": 0.5,
+                "target_color": "BAD",
+                "tolerance": -1,
+                "timeout_ms": -1,
+                "check_interval_ms": 0,
+                "on_match": None,
+                "on_timeout": None,
+            }
+        },
+    }), encoding="utf-8")
 
     with pytest.raises(ValueError, match="정규 형식"):
         load_flow(str(path), strict=True)
+
+
+def test_save_flow_rejects_strict_invalid_flow_without_replacing_last_good(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "last-good.macroflow"
+    good = MacroFlow(
+        version="1.0",
+        name="good",
+        created_at="now",
+        start_node_id="wait",
+        nodes={
+            "wait": WaitFixedNode(
+                id="wait", label="wait", duration_ms=1, next=None
+            )
+        },
+    )
+    save_flow(good, str(path))
+    original = path.read_bytes()
+    invalid = MacroFlow(
+        version="1.0",
+        name="invalid",
+        created_at="now",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="BAD",
+                tolerance=-1,
+                timeout_ms=-1,
+                check_interval_ms=0,
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        save_flow(invalid, str(path))
+
+    assert path.read_bytes() == original
+    assert load_flow(str(path), strict=True) == good
 
 
 def test_unexpected_node_error_reports_failed_node_done_once(tmp_path: Path) -> None:
