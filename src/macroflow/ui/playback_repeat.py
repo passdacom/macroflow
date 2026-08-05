@@ -103,4 +103,4 @@ class RepeatPlaybackSession:
         between cycles. The UI must keep overlay/state alive until the repeat
         worker itself finishes.
         """
-        return self.is_active and not player_is_playing
+        return self.is_active and not self.was_stopped and not player_is_playing

@@ -147,8 +147,16 @@ class HotkeyRuntime:
             raise ValueError("cannot apply invalid hotkey config")
 
         was_globally_registered = self.globally_registered
+        assert self._config is not None
+        quick_run_changed = any(
+            candidate.binding_for(action) != self._config.binding_for(action)
+            for action in QUICK_RUN_ACTION_IDS
+        )
+        include_quick_run = self._quick_run_enabled and (
+            self.quick_run_globally_registered or quick_run_changed
+        )
         result = self._registrar.replace(
-            native_hotkeys(candidate, include_quick_run=self._quick_run_enabled)
+            native_hotkeys(candidate, include_quick_run=include_quick_run)
         )
         if not result.success:
             self.degraded = not result.rollback_succeeded
@@ -163,12 +171,16 @@ class HotkeyRuntime:
             return result
 
         self._focused_bindings.replace(
-            self._focused_map(candidate, include_runtime=False),
+            self._focused_map(
+                candidate,
+                include_runtime=False,
+                include_quick_run=self._quick_run_enabled and not include_quick_run,
+            ),
             self.dispatch_focused,
         )
         self._config = candidate
         self.globally_registered = True
-        self.quick_run_globally_registered = self._quick_run_enabled
+        self.quick_run_globally_registered = include_quick_run
         self.degraded = False
         self._refresh_native_actions()
         return result

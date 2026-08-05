@@ -620,54 +620,58 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
     if not _wait_active(0.05):
         return
     target = _hex_to_rgb(event.target_color)
-    start_ns = _active_now_ns()
-    deadline_ns = (
-        None if event.timeout_ms <= 0
-        else start_ns + event.timeout_ms * 1_000_000
-    )
-    next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
     interval_s = max(1, int(event.check_interval_ms)) / 1000.0
+    retry_logged = False
 
     while True:
-        if _stop_flag.is_set():
-            return
-        now_ns = _active_now_ns()
-        if deadline_ns is not None and now_ns >= deadline_ns:
-            break
-        actual = get_pixel_color(x, y)
-        checked_ns = _active_now_ns()
-        if _stop_flag.is_set():
-            return
-        if deadline_ns is not None and checked_ns >= deadline_ns:
-            break
-        if _color_matches(actual, target, event.tolerance):
-            return
-        previous_nudge_ns = next_nudge_ns
-        next_nudge_ns = _nudge_cursor_if_due(x, y, checked_ns, next_nudge_ns)
-        if next_nudge_ns != previous_nudge_ns:
+        start_ns = _active_now_ns()
+        deadline_ns = (
+            None
+            if event.timeout_ms <= 0
+            else start_ns + event.timeout_ms * 1_000_000
+        )
+        next_nudge_ns = start_ns + _COLOR_WAIT_NUDGE_AFTER_NS
+
+        while True:
+            if _stop_flag.is_set():
+                return
+            now_ns = _active_now_ns()
+            if deadline_ns is not None and now_ns >= deadline_ns:
+                break
+            actual = get_pixel_color(x, y)
             checked_ns = _active_now_ns()
             if _stop_flag.is_set():
                 return
             if deadline_ns is not None and checked_ns >= deadline_ns:
                 break
-        wait_s = interval_s
-        if deadline_ns is not None:
-            remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
-            if remaining_s <= 0:
-                break
-            wait_s = min(wait_s, remaining_s)
-        if not _wait_active(wait_s):
-            return
+            if _color_matches(actual, target, event.tolerance):
+                return
+            previous_nudge_ns = next_nudge_ns
+            next_nudge_ns = _nudge_cursor_if_due(x, y, checked_ns, next_nudge_ns)
+            if next_nudge_ns != previous_nudge_ns:
+                checked_ns = _active_now_ns()
+                if _stop_flag.is_set():
+                    return
+                if deadline_ns is not None and checked_ns >= deadline_ns:
+                    break
+            wait_s = interval_s
+            if deadline_ns is not None:
+                remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
+                if remaining_s <= 0:
+                    break
+                wait_s = min(wait_s, remaining_s)
+            if not _wait_active(wait_s):
+                return
 
-    # 타임아웃
-    msg = f"color_trigger timeout at ({x},{y}) waiting for {event.target_color}"
-    if event.on_timeout == "error":
-        raise PlaybackError(msg)
-    elif event.on_timeout == "skip":
-        logger.warning(f"[skip] {msg}")
-    elif event.on_timeout == "retry":
-        logger.warning(f"[retry not implemented] {msg}")
-        raise PlaybackError(msg)
+        msg = f"color_trigger timeout at ({x},{y}) waiting for {event.target_color}"
+        if event.on_timeout == "error":
+            raise PlaybackError(msg)
+        if event.on_timeout == "skip":
+            logger.warning(f"[skip] {msg}")
+            return
+        if not retry_logged:
+            logger.warning(f"[retry] {msg}")
+            retry_logged = True
 
 
 def _wait_for_window(event: WindowTriggerEvent) -> None:
@@ -676,22 +680,28 @@ def _wait_for_window(event: WindowTriggerEvent) -> None:
     Raises:
         PlaybackError: on_timeout=="error"이고 타임아웃 발생 시.
     """
-    deadline_ns = _active_now_ns() + event.timeout_ms * 1_000_000
     interval_s = 0.1
+    retry_logged = False
 
-    while _active_now_ns() < deadline_ns:
-        if _stop_flag.is_set():
-            return
-        if find_window(event.window_title_contains) is not None:
-            return
-        if not _wait_active(interval_s):
-            return
+    while True:
+        deadline_ns = _active_now_ns() + max(1, event.timeout_ms) * 1_000_000
+        while _active_now_ns() < deadline_ns:
+            if _stop_flag.is_set():
+                return
+            if find_window(event.window_title_contains) is not None:
+                return
+            if not _wait_active(interval_s):
+                return
 
-    msg = f"window_trigger timeout waiting for '{event.window_title_contains}'"
-    if event.on_timeout == "error":
-        raise PlaybackError(msg)
-    elif event.on_timeout == "skip":
-        logger.warning(f"[skip] {msg}")
+        msg = f"window_trigger timeout waiting for '{event.window_title_contains}'"
+        if event.on_timeout == "error":
+            raise PlaybackError(msg)
+        if event.on_timeout == "skip":
+            logger.warning(f"[skip] {msg}")
+            return
+        if not retry_logged:
+            logger.warning(f"[retry] {msg}")
+            retry_logged = True
 
 
 # ── 재생 루프 ─────────────────────────────────────────────────────────────────
@@ -793,6 +803,10 @@ def _play_loop(
                 on_error(e)
             return
         if _stop_flag.is_set():
+            return
+        # ``on_event_start`` may synchronously request pause.  Re-check the
+        # active clock before any native input/clipboard side effect escapes.
+        if not _playback_clock.wait_until_resumed():
             return
 
         execute_start_ns = _active_now_ns()

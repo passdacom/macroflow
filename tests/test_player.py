@@ -26,8 +26,10 @@ from macroflow.types import (
     MacroSettings,
     MouseButtonEvent,
     MouseMoveEvent,
+    MouseWheelEvent,
     TextInputEvent,
     WaitEvent,
+    WindowTriggerEvent,
 )
 
 # ── 헬퍼 ────────────────────────────────────────────────────────────────────
@@ -1189,3 +1191,167 @@ def test_new_playback_is_rejected_until_owned_stop_cleanup_finishes(
         )
     )
     assert player.stop(second) is True
+
+
+def test_color_trigger_retry_starts_a_new_timeout_window_until_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock_ns = 0
+    colors = iter([(0, 0, 0), (0, 255, 0)])
+    event = ColorTriggerEvent(
+        id="retry-color",
+        type="color_trigger",
+        timestamp_ns=0,
+        x_ratio=0.5,
+        y_ratio=0.5,
+        target_color="#00FF00",
+        tolerance=0,
+        timeout_ms=1,
+        check_interval_ms=1,
+        on_timeout="retry",
+    )
+
+    def now_ns() -> int:
+        return clock_ns
+
+    def wait_active(seconds: float) -> bool:
+        nonlocal clock_ns
+        clock_ns += int(seconds * 1_000_000_000)
+        return True
+
+    monkeypatch.setattr(player, "_active_now_ns", now_ns)
+    monkeypatch.setattr(player, "_wait_active", wait_active)
+    monkeypatch.setattr(player, "ratio_to_pixel", lambda _x, _y: (1, 1))
+    monkeypatch.setattr(player, "get_pixel_color", lambda _x, _y: next(colors))
+
+    player._wait_for_color(event)
+
+
+def test_window_trigger_retry_starts_a_new_timeout_window_until_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock_ns = 0
+    calls = 0
+    event = WindowTriggerEvent(
+        id="retry-window",
+        type="window_trigger",
+        timestamp_ns=0,
+        window_title_contains="ready",
+        timeout_ms=100,
+        on_timeout="retry",
+    )
+
+    def now_ns() -> int:
+        return clock_ns
+
+    def wait_active(seconds: float) -> bool:
+        nonlocal clock_ns
+        clock_ns += int(seconds * 1_000_000_000)
+        return True
+
+    def find_window(_title: str) -> int | None:
+        nonlocal calls
+        calls += 1
+        return 123 if calls >= 2 else None
+
+    monkeypatch.setattr(player, "_active_now_ns", now_ns)
+    monkeypatch.setattr(player, "_wait_active", wait_active)
+    monkeypatch.setattr(player, "find_window", find_window)
+
+    player._wait_for_window(event)
+
+    assert calls == 2
+
+
+def test_pause_requested_at_event_start_blocks_input_and_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clipboard: list[str] = []
+    progress: list[str] = []
+    started = threading.Event()
+    completed = threading.Event()
+    event = TextInputEvent(
+        id="pause-boundary",
+        type="text_input",
+        timestamp_ns=0,
+        text="unsafe-before-resume",
+    )
+
+    monkeypatch.setattr(
+        player,
+        "set_clipboard_text",
+        lambda text: clipboard.append(text) or True,
+    )
+    monkeypatch.setattr(player, "send_paste", lambda: True)
+
+    def on_start(_index: int, _event: AnyEvent) -> None:
+        assert player.pause()
+        started.set()
+
+    session = player.play(
+        _make_macro([event]),
+        on_event_start=on_start,
+        on_event=lambda _index, current: progress.append(current.id),
+        on_complete=completed.set,
+    )
+    try:
+        assert started.wait(timeout=1.0)
+        time.sleep(0.05)
+        assert clipboard == []
+        assert progress == []
+        assert player.resume()
+        assert completed.wait(timeout=1.0)
+        assert clipboard == ["unsafe-before-resume"]
+        assert progress == ["pause-boundary"]
+    finally:
+        if player.is_playing():
+            player.stop(session)
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        MouseMoveEvent(
+            id="paused-move", type="mouse_move", timestamp_ns=0,
+            x_ratio=0.5, y_ratio=0.5,
+        ),
+        MouseWheelEvent(
+            id="paused-wheel", type="mouse_wheel", timestamp_ns=0,
+            x_ratio=0.5, y_ratio=0.5, delta=120, axis="vertical",
+        ),
+    ],
+)
+def test_pause_at_event_start_blocks_mouse_side_effects_until_resume(
+    monkeypatch: pytest.MonkeyPatch,
+    event: AnyEvent,
+) -> None:
+    input_calls: list[str] = []
+    started = threading.Event()
+    completed = threading.Event()
+    monkeypatch.setattr(player, "ratio_to_pixel", lambda _x, _y: (10, 20))
+    monkeypatch.setattr(
+        player, "send_mouse_move", lambda *_args, **_kwargs: input_calls.append("move")
+    )
+    monkeypatch.setattr(
+        player, "send_mouse_wheel", lambda *_args, **_kwargs: input_calls.append("wheel")
+    )
+
+    def on_start(_index: int, _event: AnyEvent) -> None:
+        assert player.pause()
+        started.set()
+
+    session = player.play(
+        _make_macro([event]),
+        on_event_start=on_start,
+        on_complete=completed.set,
+    )
+    try:
+        assert started.wait(timeout=1.0)
+        time.sleep(0.05)
+        assert input_calls == []
+        assert player.resume()
+        assert completed.wait(timeout=1.0)
+        assert len(input_calls) == 1
+    finally:
+        if player.is_playing():
+            player.stop(session)

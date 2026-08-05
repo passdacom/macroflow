@@ -92,6 +92,24 @@ def test_save_and_load_roundtrip(tmp_path: Path) -> None:
     assert loaded.is_edited == macro.is_edited
 
 
+def test_save_rejects_unloadable_macro_before_replacing_last_good_file(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "last-good.json"
+    valid = _make_macro()
+    save(valid, str(path))
+    previous = path.read_bytes()
+
+    invalid = copy.deepcopy(valid)
+    invalid.events[1].id = invalid.events[0].id
+
+    with pytest.raises(ValueError, match="duplicate event id"):
+        save(invalid, str(path))
+
+    assert path.read_bytes() == previous
+    assert load(str(path)).events == valid.events
+
+
 def test_settings_color_timeout_fields_roundtrip(tmp_path: Path) -> None:
     """클릭 색 체크와 독립 색 트리거 timeout 설정은 별도로 저장·로드되어야 한다."""
     macro = _make_macro()

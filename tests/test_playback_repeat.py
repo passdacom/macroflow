@@ -20,6 +20,15 @@ def test_stop_request_prevents_later_cycles() -> None:
     assert session.was_stopped
 
 
+def test_stop_request_releases_polling_after_player_exits() -> None:
+    session = RepeatPlaybackSession(total=10)
+    session.mark_started()
+    session.mark_between_cycles()
+    session.request_stop()
+
+    assert not session.should_poll_wait_for_worker(player_is_playing=False)
+
+
 def test_repeat_session_stays_active_between_cycles() -> None:
     session = RepeatPlaybackSession(total=3)
     session.mark_started()

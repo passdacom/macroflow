@@ -16,6 +16,8 @@ from macroflow.script_engine import (
     MacroFlow,
     MacroNode,
     WaitFixedNode,
+    load_flow,
+    save_flow,
 )
 from macroflow.types import MacroSettings, TextInputEvent
 
@@ -189,6 +191,65 @@ def test_color_timeout_without_failure_edge_is_terminal_failure(
     assert done_calls == [("color", False, "색 감지 타임아웃")]
     assert completed == []
     assert errors == ["색 감지 타임아웃"]
+
+
+def test_strict_flow_rejects_invalid_color_domain_values(tmp_path: Path) -> None:
+    flow = MacroFlow(
+        version="1.0",
+        name="invalid color",
+        created_at="2026-08-05T00:00:00",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="BAD",
+                tolerance=-1,
+                timeout_ms=-1,
+                check_interval_ms=0,
+            )
+        },
+    )
+    path = tmp_path / "invalid-color.macroflow"
+    save_flow(flow, str(path))
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        load_flow(str(path), strict=True)
+
+
+def test_unexpected_node_error_reports_failed_node_done_once(tmp_path: Path) -> None:
+    flow = MacroFlow(
+        version="1.0",
+        name="runtime invalid color",
+        created_at="2026-08-05T00:00:00",
+        start_node_id="color",
+        nodes={
+            "color": ColorCheckNode(
+                id="color",
+                label="color",
+                x_ratio=0.5,
+                y_ratio=0.5,
+                target_color="BAD",
+                timeout_ms=1,
+                check_interval_ms=1,
+            )
+        },
+    )
+    done_calls: list[tuple[str, bool, str]] = []
+    errors: list[str] = []
+    engine = FlowEngine(
+        str(tmp_path / "runtime-invalid.macroflow"),
+        on_node_done=lambda *args: done_calls.append(args),
+        on_error=errors.append,
+    )
+
+    engine._run(flow)
+
+    assert len(done_calls) == 1
+    assert done_calls[0][0:2] == ("color", False)
+    assert len(errors) == 1
 
 
 def test_synchronous_player_start_failure_reports_node_done_once(

@@ -215,6 +215,25 @@ def test_optional_quick_run_collision_preserves_global_runtime_controls() -> Non
     assert set(fallbacks.bindings) == set((*EDITOR_ACTION_IDS, *QUICK_RUN_ACTION_IDS))
 
 
+def test_editor_only_apply_does_not_retry_unchanged_failed_quick_run_binding() -> None:
+    backend = FakeBackend(fail_ids={5})
+    registrar = NativeHotkeySet(backend)
+    fallbacks = FakeFallbacks()
+    runtime = HotkeyRuntime(registrar, fallbacks, lambda _action: None)
+    assert runtime.initialize(DEFAULT_HOTKEY_CONFIG).success
+    assert not runtime.quick_run_globally_registered
+    backend.fail_ids.add(5)
+    backend.calls.clear()
+    candidate = DEFAULT_HOTKEY_CONFIG.with_bindings({"editor.insert_text": "Alt+T"})
+
+    result = runtime.apply(candidate)
+
+    assert result.success
+    assert runtime.config == candidate
+    assert backend.calls == []
+    assert set(fallbacks.bindings) == set((*EDITOR_ACTION_IDS, *QUICK_RUN_ACTION_IDS))
+
+
 def test_incomplete_initial_cleanup_enters_degraded_mode_without_focused_duplicates() -> None:
     backend = FakeBackend(fail_ids={2}, fail_unregister_ids={1})
     registrar = NativeHotkeySet(backend)

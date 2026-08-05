@@ -636,3 +636,125 @@ def test_favorite_name_dialog_is_wide_enough_for_long_titles() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_quick_text_accept_after_runtime_stop_has_no_clipboard_or_paste_side_effect() -> None:
+    result = _run_offscreen(
+        """
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtWidgets import QDialog
+        from macroflow.ui.main_window import MainWindow
+
+        host = Mock()
+        host._state = "recording"
+        host._paused = False
+        host._append_recording_mode = False
+        host._quick_text_session_active = False
+        dialog = Mock()
+
+        def modal_exec():
+            host._state = "stopping"
+            return QDialog.DialogCode.Accepted
+
+        dialog.exec.side_effect = modal_exec
+        dialog.text.return_value = "must-not-send-after-stop"
+
+        with patch("macroflow.recorder.is_paused", return_value=False), \
+             patch("macroflow.recorder.pause_recording", return_value=True), \
+             patch("macroflow.recorder.resume_recording") as resume, \
+             patch("macroflow.win32.get_foreground_window", return_value=777), \
+             patch("macroflow.win32.bring_window_to_foreground", return_value=True), \
+             patch("macroflow.win32.is_foreground_window", return_value=True), \
+             patch("macroflow.ui.main_window._set_quick_text_clipboard", return_value=True) as clipboard, \
+             patch("macroflow.win32.send_paste", return_value=True) as paste, \
+             patch("macroflow.ui.main_window.QuickTextDialog", return_value=dialog), \
+             patch("macroflow.ui.main_window.QMessageBox.warning"):
+            MainWindow._capture_quick_text(host)
+
+        clipboard.assert_not_called()
+        paste.assert_not_called()
+        resume.assert_not_called()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_stale_repeat_completion_cannot_finish_a_new_playback() -> None:
+    result = _run_offscreen(
+        """
+        import os
+        import tempfile
+        import threading
+        import time
+        from unittest.mock import Mock, patch
+
+        from PyQt6.QtCore import QSettings
+        from PyQt6.QtWidgets import QApplication
+        from macroflow.types import MacroData, MacroMeta, MacroSettings, WaitEvent
+        from macroflow.ui.main_window import MainWindow
+        from macroflow.ui.playback_repeat import PlaybackStartOptions, RepeatPlaybackSession
+
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as directory:
+            os.chdir(directory)
+            QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+            QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, directory)
+            MainWindow._restore_settings = lambda self: None
+            window = MainWindow()
+            event = WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=1)
+            window._macro = MacroData(
+                meta=MacroMeta(
+                    version="1", app_version="test", created_at="now",
+                    screen_width=1920, screen_height=1080, dpi_scale=1.0,
+                ),
+                settings=MacroSettings(), raw_events=[event], events=[event],
+            )
+
+            first_terminal_entered = threading.Event()
+            release_first_terminal = threading.Event()
+            second_started = threading.Event()
+            play_calls = [0]
+            original_mark_finished = RepeatPlaybackSession.mark_finished
+
+            def blocked_mark_finished(session):
+                if threading.current_thread().name == "RepeatPlayWorker" and not first_terminal_entered.is_set():
+                    first_terminal_entered.set()
+                    assert release_first_terminal.wait(2)
+                return original_mark_finished(session)
+
+            def fake_play(_macro, **kwargs):
+                play_calls[0] += 1
+                if play_calls[0] == 1:
+                    kwargs["on_complete"]()
+                else:
+                    second_started.set()
+                return Mock()
+
+            with patch("macroflow.win32.start_emergency_hook"), \
+                 patch("macroflow.win32.stop_emergency_hook"), \
+                 patch("macroflow.player.play", side_effect=fake_play), \
+                 patch("macroflow.player.stop", return_value=True), \
+                 patch("macroflow.player.is_playing", return_value=False), \
+                 patch.object(RepeatPlaybackSession, "mark_finished", blocked_mark_finished):
+                options = PlaybackStartOptions(event_range=None, repeat_count=1, confirm_repeat=False)
+                window._start_playback(options=options)
+                assert first_terminal_entered.wait(1)
+                assert window._stop_playback()
+                window._start_playback(options=options)
+                assert second_started.wait(1)
+                release_first_terminal.set()
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline:
+                    app.processEvents()
+                    time.sleep(0.005)
+                assert window._state == "playing"
+
+                assert window._repeat_session is not None
+                window._repeat_session.request_stop()
+            window.close()
+        """
+    )
+
+    assert result.returncode == 0, result.stderr

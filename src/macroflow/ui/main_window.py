@@ -127,11 +127,12 @@ class MainWindow(QMainWindow):
     # 워커 스레드 → 메인 스레드 신호
     _sig_recording_done = pyqtSignal(object)  # MacroData
     _sig_recording_save_warning = pyqtSignal(str)
-    _sig_play_complete = pyqtSignal()
+    _sig_play_complete = pyqtSignal(object)  # RepeatPlaybackSession owner
     _sig_play_error = pyqtSignal(str)
+    _sig_playback_error = pyqtSignal(object, str)
     _sig_emergency_stop = pyqtSignal()  # ESC×3 (LL Hook consumer → UI)
-    _sig_play_event = pyqtSignal(int)   # 재생 중 이벤트 인덱스 알림
-    _sig_repeat_cycle = pyqtSignal(int, int)  # current, total
+    _sig_play_event = pyqtSignal(object, int)   # owner, event index
+    _sig_repeat_cycle = pyqtSignal(object, int, int)  # owner, current, total
 
     def __init__(self) -> None:
         super().__init__()
@@ -229,9 +230,10 @@ class MainWindow(QMainWindow):
         self._sig_recording_save_warning.connect(self._on_recording_save_warning)
         self._sig_play_complete.connect(self._on_play_complete)
         self._sig_play_error.connect(self._on_play_error)
+        self._sig_playback_error.connect(self._on_session_play_error)
         self._sig_emergency_stop.connect(self._emergency_stop)
-        self._sig_play_event.connect(self._on_play_event)
-        self._sig_repeat_cycle.connect(self._overlay.set_repeat)
+        self._sig_play_event.connect(self._on_session_play_event)
+        self._sig_repeat_cycle.connect(self._on_session_repeat_cycle)
         self._editor.macro_changed.connect(self._on_macro_changed)
         # 에디터 단일 이벤트 실행 요청
         self._editor.play_event_range.connect(self._on_play_event_range)
@@ -930,6 +932,20 @@ class MainWindow(QMainWindow):
         if self._playback_highlights_editor:
             self._editor.highlight_event(index)
 
+    def _on_session_play_event(self, owner: object, index: int) -> None:
+        if owner is self._repeat_session:
+            self._on_play_event(index)
+
+    def _on_session_repeat_cycle(
+        self, owner: object, current: int, total: int
+    ) -> None:
+        if owner is self._repeat_session:
+            self._overlay.set_repeat(current, total)
+
+    def _on_session_play_error(self, owner: object, msg: str) -> None:
+        if owner is self._repeat_session:
+            self._on_play_error(msg)
+
     def _dispatch_editor_insert(self, callback: Any) -> None:
         if (
             self._state == "idle"
@@ -1078,6 +1094,10 @@ class MainWindow(QMainWindow):
 
             dialog = QuickTextDialog(self, trigger_label=quick_text_key)
             if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            # ``dialog.exec()`` runs a nested Qt event loop. Stop/close can be
+            # delivered while it is open, so stale acceptance must not commit.
+            if self._state != "recording" or not self._quick_text_session_active:
                 return
             text = dialog.text()
             if not text:
@@ -1547,8 +1567,9 @@ class MainWindow(QMainWindow):
         self._playback_highlights_editor = playback_macro is None
         self._playback_source_label = source_label
         self._playback_pause_event.clear()
-        self._repeat_session = RepeatPlaybackSession(total=repeat_count)
-        self._repeat_session.mark_started()
+        repeat_session = RepeatPlaybackSession(total=repeat_count)
+        self._repeat_session = repeat_session
+        repeat_session.mark_started()
         self._overlay.start_playing(speed, repeat_current=1, repeat_total=repeat_count)
         self._poll_timer.start()
         self._update_toolbar()
@@ -1565,23 +1586,21 @@ class MainWindow(QMainWindow):
         )
 
         def _on_event(idx: int, _event: object) -> None:
-            self._sig_play_event.emit(idx)
+            self._sig_play_event.emit(repeat_session, idx)
 
         def _repeat_worker(
             _range: tuple[int, int] | None = event_range,
         ) -> None:
             from macroflow import player
             for i in range(repeat_count):
-                session = self._repeat_session
-                if session is None or not session.should_start_cycle(i):
+                if not repeat_session.should_start_cycle(i):
                     break
                 while self._playback_pause_event.is_set():
-                    session = self._repeat_session
-                    if session is None or session.was_stopped:
+                    if repeat_session.was_stopped:
                         return
                     time.sleep(0.02)
-                session.mark_cycle_started(i)
-                self._sig_repeat_cycle.emit(i + 1, repeat_count)
+                repeat_session.mark_cycle_started(i)
+                self._sig_repeat_cycle.emit(repeat_session, i + 1, repeat_count)
 
                 done_event = threading.Event()
                 error_holder: list[str] = []
@@ -1604,30 +1623,26 @@ class MainWindow(QMainWindow):
                         start_pause_requested=self._playback_pause_event.is_set,
                     )
                 except Exception as exc:
-                    self._sig_play_error.emit(str(exc))
+                    self._sig_playback_error.emit(repeat_session, str(exc))
                     return
 
                 # 재생 완료 대기
                 while not done_event.is_set():
-                    session = self._repeat_session
-                    if session is None or session.was_stopped:
+                    if repeat_session.was_stopped:
                         return
                     time.sleep(0.05)
 
                 if error_holder:
-                    self._sig_play_error.emit(error_holder[0])
+                    self._sig_playback_error.emit(repeat_session, error_holder[0])
                     return
 
                 # 마지막 반복이 아니면 interval 대기
                 if i < repeat_count - 1 and interval_ms > 0:
-                    session = self._repeat_session
-                    if session is not None:
-                        session.mark_between_cycles()
+                    repeat_session.mark_between_cycles()
                     remaining_s = interval_ms / 1000.0
                     last_active = time.monotonic()
                     while remaining_s > 0:
-                        session = self._repeat_session
-                        if session is None or session.was_stopped:
+                        if repeat_session.was_stopped:
                             return
                         now = time.monotonic()
                         if self._playback_pause_event.is_set():
@@ -1638,10 +1653,8 @@ class MainWindow(QMainWindow):
                         last_active = now
                         time.sleep(min(0.05, max(0.0, remaining_s)))
 
-            session = self._repeat_session
-            if session is not None:
-                session.mark_finished()
-            self._sig_play_complete.emit()
+            repeat_session.mark_finished()
+            self._sig_play_complete.emit(repeat_session)
 
         threading.Thread(
             target=_repeat_worker, daemon=True, name="RepeatPlayWorker"
@@ -1693,7 +1706,9 @@ class MainWindow(QMainWindow):
         logger.info("재생 중지")
         return True
 
-    def _on_play_complete(self) -> None:
+    def _on_play_complete(self, owner: object | None = None) -> None:
+        if owner is not None and owner is not self._repeat_session:
+            return
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
         if self._repeat_session is not None:

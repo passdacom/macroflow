@@ -34,7 +34,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.favorites_index import save_index
 from macroflow.ui.favorites_batch import (
+    delete_favorite_paths,
     move_filenames_to_group,
     remove_filenames_from_groups,
     unique_filenames,
@@ -284,8 +286,7 @@ class FavoritesWidget(QWidget):
         if idx_path is None:
             return
         try:
-            with open(idx_path, "w", encoding="utf-8") as f:
-                json.dump(self._index, f, ensure_ascii=False, indent=2)
+            save_index(self._index, idx_path)
         except OSError as e:
             logger.error(f"즐겨찾기 인덱스 저장 오류: {e}")
 
@@ -862,20 +863,20 @@ class FavoritesWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        filenames = {path.name for path in paths}
-        remove_filenames_from_groups(self._index, filenames)
-
-        for file_path in paths:
-            if file_path.exists():
-                try:
-                    file_path.unlink()
-                    logger.info(f"즐겨찾기 파일 삭제: {file_path}")
-                except OSError as e:
-                    QMessageBox.warning(self, "삭제 오류", str(e))
-                    return
-
+        deleted, failures = delete_favorite_paths(paths)
+        remove_filenames_from_groups(self._index, deleted)
         self._save_index()
         self._refresh_tree()
+        for path in paths:
+            if path.name in deleted:
+                logger.info(f"즐겨찾기 파일 삭제: {path}")
+        if failures:
+            details = "\n".join(f"{path.name}: {error}" for path, error in failures)
+            QMessageBox.warning(
+                self,
+                "삭제 오류",
+                f"일부 파일을 삭제하지 못했습니다. 나머지 항목은 유지했습니다.\n{details}",
+            )
 
     def _remove_item(self, item: QTreeWidgetItem) -> None:
         data: dict[str, Any] = item.data(0, _ROLE) or {}
@@ -894,13 +895,6 @@ class FavoritesWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # 인덱스에서 제거
-        for g in self._index.get("groups", []):
-            items: list[str] = g.get("items", [])
-            if filename in items:
-                items.remove(filename)
-                break
-
         file_path = Path(path)
         if file_path.exists():
             try:
@@ -909,6 +903,9 @@ class FavoritesWidget(QWidget):
             except OSError as e:
                 QMessageBox.warning(self, "삭제 오류", str(e))
                 return
+
+        # 파일 삭제가 확인된 뒤에만 인덱스를 변경한다.
+        remove_filenames_from_groups(self._index, {filename})
 
         self._save_index()
         self._refresh_tree()

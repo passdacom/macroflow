@@ -17,6 +17,22 @@ from macroflow.sequence_model import (
 from macroflow.types import MacroSettings, TextInputEvent
 
 
+def test_builder_rejects_empty_inline_action_before_persistence(tmp_path: Path) -> None:
+    item = InlineActionItem(
+        step_id="inline",
+        label="invalid",
+        events=[],
+        playback_settings=MacroSettings(),
+    )
+
+    with pytest.raises(ValueError, match="인라인"):
+        build_sequence_flow(
+            [item],
+            tmp_path / "invalid.macroflow",
+            created_at="2026-08-05T00:00:00",
+        )
+
+
 def test_v11_mixed_sequence_roundtrips_with_duplicate_macro_paths(tmp_path: Path) -> None:
     macro = (tmp_path / "same.json").resolve(strict=False)
     flow_path = tmp_path / "mixed.macroflow"
