@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import time
@@ -278,6 +279,54 @@ def test_save_flow_rejects_strict_invalid_flow_without_replacing_last_good(
             )
         },
     )
+
+    with pytest.raises(ValueError, match="정규 형식"):
+        save_flow(invalid, str(path))
+
+    assert path.read_bytes() == original
+    assert load_flow(str(path), strict=True) == good
+
+
+@dataclasses.dataclass
+class _UnsupportedNode:
+    id: str
+    label: str
+
+
+@pytest.mark.parametrize("variant", ["node-key", "unsupported"])
+def test_save_flow_strict_closure_preserves_last_good_for_all_node_shapes(
+    tmp_path: Path, variant: str
+) -> None:
+    path = tmp_path / "last-good.macroflow"
+    good = MacroFlow(
+        version="1.0",
+        name="good",
+        created_at="now",
+        start_node_id="wait",
+        nodes={"wait": WaitFixedNode(id="wait", label="wait", duration_ms=1)},
+    )
+    save_flow(good, str(path))
+    original = path.read_bytes()
+    if variant == "node-key":
+        invalid = MacroFlow(
+            version="1.0",
+            name="bad-key",
+            created_at="now",
+            start_node_id="dictionary-key",
+            nodes={
+                "dictionary-key": WaitFixedNode(
+                    id="different-node-id", label="wait", duration_ms=1
+                )
+            },
+        )
+    else:
+        invalid = MacroFlow(
+            version="1.0",
+            name="unsupported",
+            created_at="now",
+            start_node_id="custom",
+            nodes={"custom": _UnsupportedNode("custom", "custom")},  # type: ignore[dict-item]
+        )
 
     with pytest.raises(ValueError, match="정규 형식"):
         save_flow(invalid, str(path))

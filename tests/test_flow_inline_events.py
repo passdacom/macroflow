@@ -176,9 +176,8 @@ def test_v10_rejects_inline_node_and_v11_rejects_non_mvp_event(tmp_path: Path) -
     target = tmp_path / "invalid-inline.macroflow"
     flow = _inline_flow()
     flow.version = "1.0"
-    save_flow(flow, str(target))
-    with pytest.raises(ValueError, match="v1.0.*inline_events"):
-        load_flow(str(target), strict=True)
+    with pytest.raises(ValueError, match="정규 형식"):
+        save_flow(flow, str(target))
 
     flow.version = "1.1"
     inline = flow.nodes["inline_000"]

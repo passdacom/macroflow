@@ -213,3 +213,132 @@ def test_delete_save_failure_restores_files_index_and_ui(
     assert (tmp_path / "a.json").exists()
     assert widget._index == original
     assert widget._summary.text() == "즐겨찾기 1개"
+
+
+def test_group_rename_and_delete_save_failures_restore_index_and_ui(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    original = copy.deepcopy(widget._index)
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.save_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    monkeypatch.setattr("macroflow.ui.favorites.QMessageBox.warning", lambda *_args: None)
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QInputDialog.getText",
+        lambda *_args, **_kwargs: ("새 이름", True),
+    )
+
+    widget._rename_group("target")
+    assert widget._index == original
+    assert widget._tree.topLevelItem(1).text(0).startswith("📁  대상")
+
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QMessageBox.question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+    widget._delete_group("target")
+    assert widget._index == original
+    assert widget._tree.topLevelItemCount() == 2
+
+
+def test_drag_save_failure_restores_index_tree_and_does_not_retry_during_refresh(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    original = copy.deepcopy(widget._index)
+    save_attempts = 0
+
+    def fail_save(*_args, **_kwargs) -> None:
+        nonlocal save_attempts
+        save_attempts += 1
+        raise OSError("disk full")
+
+    monkeypatch.setattr("macroflow.ui.favorites.save_index", fail_save)
+    monkeypatch.setattr("macroflow.ui.favorites.QMessageBox.warning", lambda *_args: None)
+    default_item = widget._tree.topLevelItem(0)
+    target_item = widget._tree.topLevelItem(1)
+    moved = default_item.takeChild(0)
+    target_item.addChild(moved)
+
+    widget._on_item_moved()
+
+    assert widget._index == original
+    assert widget._tree.topLevelItem(0).childCount() == 1
+    assert widget._tree.topLevelItem(1).childCount() == 0
+    assert save_attempts == 1
+
+
+def test_rename_rollback_failure_reports_degraded_state_truthfully(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    item = widget._tree.topLevelItem(0).child(0)
+    critical_messages: list[str] = []
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QInputDialog.getText",
+        lambda *_args, **_kwargs: ("renamed", True),
+    )
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.save_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    original_replace = Path.replace
+
+    def fail_rollback(path: Path, target: Path) -> Path:
+        if path.name == "renamed.json":
+            raise OSError("rollback denied")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_rollback)
+    monkeypatch.setattr("macroflow.ui.favorites.QMessageBox.warning", lambda *_args: None)
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QMessageBox.critical",
+        lambda _parent, _title, message: critical_messages.append(message),
+    )
+
+    widget._rename_item(item)
+
+    assert not (tmp_path / "a.json").exists()
+    assert (tmp_path / "renamed.json").exists()
+    assert critical_messages
+    assert "완전히 복원하지 못했습니다" in critical_messages[0]
+    assert "복원했습니다" not in critical_messages[0]
+
+
+def test_delete_rollback_failure_preserves_staging_and_reports_degraded_state(
+    tmp_path: Path, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget = _configured_widget(tmp_path, qtbot)
+    critical_messages: list[str] = []
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QMessageBox.question",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.save_index",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    original_replace = Path.replace
+
+    def fail_staging_rollback(path: Path, target: Path) -> Path:
+        if path.name.startswith(".a.json.delete-"):
+            raise OSError("rollback denied")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staging_rollback)
+    monkeypatch.setattr("macroflow.ui.favorites.QMessageBox.warning", lambda *_args: None)
+    monkeypatch.setattr(
+        "macroflow.ui.favorites.QMessageBox.critical",
+        lambda _parent, _title, message: critical_messages.append(message),
+    )
+
+    widget._remove_paths([tmp_path / "a.json"])
+
+    assert not (tmp_path / "a.json").exists()
+    assert len(list(tmp_path.glob(".a.json.delete-*.tmp"))) == 1
+    assert critical_messages
+    assert "완전히 복원하지 못했습니다" in critical_messages[0]
+    assert ".delete-*.tmp" in critical_messages[0]
+    assert "복원했습니다" not in critical_messages[0]

@@ -505,16 +505,22 @@ def save_flow(flow: MacroFlow, path: str) -> None:
         flow: 저장할 MacroFlow.
         path: 저장 경로.
     """
-    if (
-        flow.version not in {"1.0", "1.1"}
-        or not _strict_flow_types_valid(flow)
-        or (flow.version == "1.1" and not _strict_flow_graph_valid(flow))
-    ):
+    try:
+        valid_for_strict_save = (
+            flow.version in {"1.0", "1.1"}
+            and _strict_flow_types_valid(flow)
+            and (flow.version != "1.1" or _strict_flow_graph_valid(flow))
+        )
+        data = _flow_to_dict(flow)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            "정규 형식이 아닌 필드가 있어 손실 방지를 위해 저장을 거부했습니다."
+        ) from exc
+    if not valid_for_strict_save:
         raise ValueError(
             "정규 형식이 아닌 필드가 있어 손실 방지를 위해 저장을 거부했습니다."
         )
 
-    data = _flow_to_dict(flow)
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
 
@@ -533,6 +539,12 @@ def save_flow(flow: MacroFlow, path: str) -> None:
             json.dump(data, temp_file, ensure_ascii=False, indent=2, allow_nan=False)
             temp_file.flush()
             os.fsync(temp_file.fileno())
+        try:
+            load_flow(str(temp_path), strict=True)
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "정규 형식이 아닌 필드가 있어 손실 방지를 위해 저장을 거부했습니다."
+            ) from exc
         os.replace(temp_path, p)
     except Exception:
         if temp_path is not None:
