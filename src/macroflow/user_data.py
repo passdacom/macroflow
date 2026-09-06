@@ -296,20 +296,26 @@ def _merge_favorites_index(
 ) -> tuple[bool, str | None]:
     """Merge group metadata while preserving both pre-merge index documents."""
     source_data = _read_favorites_index(source_index)
-    target_data = _read_favorites_index(target_index)
+    target_exists = target_index.exists()
+    target_data = (
+        _read_favorites_index(target_index)
+        if target_exists else {"version": 1, "groups": []}
+    )
     conflict_dir = destination_root / "migration-conflicts"
     source_hash = _sha256(source_index)
-    target_hash = _sha256(target_index)
+
     _exclusive_verified_copy(
         source_index,
         conflict_dir / f"favorites-index-legacy-{source_hash[:12]}.json",
         source_hash,
     )
-    _exclusive_verified_copy(
-        target_index,
-        conflict_dir / f"favorites-index-current-{target_hash[:12]}.json",
-        target_hash,
-    )
+    if target_exists:
+        target_hash = _sha256(target_index)
+        _exclusive_verified_copy(
+            target_index,
+            conflict_dir / f"favorites-index-current-{target_hash[:12]}.json",
+            target_hash,
+        )
     if source_data is None:
         if target_data is None:
             _replace_json_with_readback(
@@ -497,6 +503,24 @@ def _copy_and_verify_tree(
             is_favorites_index = (
                 directory_name == "favorites" and relative.as_posix() == "_index.json"
             )
+            # Index bytes can match (or the target index can be absent) while
+            # its referenced files were copied under conflict names.
+            if is_favorites_index and any(
+                mapped is not None
+                and source_path.is_relative_to(source_dir.resolve())
+                and mapped.relative_to(destination_dir.resolve())
+                != source_path.relative_to(source_dir.resolve())
+                for source_path, mapped in path_map.items()
+            ):
+                if target.exists() and _is_link_or_reparse(target):
+                    raise OSError(f"destination file cannot be a link or junction: {target}")
+                merged, warning = _merge_favorites_index(item, target, destination, path_map)
+                if warning is not None:
+                    warnings.append(warning)
+                if merged:
+                    path_map[item.resolve(strict=False)] = target.resolve(strict=False)
+                    copied += 1
+                continue
             if is_favorites_index and not target.exists() and _read_favorites_index(item) is None:
                 _exclusive_verified_copy(
                     item,

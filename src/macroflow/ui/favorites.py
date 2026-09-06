@@ -35,7 +35,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from macroflow.favorites_index import save_index
+from macroflow.favorites_index import backup_invalid_index, save_index, validate_index
 from macroflow.ui.favorites_batch import (
     commit_staged_favorites,
     move_filenames_to_group,
@@ -133,6 +133,7 @@ class FavoritesWidget(QWidget):
         super().__init__(parent)
         self._favorites_dir: Path | None = None
         self._index: dict[str, Any] = {}
+        self._index_write_blocked = False
         self._refresh_in_progress = False
         self._setup_ui()
 
@@ -178,6 +179,12 @@ class FavoritesWidget(QWidget):
         self._hint.setContentsMargins(8, 6, 8, 6)
         self._hint.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(self._hint)
+
+        self._index_warning = QLabel()
+        self._index_warning.setWordWrap(True)
+        self._index_warning.setContentsMargins(8, 6, 8, 6)
+        self._index_warning.hide()
+        layout.addWidget(self._index_warning)
 
         # 검색창
         self._search_box = QLineEdit()
@@ -268,6 +275,8 @@ class FavoritesWidget(QWidget):
 
     def _load_index(self) -> None:
         """_index.json 을 읽어 self._index 에 적재한다."""
+        self._index_write_blocked = False
+        self._index_warning.hide()
         idx_path = self._index_path()
         if idx_path is None:
             return
@@ -276,18 +285,31 @@ class FavoritesWidget(QWidget):
             self._ensure_default_group()
             self._save_index()
             return
+        payload: bytes | None = None
         try:
-            with open(idx_path, encoding="utf-8") as f:
-                self._index = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"즐겨찾기 인덱스 로드 실패, 초기화: {e}")
+            payload = idx_path.read_bytes()
+            self._index = validate_index(json.loads(payload.decode("utf-8")))
+        except (OSError, UnicodeError, ValueError) as e:
+            logger.warning(f"즐겨찾기 인덱스 로드 실패: {e}")
             self._index = {"version": 1, "groups": []}
+            self._index_write_blocked = True
+            note = "원본을 보존하기 위해 인덱스 저장을 중지했습니다. 폴더 권한을 확인한 뒤 다시 여세요."
+            if payload is not None:
+                try:
+                    backup = backup_invalid_index(idx_path, payload)
+                except OSError as backup_error:
+                    logger.warning(f"즐겨찾기 인덱스 백업 실패: {backup_error}")
+                else:
+                    self._index_write_blocked = False
+                    note = f"원본 백업: {backup}\n매크로 파일을 기본 그룹으로 복구했습니다. 그룹 구성은 백업을 확인하세요."
+            self._index_warning.setText(f"⚠ 즐겨찾기 인덱스를 읽을 수 없습니다.\n{note}")
+            self._index_warning.show()
         self._ensure_default_group()
 
     def _save_index(self) -> bool:
         """Persist the current index and report whether it became durable."""
         idx_path = self._index_path()
-        if idx_path is None:
+        if idx_path is None or self._index_write_blocked:
             return False
         try:
             save_index(self._index, idx_path)
