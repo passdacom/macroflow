@@ -276,6 +276,7 @@ with TemporaryDirectory() as directory:
         window._run_quick_slot(1)
     assert start.call_args.kwargs["forced_speed"] == 3.0
     assert start.call_args.kwargs["source_label"] == "빠른 실행: 저장된 슬롯"
+    window._saved_macro = window._macro  # synthetic fixture is not an unsaved edit
     window.close()
 """
     )

@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -58,7 +59,7 @@ from macroflow.quick_run import (
     load_quick_run_slots,
     save_quick_run_slots,
 )
-from macroflow.types import MacroData
+from macroflow.types import MacroData, MacroMeta, MacroSettings
 from macroflow.user_data import UserDataMode, prepare_application_user_data
 from macroflow.win32.hotkeys import (
     NativeHotkeySet,
@@ -142,6 +143,11 @@ class MainWindow(QMainWindow):
         self._state: str = "idle"
         self._macro: MacroData | None = None
         self._current_file: Path | None = None
+        self._saved_macro: MacroData | None = None
+        self._document_prompt_active = False
+        self._document_generation = 0
+        self._prev_current_file: Path | None = None
+        self._prev_saved_macro: MacroData | None = None
         self._hotkeys_registered: bool = False
         app_settings = QSettings("MacroFlow", "MacroFlow")
         self._user_data = prepare_application_user_data(settings=app_settings)
@@ -274,6 +280,7 @@ class MainWindow(QMainWindow):
 
         self._update_toolbar()
         self._restore_settings()
+        self._new_editor_document()
         self._allow_unconstrained_resize()
 
     # ── 창 설정 ───────────────────────────────────────────────────────────────
@@ -593,6 +600,10 @@ class MainWindow(QMainWindow):
             if event is not None:
                 event.ignore()
             return
+        if not self._confirm_editor_discard():
+            if event is not None:
+                event.ignore()
+            return
         if not self._sequencer.confirm_discard_changes():
             if event is not None:
                 event.ignore()
@@ -713,25 +724,12 @@ class MainWindow(QMainWindow):
         return dataclasses.replace(macro, settings=new_settings)
 
     def _restore_settings(self) -> None:
-        """QSettings에서 창 위치·크기와 마지막 파일을 복원한다."""
+        """창 위치·크기만 복원한다. 마지막 파일은 자동으로 열지 않는다."""
         from PyQt6.QtCore import QSettings
         s = QSettings("MacroFlow", "MacroFlow")
         geo = s.value("geometry")
         if geo:
             self.restoreGeometry(geo)
-        last_file = s.value("last_file", "")
-        if last_file and Path(str(last_file)).exists():
-            try:
-                from macroflow.macro_file import load
-                macro = load(str(last_file))
-                macro = self._apply_persisted_color_settings(macro)
-                self._macro = macro
-                self._current_file = Path(str(last_file))
-                self._editor.load_macro(macro)
-                self._update_range_spinboxes()
-                logger.info(f"마지막 파일 복원: {last_file}")
-            except Exception as exc:
-                logger.warning(f"마지막 파일 복원 실패 ({last_file}): {exc}")
 
     def _initialize_hotkeys(self) -> None:
         """Initialize native runtime hotkeys once and install focused fallbacks."""
@@ -782,7 +780,7 @@ class MainWindow(QMainWindow):
 
     def _dispatch_hotkey_action(self, action_id: str) -> None:
         """Route native and focused shortcuts through one logical command boundary."""
-        if self._hotkey_settings_active or self._quick_run_hotkey_editing:
+        if self._document_prompt_active or self._hotkey_settings_active or self._quick_run_hotkey_editing:
             return
         if self._hotkey_runtime is not None and self._hotkey_runtime.degraded:
             self._sb_state.setText(
@@ -1278,13 +1276,15 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if reply != QMessageBox.StandardButton.Yes or self._sequence_file_mutation_blocked():
             return
         self._append_recording_mode = True
         self._append_base_macro = copy.deepcopy(self._macro)
         self._start_recording()
 
     def _start_recording(self) -> None:
+        if self._state != "idle" or self._document_prompt_active is True:
+            return
         # modifier 기반 빠른 실행 키가 녹화 데이터나 대상 앱 입력을 가로채지 않도록
         # 녹화 동안에만 슬롯 hotkey를 원자적으로 해제한다.
         quick_run_suspended = False
@@ -1302,11 +1302,10 @@ class MainWindow(QMainWindow):
                 )
                 return
             quick_run_suspended = True
-        # 기존 매크로가 있으면 복원을 위해 백업한다 (실수로 F6 눌렀을 때 복원 가능)
-        if self._macro is not None:
-            self._prev_macro = copy.deepcopy(self._macro)
-            self._auto_save_prev_recording(self._prev_macro)
-            logger.info("이전 매크로 백업 완료 (복원 버튼으로 되돌릴 수 있음)")
+        # A failed native start must not consume the previous recovery snapshot.
+        previous = copy.deepcopy(self._macro)
+        if previous is not None:
+            self._auto_save_prev_recording(previous)
 
         from macroflow import recorder
         try:
@@ -1326,6 +1325,11 @@ class MainWindow(QMainWindow):
             logger.exception("녹화 시작 오류")
             QMessageBox.critical(self, "녹화 시작 오류", f"녹화를 시작할 수 없습니다.\n\n{exc}")
             return
+        self._prev_macro = previous
+        self._prev_current_file = self._current_file
+        self._prev_saved_macro = copy.deepcopy(self._saved_macro)
+        if not self._append_recording_mode:
+            self._new_editor_document()
         self._paused = False
         self._recording_generation += 1
         self._state = "recording"
@@ -1413,6 +1417,8 @@ class MainWindow(QMainWindow):
             self._state = "idle"
             self._overlay.stop()
             self._editor.load_macro(appended_macro)
+            self._document_generation += 1
+            self._update_document_title()
             self._update_toolbar()
             self._update_range_spinboxes()
             count = len(appended_macro.events)
@@ -1426,9 +1432,13 @@ class MainWindow(QMainWindow):
         self._append_recording_mode = False
         self._append_base_macro = None
         self._macro = macro
+        self._current_file = None
+        self._saved_macro = None
+        self._document_generation += 1
         self._state = "idle"
         self._overlay.stop()
         self._editor.load_macro(macro)
+        self._update_document_title()
         self._update_toolbar()
         self._update_range_spinboxes()
         count = len(macro.events)
@@ -2423,32 +2433,104 @@ class MainWindow(QMainWindow):
             return
         self._load_file(path)
 
-    def _load_file(self, path: str) -> None:
-        """경로에서 매크로를 로드하여 에디터에 표시한다."""
-        if self._sequence_file_mutation_blocked():
-            return
+    def _new_editor_document(self) -> None:
+        """Start a clean, unnamed document without reading any previous file."""
+        from macroflow import __version__
+        from macroflow.win32 import get_logical_screen_size
+
+        width, height = get_logical_screen_size()
+        self._macro = self._apply_persisted_color_settings(MacroData(
+            meta=MacroMeta(
+                version="1.0", app_version=__version__, created_at=datetime.now().isoformat(),
+                screen_width=width, screen_height=height, dpi_scale=1.0,
+            ),
+            settings=MacroSettings(), raw_events=[], events=[],
+        ))
+        self._current_file = None
+        self._saved_macro = copy.deepcopy(self._macro)
+        self._document_generation += 1
+        self._editor.load_macro(self._macro)
+        self._update_document_title()
+        self._update_toolbar()
+        self._update_range_spinboxes()
+
+    def _editor_is_dirty(self) -> bool:
+        """Compare semantic document content with the last successful save/load."""
+        if self._macro is None:
+            return False
+        if self._saved_macro is None:
+            return True
+        # is_edited describes recording provenance, not save/undo equality.
+        return dataclasses.replace(self._macro, is_edited=False) != dataclasses.replace(
+            self._saved_macro, is_edited=False,
+        )
+
+    def _update_document_title(self) -> None:
+        from macroflow import __version__
+
+        name = self._current_file.name if self._current_file is not None else "새 매크로"
+        suffix = " *" if self._editor_is_dirty() else ""
+        self.setWindowTitle(f"MacroFlow v{__version__} — {name}{suffix}")
+        self._tabs.setTabText(self._tabs.indexOf(self._editor), f"매크로 에디터{suffix}")
+
+    def _confirm_editor_discard(self) -> bool:
+        """Save/discard/cancel a replacement without losing failed-save edits."""
+        if self._document_prompt_active:
+            return False
+        if not self._editor_is_dirty():
+            return True
+        generation = self._document_generation
+        self._document_prompt_active = True
+        try:
+            answer = QMessageBox.question(
+                self, "매크로 미저장 변경",
+                "편집 중인 매크로에 저장하지 않은 변경이 있습니다. 저장하시겠습니까?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+        finally:
+            self._document_prompt_active = False
+        if generation != self._document_generation or self._sequence_file_mutation_blocked():
+            return False
+        if answer == QMessageBox.StandardButton.Save:
+            if self._current_file is not None:
+                return self._do_save(str(self._current_file))
+            return self._save_editor_as()
+        return answer == QMessageBox.StandardButton.Discard
+
+    def _load_file(self, path: str) -> bool:
+        """Load a validated file only after the current document is protected."""
+        if self._sequence_file_mutation_blocked() or self._document_prompt_active:
+            return False
         try:
             from macroflow import macro_file
-            loaded_macro = macro_file.load(path)
-            self._macro = self._apply_persisted_color_settings(loaded_macro)
-            self._current_file = Path(path)
-            self._editor.load_macro(self._macro)
-            self._update_toolbar()
-            self._update_range_spinboxes()
-            self._sb_state.setText("파일 로드됨")
-            self._sb_count.setText(f"이벤트: {len(self._macro.events)}")
-            self.setWindowTitle(f"MacroFlow — {Path(path).name}")
-            logger.info(f"파일 로드: {path}")
+            loaded_macro = self._apply_persisted_color_settings(macro_file.load(path))
         except Exception as exc:
             QMessageBox.critical(self, "파일 열기 오류", str(exc))
             logger.exception("파일 열기 오류")
+            return False
+        if not self._confirm_editor_discard():
+            return False
+        self._macro = loaded_macro
+        self._current_file = Path(path)
+        self._saved_macro = copy.deepcopy(loaded_macro)
+        self._document_generation += 1
+        self._editor.load_macro(loaded_macro)
+        self._update_toolbar()
+        self._update_range_spinboxes()
+        self._update_document_title()
+        self._sb_state.setText("파일 로드됨")
+        self._sb_count.setText(f"이벤트: {len(loaded_macro.events)}")
+        logger.info("파일 로드: %s", path)
+        return True
 
     def _load_file_and_switch_tab(self, path: str) -> None:
         """시퀀서 더블클릭 시: 매크로를 로드하고 에디터 탭으로 전환한다."""
         if self._sequence_file_mutation_blocked():
             return
-        self._load_file(path)
-        self._tabs.setCurrentWidget(self._editor)
+        if self._load_file(path):
+            self._tabs.setCurrentWidget(self._editor)
 
     def _on_merge_to_editor(self, macro: object) -> None:
         """시퀀서 '에디터로 병합' 결과를 에디터 탭에 로드한다.
@@ -2456,10 +2538,14 @@ class MainWindow(QMainWindow):
         병합된 MacroData를 편집 가능한 상태로 에디터에 표시한다.
         저장 경로는 설정하지 않으므로, 저장 시 항상 '다른 이름으로 저장' 다이얼로그가 뜬다.
         """
-        if not isinstance(macro, MacroData):
+        if not isinstance(macro, MacroData) or self._sequence_file_mutation_blocked():
+            return
+        if not self._confirm_editor_discard():
             return
         self._macro = macro
         self._current_file = None  # 병합 결과는 미저장 상태
+        self._saved_macro = None
+        self._document_generation += 1
         self._editor.load_macro(macro)
         self._tabs.setCurrentWidget(self._editor)
         self._update_toolbar()
@@ -2467,74 +2553,78 @@ class MainWindow(QMainWindow):
         count = len(macro.events)
         self._sb_state.setText("병합 완료")
         self._sb_count.setText(f"이벤트: {count}")
-        self.setWindowTitle("MacroFlow — [병합 매크로]")
+        self._update_document_title()
         logger.info(f"시퀀서 병합 로드: {count}개 이벤트")
 
-    def _save_file(self) -> None:
-        """현재 파일에 덮어쓰기 저장한다.
-
-        _current_file이 설정된 경우: 확인 다이얼로그 후 덮어쓰기.
-        _current_file이 없는 경우: _save_file_as()로 위임.
-        """
-        if self._sequence_file_mutation_blocked():
-            return
+    def _save_file(self) -> bool:
+        """Save the active document, using Save As for unnamed recordings."""
+        if self._sequence_file_mutation_blocked() or self._document_prompt_active:
+            return False
         if self._is_sequencer_tab():
-            self._sequencer.save_flow()
-            return
-        if self._is_favorites_tab():
-            return
-        if not self._macro:
-            return
+            return bool(self._sequencer.save_flow())
+        if self._is_favorites_tab() or self._is_quick_run_tab() or self._macro is None:
+            return False
         if self._current_file is None:
-            self._save_file_as()
-            return
-        reply = QMessageBox.question(
-            self,
-            "덮어쓰기 저장",
-            f"현재 파일에 덮어씁니다:\n\n{self._current_file}\n\n계속하시겠습니까?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        if self._sequence_file_mutation_blocked():
-            return
-        self._do_save(str(self._current_file))
+            return self._save_editor_as()
+        generation = self._document_generation
+        self._document_prompt_active = True
+        try:
+            reply = QMessageBox.question(
+                self, "덮어쓰기 저장",
+                f"현재 파일에 덮어씁니다:\n\n{self._current_file}\n\n계속하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+        finally:
+            self._document_prompt_active = False
+        if reply != QMessageBox.StandardButton.Yes or generation != self._document_generation:
+            return False
+        return self._do_save(str(self._current_file))
 
-    def _save_file_as(self) -> None:
-        if self._sequence_file_mutation_blocked():
-            return
+    def _save_file_as(self) -> bool:
+        if self._sequence_file_mutation_blocked() or self._document_prompt_active:
+            return False
         if self._is_sequencer_tab():
-            self._sequencer.save_flow_as()
-            return
-        if self._is_favorites_tab():
-            return
-        if not self._macro:
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "매크로 저장",
-            self._get_default_dir(),
-            "Macro JSON (*.json)",
-        )
-        if not path:
-            return
-        if self._sequence_file_mutation_blocked():
-            return
-        if not path.endswith(".json"):
+            return bool(self._sequencer.save_flow_as())
+        if self._is_favorites_tab() or self._is_quick_run_tab():
+            return False
+        return self._save_editor_as()
+
+    def _save_editor_as(self) -> bool:
+        """Save the editor independently of the selected tab (also on close)."""
+        if self._macro is None or self._sequence_file_mutation_blocked():
+            return False
+        generation = self._document_generation
+        self._document_prompt_active = True
+        try:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "새 매크로 저장", self._get_default_dir(), "Macro JSON (*.json)",
+            )
+        finally:
+            self._document_prompt_active = False
+        if not path or generation != self._document_generation:
+            return False
+        if not path.lower().endswith(".json"):
             path += ".json"
-        if self._do_save(path):
-            self._current_file = Path(path)
-            self.setWindowTitle(f"MacroFlow — {Path(path).name}")
+        return self._do_save(path)
 
     def _do_save(self, path: str) -> bool:
-        if self._sequence_file_mutation_blocked():
-            return False
-        if not self._macro:
+        if self._sequence_file_mutation_blocked() or self._macro is None:
             return False
         from macroflow import macro_file
-        macro_file.save(self._macro, path)
+
+        snapshot = copy.deepcopy(self._macro)
+        try:
+            macro_file.save(snapshot, path)
+        except (OSError, TypeError, ValueError) as exc:
+            logger.exception("매크로 저장 실패: %s", path)
+            QMessageBox.critical(self, "매크로 저장 오류", f"저장하지 못했습니다. 편집 내용은 유지됩니다.\n\n{exc}")
+            return False
+        self._current_file = Path(path)
+        self._saved_macro = snapshot
+        self._update_document_title()
         self._sb_state.setText(f"저장 완료: {Path(path).name}")
-        logger.info(f"저장: {path}")
+        logger.info("저장: %s", path)
         return True
 
     def _get_macros_dir(self) -> Path:
@@ -2609,43 +2699,25 @@ class MainWindow(QMainWindow):
         self._sb_state.setText(f"시퀀서 추가: {_Path(path).name}")
 
     def _restore_prev_macro(self) -> None:
-        """이전 녹화를 복원한다.
-
-        새 녹화를 시작하기 직전에 백업해 둔 매크로를 에디터에 로드한다.
-        실수로 F6을 눌러 기존 매크로를 덮어쓴 경우에 사용한다.
-        """
-        if self._sequence_file_mutation_blocked():
+        """Restore pre-recording content, file identity and saved-state baseline."""
+        if self._sequence_file_mutation_blocked() or self._prev_macro is None:
             return
-        if self._prev_macro is None:
+        if not self._confirm_editor_discard():
             return
-
-        reply = QMessageBox.question(
-            self,
-            "이전 매크로 복원",
-            f"녹화 시작 전에 편집하던 매크로를 복원합니다.\n"
-            f"이벤트 수: {len(self._prev_macro.events)}개\n\n"
-            "현재 에디터의 내용은 임시 저장 파일로만 남습니다.\n계속하시겠습니까?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        if self._sequence_file_mutation_blocked():
-            return
-
-        restored = self._prev_macro
+        self._macro = self._prev_macro
+        self._current_file = self._prev_current_file
+        self._saved_macro = self._prev_saved_macro
         self._prev_macro = None
-        self._macro = restored
-        self._current_file = None
-        self._editor.load_macro(restored)
+        self._prev_current_file = None
+        self._prev_saved_macro = None
+        self._document_generation += 1
+        self._editor.load_macro(self._macro)
         self._tabs.setCurrentWidget(self._editor)
         self._update_toolbar()
         self._update_range_spinboxes()
-        count = len(restored.events)
+        self._update_document_title()
         self._sb_state.setText("이전 매크로 복원됨")
-        self._sb_count.setText(f"이벤트: {count}")
-        self.setWindowTitle("MacroFlow — [복원된 매크로]")
-        logger.info(f"이전 매크로 복원: {count}개 이벤트")
+        self._sb_count.setText(f"이벤트: {len(self._macro.events)}")
 
     def _auto_save_prev_recording(self, macro: MacroData) -> None:
         """새 녹화 시작 전 기존 매크로를 pre_recording_*.json 으로 임시 저장한다."""
@@ -2659,7 +2731,7 @@ class MainWindow(QMainWindow):
             temp_file = temp_dir / f"pre_recording_{ts}.json"
             macro_file.save(macro, str(temp_file))
             logger.info(f"녹화 전 백업 저장: {temp_file.name}")
-        except OSError as e:
+        except (OSError, TypeError, ValueError) as e:
             logger.warning(f"녹화 전 백업 저장 실패: {e}")
 
     def _save_and_add_to_sequencer(self) -> None:
@@ -2692,7 +2764,8 @@ class MainWindow(QMainWindow):
             return
 
         self._current_file = save_path
-        self.setWindowTitle(f"MacroFlow — {save_path.name}")
+        self._saved_macro = copy.deepcopy(self._macro)
+        self._update_document_title()
         self._sequencer.add_macro_file(save_path)
         self._tabs.setCurrentWidget(self._sequencer)
         self._sb_state.setText(f"시퀀서 추가: {save_path.name}")
@@ -2703,6 +2776,9 @@ class MainWindow(QMainWindow):
     def _on_macro_changed(self, macro: object) -> None:
         if isinstance(macro, MacroData):
             self._macro = macro
+            self._document_generation += 1
+            self._update_document_title()
+            self._update_toolbar()
             self._update_range_spinboxes()
 
     # ── 최근 녹화 메뉴 ───────────────────────────────────────────────────────

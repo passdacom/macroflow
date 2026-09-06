@@ -809,6 +809,7 @@ def test_stale_repeat_completion_cannot_finish_a_new_playback() -> None:
 
                     assert window._repeat_session is not None
                     window._repeat_session.request_stop()
+                window._saved_macro = window._macro  # synthetic fixture is not an unsaved edit
                 window.close()
             finally:
                 os.chdir(original_cwd)

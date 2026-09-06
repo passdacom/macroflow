@@ -261,6 +261,7 @@ def test_preflight_failure_and_running_edit_locks_are_truthful() -> None:
         assert not window._act_save.isEnabled()
         assert not window._act_save_as.isEnabled()
         sequence._engine = None
+        window._saved_macro = window._macro  # synthetic fixture is not an unsaved edit
         window.close()
         app.processEvents()
         """
@@ -339,6 +340,7 @@ def test_modal_reentry_cannot_commit_sequence_or_file_mutations() -> None:
         assert window.windowTitle() == initial_title
 
         sequence._engine = None
+        window._saved_macro = window._macro  # synthetic fixture is not an unsaved edit
         window.close()
         app.processEvents()
         """
