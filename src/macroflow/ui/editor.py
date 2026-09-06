@@ -116,6 +116,7 @@ from macroflow.ui.editor_table import (
     _should_use_color_detail_widget,
     _table_row_items,
 )
+from macroflow.ui.shortcut_events import insert_shortcut_events
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +313,13 @@ class EventEditorWidget(QWidget):
         self._act_insert_color.triggered.connect(self.insert_color_trigger_action)
         self._act_insert_color.setEnabled(False)
         add_toolbar.addAction(self._act_insert_color)
+        self._act_insert_shortcut = QAction("⌨ 키 / 단축키 추가", self)
+        self._act_insert_shortcut.setToolTip(
+            "선택 행 다음 또는 끝에 키 누름/해제 동작을 추가합니다 (실제 입력 없음)"
+        )
+        self._act_insert_shortcut.triggered.connect(self.insert_shortcut_action)
+        self._act_insert_shortcut.setEnabled(False)
+        add_toolbar.addAction(self._act_insert_shortcut)
         add_toolbar.addSeparator()
         add_toolbar.addWidget(self._chk_relative_time)
 
@@ -393,6 +401,7 @@ class EventEditorWidget(QWidget):
         self._act_insert_text.setEnabled(True)
         self._act_insert_click.setEnabled(True)
         self._act_insert_color.setEnabled(True)
+        self._act_insert_shortcut.setEnabled(True)
         self._act_reset.setEnabled(True)
         self._act_undo.setEnabled(False)
         self._act_redo.setEnabled(False)
@@ -409,6 +418,48 @@ class EventEditorWidget(QWidget):
 
     def insert_color_trigger_action(self) -> None:
         self._start_color_trigger_insert()
+
+    def _dispatch_shortcut_edit(self, callback: Callable[[], None]) -> None:
+        """Reuse the host's runtime/tab gate, also for a delayed modal commit."""
+        if self._macro is None or not self.isEnabled():
+            return
+        dispatch = getattr(self.window(), "_dispatch_editor_insert", None)
+        if callable(dispatch):
+            dispatch(callback)
+        else:
+            callback()
+
+    def insert_shortcut_action(self) -> None:
+        self._dispatch_shortcut_edit(self._insert_shortcut)
+
+    def _insert_shortcut(self) -> None:
+        from macroflow.ui.shortcut_dialog import ShortcutDialog
+
+        generation = self._model_generation
+        insert_after = self._selected_insert_after_event_idx()
+        dialog = ShortcutDialog(self)
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            key, modifiers, delay_ms = dialog.shortcut()
+
+            def commit() -> None:
+                if self._macro is None or generation != self._model_generation:
+                    return
+                try:
+                    events = insert_shortcut_events(
+                        self._macro.events, insert_after, key, modifiers, delay_ms=delay_ms,
+                    )
+                except ValueError as exc:
+                    QMessageBox.warning(self, "키 / 단축키 추가", str(exc))
+                    return
+                previous_ids = {event.id for event in self._macro.events}
+                self._push_undo()
+                self._apply_inserted_events(events, previous_event_ids=previous_ids)
+
+            self._dispatch_shortcut_edit(commit)
+        finally:
+            dialog.deleteLater()
 
     def set_capture_hotkey_label(self, label: str) -> None:
         self._capture_hotkey_label = label

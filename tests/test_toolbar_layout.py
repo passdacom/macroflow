@@ -171,7 +171,7 @@ def test_toolbar_rows_fit_initial_width_without_restricting_manual_shrink() -> N
         range_toolbar = toolbar(window, "range-playback-toolbar")
 
         assert [action.text() for action in editor_add.actions() if action.text()] == [
-            "📝 텍스트 입력 추가", "🖱 클릭 추가", "🎨 색 체크 삽입"
+            "📝 텍스트 입력 추가", "🖱 클릭 추가", "🎨 색 체크 삽입", "⌨ 키 / 단축키 추가"
         ]
         assert [action.text() for action in sequence_add.actions()] == [
             "➕ 매크로 추가", "📝 문구 추가", "🖱 클릭 추가",
