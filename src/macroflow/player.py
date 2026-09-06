@@ -15,7 +15,8 @@ import logging
 import math
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from macroflow.types import (
     AnyEvent,
@@ -38,11 +39,13 @@ from macroflow.win32 import (
     ratio_to_pixel,
     send_key,
     send_mouse_button,
-    send_mouse_drag,
     send_mouse_move,
     send_mouse_wheel,
     send_paste,
     set_clipboard_text,
+)
+from macroflow.win32 import (
+    send_mouse_drag as send_mouse_drag,
 )
 
 logger = logging.getLogger(__name__)
@@ -191,13 +194,21 @@ def _release_active_inputs() -> None:
     if state is None:
         return
     with _input_state_lock:
-        for vk_code in tuple(state.pressed_keys):
-            send_key(vk_code, is_down=False)
+        keys = tuple(state.pressed_keys)
+        mouse = tuple(state.pressed_mouse.items())
         state.pressed_keys.clear()
-        for button, (x, y) in tuple(state.pressed_mouse.items()):
-            send_mouse_button(x, y, button, down=False)
         state.pressed_mouse.clear()
         state.pending_down = None
+        for vk_code in keys:
+            try:
+                send_key(vk_code, is_down=False)
+            except Exception:
+                logger.exception("Failed to release playback key %d", vk_code)
+        for button, (x, y) in mouse:
+            try:
+                send_mouse_button(x, y, button, down=False)
+            except Exception:
+                logger.exception("Failed to release playback mouse button %s", button)
 
 
 def _apply_pending_pause_if_safe(state: _PlayState) -> None:
@@ -210,6 +221,20 @@ def _apply_pending_pause_if_safe(state: _PlayState) -> None:
 
 
 # ── 이벤트 실행 ───────────────────────────────────────────────────────────────
+
+@contextmanager
+def _input_boundary() -> Iterator[bool]:
+    """Wait without owning the input lock, then linearize pause against injection."""
+    while _playback_clock.wait_until_resumed():
+        with _input_state_lock:
+            if _stop_flag.is_set():
+                break
+            if _playback_clock.is_paused():
+                continue
+            yield True
+            return
+    yield False
+
 
 def _execute_event(
     event: AnyEvent,
@@ -231,9 +256,10 @@ def _execute_event(
         if event.type == "mouse_down":
             # 색 체크 활성화된 클릭: 마우스 이동 → hover 대기 → 픽셀 색 비교
             if event.color_check_enabled and event.recorded_color is not None:
-                if _stop_flag.is_set():
-                    return
-                send_mouse_move(x, y)
+                with _input_boundary() as ready:
+                    if not ready:
+                        return
+                    send_mouse_move(x, y)
                 if not _wait_active(0.05):  # hover 효과 대기
                     return
                 target = _hex_to_rgb(event.recorded_color)
@@ -267,13 +293,11 @@ def _execute_event(
                     logger.warning(
                         f"[color_check wait] timeout at ({x},{y}), proceeding with click anyway"
                     )
-            if _stop_flag.is_set():
-                return
-            send_mouse_move(x, y)
-            if _stop_flag.is_set():
-                return
-            with _input_state_lock:
-                if _playback_clock.is_paused():
+            with _input_boundary() as ready:
+                if not ready:
+                    return
+                send_mouse_move(x, y)
+                if _stop_flag.is_set():
                     return
                 send_mouse_button(x, y, event.button, down=True)
                 state.pressed_mouse[event.button] = (x, y)
@@ -301,47 +325,47 @@ def _execute_event(
                     or elapsed_ms >= settings.click_time_threshold_ms
                 ):
                     # RAW down/up의 기록 거리 또는 기록 시간 초과 → 드래그로 판별
-                    if _stop_flag.is_set():
-                        return
-                    send_mouse_drag(
-                        state.pending_down_real_x,
-                        state.pending_down_real_y,
-                        x, y,
-                        event.button,
-                    )
-                    with _input_state_lock:
-                        state.pressed_mouse.pop(event.button, None)
-                        state.pending_down = None
-                    return
+                    # The recorded down is already injected. Interpolate only
+                    # movement; the common release below closes that gesture.
+                    start_x = state.pending_down_real_x
+                    start_y = state.pending_down_real_y
+                    for step in range(1, 10):
+                        with _input_boundary() as ready:
+                            if not ready:
+                                return
+                            send_mouse_move(
+                                start_x + (x - start_x) * step // 10,
+                                start_y + (y - start_y) * step // 10,
+                            )
 
-            if _stop_flag.is_set():
-                return
-            send_mouse_move(x, y)
-            if _stop_flag.is_set():
-                return
-            with _input_state_lock:
+            with _input_boundary() as ready:
+                if not ready:
+                    return
+                send_mouse_move(x, y)
+                if _stop_flag.is_set():
+                    return
                 send_mouse_button(x, y, event.button, down=False)
                 state.pressed_mouse.pop(event.button, None)
                 state.pending_down = None
 
     elif isinstance(event, MouseMoveEvent):
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
-        if _stop_flag.is_set():
-            return
-        send_mouse_move(x, y)
-        state.has_moves_since_down = True
+        with _input_boundary() as ready:
+            if not ready:
+                return
+            send_mouse_move(x, y)
+            state.has_moves_since_down = True
 
     elif isinstance(event, MouseWheelEvent):
         x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
-        if _stop_flag.is_set():
-            return
-        send_mouse_wheel(x, y, event.delta, horizontal=(event.axis == "horizontal"))
+        with _input_boundary() as ready:
+            if not ready:
+                return
+            send_mouse_wheel(x, y, event.delta, horizontal=(event.axis == "horizontal"))
 
     elif isinstance(event, KeyEvent):
-        if _stop_flag.is_set():
-            return
-        with _input_state_lock:
-            if _playback_clock.is_paused():
+        with _input_boundary() as ready:
+            if not ready:
                 return
             is_down = event.type == "key_down"
             send_key(event.vk_code, is_down=is_down)
@@ -351,9 +375,17 @@ def _execute_event(
                 state.pressed_keys.discard(event.vk_code)
 
     elif isinstance(event, TextInputEvent):
-        if event.text and not _stop_flag.is_set():
-            if not set_clipboard_text(event.text) or not send_paste():
-                raise PlaybackError("텍스트 입력을 대상 창에 붙여넣지 못했습니다")
+        if event.text:
+            with _input_boundary() as ready:
+                if not ready:
+                    return
+                if not set_clipboard_text(event.text):
+                    raise PlaybackError("텍스트 입력을 대상 창에 붙여넣지 못했습니다")
+            with _input_boundary() as ready:
+                if not ready:
+                    return
+                if not send_paste():
+                    raise PlaybackError("텍스트 입력을 대상 창에 붙여넣지 못했습니다")
 
     elif isinstance(event, WaitEvent):
         _wait_active(event.duration_ms / state.speed / 1000.0)

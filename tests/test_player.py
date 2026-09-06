@@ -806,6 +806,8 @@ class TestColorCheckWait:
         state = _PlayState()
         buttons = MagicMock()
         drag = MagicMock()
+        moves = MagicMock()
+        monkeypatch.setattr(player, "send_mouse_move", moves)
         active_times = iter([0, 0, 0, 0, runtime_up_ns])
         monkeypatch.setattr(player, "_wait_active", lambda _seconds: True)
         monkeypatch.setattr(player, "_active_now_ns", lambda: next(active_times))
@@ -816,15 +818,13 @@ class TestColorCheckWait:
         _execute_event(down, MacroSettings(), state)
         _execute_event(up, MacroSettings(), state)
 
-        if expects_drag:
-            buttons.assert_called_once_with(960, 540, "left", down=True)
-            drag.assert_called_once_with(960, 540, 960, 540, "left")
-        else:
-            assert buttons.call_args_list == [
-                call(960, 540, "left", down=True),
-                call(960, 540, "left", down=False),
-            ]
-            drag.assert_not_called()
+        assert buttons.call_args_list == [
+            call(960, 540, "left", down=True),
+            call(960, 540, "left", down=False),
+        ]
+        drag.assert_not_called()
+        # Hover + down positioning + interpolated drag (if classified) + up.
+        assert moves.call_count == (12 if expects_drag else 3)
 
     def test_skip_mode_waits_then_skips_when_color_never_matches(self, mock_win32: object, monkeypatch: pytest.MonkeyPatch) -> None:
         """skip 모드는 설정 시간 동안 기다린 뒤에도 안 맞을 때만 클릭을 건너뛴다."""

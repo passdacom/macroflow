@@ -154,7 +154,8 @@ def send_mouse_move(x: int, y: int) -> None:
         x: 목표 X 좌표 (픽셀).
         y: 목표 Y 좌표 (픽셀).
     """
-    _send(_mouse_input(x, y, MOUSEEVENTF_MOVE))
+    if not _send(_mouse_input(x, y, MOUSEEVENTF_MOVE)):
+        raise OSError("SendInput mouse move failed")
 
 
 def send_mouse_click(x: int, y: int, button: str = "left") -> None:
@@ -216,7 +217,8 @@ def send_mouse_button(x: int, y: int, button: str, down: bool) -> None:
     """
     down_flag, up_flag = _BUTTON_FLAGS.get(button, _BUTTON_FLAGS["left"])
     flag = down_flag if down else up_flag
-    _send(_mouse_input(x, y, flag))
+    if not _send(_mouse_input(x, y, flag)):
+        raise OSError("SendInput mouse button failed")
 
 
 def send_mouse_wheel(x: int, y: int, delta: int, horizontal: bool = False) -> None:
@@ -241,7 +243,8 @@ def send_mouse_wheel(x: int, y: int, delta: int, horizontal: bool = False) -> No
         dwFlags=flag,
         time=0, dwExtraInfo=0,
     )
-    _send(inp)
+    if not _send(inp):
+        raise OSError("SendInput event failed")
 
 
 def send_key(vk_code: int, is_down: bool) -> None:
@@ -257,7 +260,8 @@ def send_key(vk_code: int, is_down: bool) -> None:
         wVk=vk_code, wScan=0,
         dwFlags=flags, time=0, dwExtraInfo=0,
     )
-    _send(inp)
+    if not _send(inp):
+        raise OSError("SendInput event failed")
 
 
 def send_paste() -> bool:
@@ -279,7 +283,22 @@ def send_paste() -> bool:
             dwExtraInfo=0,
         )
         inputs.append(inp)
-    if not _send(*inputs):
+    arr = (_INPUT * len(inputs))(*inputs)
+    sent: int = _user32.SendInput(len(inputs), arr, _INPUT_SIZE)
+    if sent != len(inputs):
+        # Never retry Ctrl+V: it may already have pasted. Only release keys
+        # still owned by the accepted prefix, one bounded attempt per key.
+        owned = []
+        if sent == 2:
+            owned.append(_VK_V)
+        if 0 < sent < 4:
+            owned.append(_VK_CONTROL)
+        for vk_code in owned:
+            try:
+                send_key(vk_code, is_down=False)
+            except Exception:
+                logger.exception("SendInput paste key release failed (vk=%d)", vk_code)
+        logger.warning("SendInput paste incomplete: %d/%d", sent, len(inputs))
         return False
     time.sleep(_PASTE_INPUT_DRAIN_DELAY_S)
     return True
