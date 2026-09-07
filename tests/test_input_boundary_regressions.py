@@ -43,7 +43,7 @@ class NativeSend:
 
 def native_module(monkeypatch, native):
     source = Path(player.__file__).parent / 'win32/sendinput.py'
-    tree = ast.parse(source.read_text())
+    tree = ast.parse(source.read_text(encoding='utf-8'))
     tree.body = [n for n in tree.body if not isinstance(n, ast.Assert)
                  and not (isinstance(n, ast.ImportFrom) and n.level)]
     module = types.ModuleType('fake_native_sendinput')
