@@ -17,6 +17,7 @@ from PyQt6.QtGui import QAction, QBrush, QColor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -830,7 +831,7 @@ class EventEditorWidget(QWidget):
         self._add_context_action(
             menu,
             "재생 대기 설정(&D)...",
-            lambda: self._edit_delay(row_idx),
+            lambda: self._insert_click_dialog(row_idx),
         )
 
         if row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
@@ -882,7 +883,7 @@ class EventEditorWidget(QWidget):
         )
         self._add_context_action(
             menu,
-            "🖱 클릭 추가(&L)...",
+            "🖱 클릭 추가 — 상세 설정(&L)...",
             self.insert_click_action,
         )
         self._add_context_action(
@@ -1061,6 +1062,15 @@ class EventEditorWidget(QWidget):
             tooltip="기본 모니터 높이 기준 비율. 보조 모니터는 100% 초과 가능.",
         )
         form.addRow("Y 위치:", y_spin)
+        button_combo = QComboBox(dialog)
+        button_combo.setObjectName("click_button")
+        button_combo.addItem("좌클릭", "left")
+        button_combo.addItem("우클릭", "right")
+        if isinstance(primary, MouseButtonEvent):
+            button_combo.setCurrentIndex(button_combo.findData(primary.button))
+            form.addRow("버튼:", button_combo)
+        else:
+            button_combo.hide()
 
         capture_label, btn_capture = create_capture_controls(self._capture_hotkey_label)
 
@@ -1127,6 +1137,15 @@ class EventEditorWidget(QWidget):
                     new_macro = edit_position(new_macro, ev.id, new_x, new_y)
                 except (KeyError, TypeError):
                     pass
+
+        if isinstance(primary, MouseButtonEvent):
+            selected_button = button_combo.currentData()
+            new_events = list(new_macro.events)
+            for index in display_row.event_indices:
+                event = new_events[index]
+                if isinstance(event, MouseButtonEvent):
+                    new_events[index] = dataclasses.replace(event, button=selected_button)
+            new_macro = dataclasses.replace(new_macro, events=new_events, is_edited=True)
 
         # F6 캡처로 위치를 지정한 경우 primary 이벤트의 recorded_color도 업데이트.
         if captured_color and isinstance(primary, MouseButtonEvent):
@@ -1572,6 +1591,33 @@ class EventEditorWidget(QWidget):
         )
 
     def _insert_click(self, row_idx: int) -> None:
+        """Capture a left click directly; edit button/position later in the row."""
+        self._dispatch_shortcut_edit(self._start_click_insert)
+
+    def _start_click_insert(self) -> None:
+        if self._macro is None or self.is_f6_capture_active():
+            return
+        insert_after = self._selected_insert_after_event_idx()
+        generation = self._model_generation
+
+        def captured(x_ratio: float, y_ratio: float, color: str) -> None:
+            def commit() -> None:
+                if self._macro is None or generation != self._model_generation:
+                    return
+                previous_ids = {event.id for event in self._macro.events}
+                events = _insert_click_events(
+                    self._macro.events, insert_after,
+                    x_ratio=x_ratio, y_ratio=y_ratio,
+                    button="left", is_double=False, delay_ms=1000,
+                    recorded_color=color,
+                )
+                self._push_undo()
+                self._apply_inserted_events(events, previous_event_ids=previous_ids)
+            self._dispatch_shortcut_edit(commit)
+
+        self._start_f6_capture(captured)
+
+    def _insert_click_dialog(self, row_idx: int) -> None:
         """선택 행 다음에 MouseButtonEvent (클릭/더블클릭)를 삽입한다.
 
         다이얼로그: 위치(X/Y%), F6 직접 지정, 버튼 종류, 딜레이.

@@ -35,7 +35,18 @@ def _selected_insert_after_event_idx(
     if selected_rows:
         last_row_idx = selected_rows[-1]
         if 0 <= last_row_idx < len(row_event_indices):
-            return max(row_event_indices[last_row_idx])
+            boundary = max(row_event_indices[last_row_idx])
+            # Display rows can overlap (Ctrl-down, C-down, C-up, Ctrl-up).
+            # "After C" must not insert a click while Ctrl is still held.
+            while True:
+                expanded = max(
+                    [boundary]
+                    + [max(indices) for indices in row_event_indices
+                       if indices and min(indices) <= boundary < max(indices)]
+                )
+                if expanded == boundary:
+                    return boundary
+                boundary = expanded
     return events_len - 1
 
 
