@@ -2407,6 +2407,9 @@ class MainWindow(QMainWindow):
     # ── 파일 조작 ─────────────────────────────────────────────────────────────
 
     def _sequence_file_mutation_blocked(self) -> bool:
+        if self._document_prompt_active or self._state in {"recording", "playing", "stopping"}:
+            self._sb_state.setText("실행 또는 저장 확인 중에는 문서를 변경할 수 없습니다")
+            return True
         if not self._sequencer.is_running():
             return False
         self._sb_state.setText("시퀀스 실행 중에는 파일을 열거나 저장할 수 없습니다")
@@ -2511,6 +2514,13 @@ class MainWindow(QMainWindow):
             logger.exception("파일 열기 오류")
             return False
         if not self._confirm_editor_discard():
+            return False
+        # Save in the confirmation may have replaced this very target file.
+        try:
+            loaded_macro = self._apply_persisted_color_settings(macro_file.load(path))
+        except Exception as exc:
+            QMessageBox.critical(self, "파일 열기 오류", str(exc))
+            logger.exception("확인 후 파일 열기 오류")
             return False
         self._macro = loaded_macro
         self._current_file = Path(path)

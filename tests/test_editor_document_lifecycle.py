@@ -38,6 +38,35 @@ def _run(tmp_path: Path, body: str) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+
+
+def test_reopening_current_file_after_save_loads_new_saved_bytes(tmp_path: Path) -> None:
+    _run(tmp_path, '''
+        w = MainWindow(); w._load_file(str(a)); w._editor._delete_rows([0])
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Save):
+            assert w._load_file(str(a))
+        assert w._macro.events == macro_file.load(a).events == []
+        assert not w._editor_is_dirty()
+        w.close()
+    ''')
+
+
+def test_runtime_and_modal_owner_block_document_replacement(tmp_path: Path) -> None:
+    _run(tmp_path, '''
+        w = MainWindow(); w._load_file(str(a))
+        for state in ("recording", "playing", "stopping"):
+            w._state = state
+            assert not w._load_file(str(b))
+            assert w._current_file == a
+        w._state = "idle"
+        w._document_prompt_active = True
+        assert not w._do_save(str(b))
+        assert macro_file.load(b).events[0].id == "b"
+        w._document_prompt_active = False
+        w.close()
+    ''')
+
+
 def test_startup_ignores_last_file_and_supports_empty_document(tmp_path: Path) -> None:
     _run(tmp_path, '''
         s = QSettings("MacroFlow", "MacroFlow")

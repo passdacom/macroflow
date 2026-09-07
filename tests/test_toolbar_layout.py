@@ -234,7 +234,8 @@ def test_ctrl_s_routes_to_active_document_surface_only() -> None:
             settings=MacroSettings(), raw_events=[], events=[],
         )
         window._editor.load_macro(window._macro)
-        window._save_file_as = lambda: calls.append("macro")
+        window._save_editor_as = lambda: calls.append("macro")
+        window._saved_macro = window._macro  # synthetic clean document for routing
         window.show()
         app.processEvents()
 
