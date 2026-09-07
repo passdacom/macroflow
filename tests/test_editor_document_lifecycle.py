@@ -67,6 +67,25 @@ def test_runtime_and_modal_owner_block_document_replacement(tmp_path: Path) -> N
     ''')
 
 
+def test_raw_restore_and_pre_recording_restore_keep_distinct_sources(tmp_path: Path) -> None:
+    _run(tmp_path, '''
+        w = MainWindow(); w._load_file(str(a))
+        with patch.object(recorder, "start_recording"):
+            w._start_recording()
+        w._on_recording_done(macro("new")); w._poll_timer.stop()
+        w._editor._delete_rows([0])
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+            w._editor._act_reset.trigger()
+        assert [e.id for e in w._macro.events] == ["new"]
+        assert w._current_file is None and w._editor_is_dirty()
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Discard):
+            w._restore_prev_macro()
+        assert [e.id for e in w._macro.events] == ["a"]
+        assert w._current_file == a and not w._editor_is_dirty()
+        w.close()
+    ''')
+
+
 def test_startup_ignores_last_file_and_supports_empty_document(tmp_path: Path) -> None:
     _run(tmp_path, '''
         s = QSettings("MacroFlow", "MacroFlow")
