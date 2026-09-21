@@ -596,8 +596,9 @@ def test_sequencer_worker_callbacks_update_visible_state_on_gui_thread() -> None
             assert widget._items[0].status == "done"
             assert widget._list.item(0).text().startswith("✅")
             log_text = widget._log.toPlainText()
-            assert "실행: sample.json" in log_text
-            assert "완료: ok" in log_text
+            assert "실행: session=1 step=macro_000" in log_text
+            assert "완료: session=1 step=macro_000" in log_text
+            assert "sample.json" not in log_text
         """
     )
 

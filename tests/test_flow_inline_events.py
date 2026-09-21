@@ -334,7 +334,9 @@ def test_flow_executes_macro_inline_macro_through_same_player_adapter(
         speed: float,
         on_complete: object,
         on_error: object,
+        start_pause_requested: object,
     ) -> None:
+        assert callable(start_pause_requested) and not start_pause_requested()
         del speed, on_error
         event = macro.events[0]
         assert isinstance(event, TextInputEvent)
@@ -396,7 +398,9 @@ def test_inline_player_failure_without_failure_edge_is_terminal_once(
         speed: float,
         on_complete: object,
         on_error: object,
+        start_pause_requested: object,
     ) -> None:
+        assert callable(start_pause_requested) and not start_pause_requested()
         del speed, on_complete
         assert callable(on_error)
         on_error(RuntimeError("input failed"))

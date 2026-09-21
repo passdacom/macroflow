@@ -15,6 +15,7 @@ ARCHITECTURE.md: Core Layer — PyQt6 임포트 금지.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import json
 import logging
@@ -24,7 +25,6 @@ import random as _random_module
 import re
 import tempfile
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -37,6 +37,7 @@ from macroflow.expression_sandbox import (
     validate_expression as _validate_expression_rules,
 )
 from macroflow.expression_sandbox import validate_wait_ms as _validated_wait_ms
+from macroflow.flow_clock import FlowClock
 from macroflow.macro_file import (
     event_from_dict,
     inline_event_block_valid,
@@ -594,6 +595,7 @@ class FlowEngine:
         on_complete: Callable[[str], None] | None = None,
         on_error: Callable[[str], None] | None = None,
         speed: float = 1.0,
+        macro_snapshots: dict[str, MacroData] | None = None,
     ) -> None:
         self._flow_path = Path(flow_path)
         self._base_dir = self._flow_path.parent
@@ -602,7 +604,9 @@ class FlowEngine:
         self._on_complete = on_complete
         self._on_error = on_error
         self._speed = speed
+        self._macro_snapshots = copy.deepcopy(macro_snapshots)
         self._stop_flag = threading.Event()
+        self._clock = FlowClock(self._stop_flag)
         self._thread: threading.Thread | None = None
         self._lifecycle_lock = threading.Lock()
         self._stopping = False
@@ -633,6 +637,7 @@ class FlowEngine:
         """실행을 중단한다."""
         with self._lifecycle_lock:
             self._stop_flag.set()
+            self._clock.wake()
             self._stopping = True
             self._stop_calls_in_progress += 1
             worker = self._thread
@@ -657,6 +662,37 @@ class FlowEngine:
         with self._lifecycle_lock:
             return self._thread is not None and self._thread.is_alive()
 
+    def join(self, timeout: float | None = None) -> None:
+        worker = self._thread
+        if worker is not None and worker is not threading.current_thread():
+            worker.join(timeout)
+
+    def pause(self) -> None:
+        from macroflow import player
+        with self._lifecycle_lock:
+            self._clock.pause()
+            with self._player_session_lock:
+                if self._player_session is not None:
+                    player.pause()
+
+    def resume(self) -> None:
+        from macroflow import player
+        with self._lifecycle_lock:
+            with self._player_session_lock:
+                if self._player_session is not None:
+                    player.resume()
+            self._clock.resume()
+
+    def pause_state(self) -> str:
+        from macroflow import player
+        with self._lifecycle_lock:
+            if not self._clock.paused:
+                return "running"
+            with self._player_session_lock:
+                if self._player_session is not None and not player.is_paused():
+                    return "requested"
+            return "paused"
+
     def _run(self, flow: MacroFlow) -> None:
         """플로우 실행 메인 루프."""
         # 카운터 초기화
@@ -667,6 +703,8 @@ class FlowEngine:
         current_id: str | None = flow.start_node_id
 
         while current_id is not None and not self._stop_flag.is_set():
+            if not self._clock.wait():
+                return
             if current_id not in flow.nodes:
                 msg = f"노드 ID를 찾을 수 없습니다: {current_id!r}"
                 logger.error(msg)
@@ -677,6 +715,8 @@ class FlowEngine:
             label = getattr(node, "label", current_id)
 
             _safe_callback(self._on_node_start, current_id, label)
+            if not self._clock.wait():
+                return
 
             try:
                 current_id = self._execute_node(node)
@@ -720,7 +760,7 @@ class FlowEngine:
             return self._run_counter_node(node)
 
         elif isinstance(node, WaitFixedNode):
-            if self._stop_flag.wait(node.duration_ms / 1000.0):
+            if not self._clock.wait(node.duration_ms / 1000.0):
                 return None
             _safe_callback(
                 self._on_node_done,
@@ -743,6 +783,11 @@ class FlowEngine:
 
     def _run_macro_node(self, node: MacroNode) -> str | None:
         """매크로 JSON 파일을 동기적으로 재생하고 다음 노드 ID를 반환한다."""
+        if self._macro_snapshots is not None:
+            if node.id not in self._macro_snapshots:
+                raise FlowError("실행 스냅샷에 매크로 단계가 없습니다.")
+            return self._run_macro_data(node.id, copy.deepcopy(self._macro_snapshots[node.id]),
+                next_on_success=node.next_on_success, next_on_failure=node.next_on_failure)
         raw = Path(node.macro_path)
         if raw.is_absolute():
             macro_path = raw.resolve()
@@ -840,12 +885,18 @@ class FlowEngine:
             _finish(False, str(exc))
 
         try:
-            player_session = player.play(
-                macro,
-                speed=self._speed,
-                on_complete=_on_complete,
-                on_error=_on_error,
-            )
+            with self._lifecycle_lock:
+                if self._stop_flag.is_set():
+                    return None
+                player_session = player.play(
+                    macro,
+                    speed=self._speed,
+                    on_complete=_on_complete,
+                    on_error=_on_error,
+                    start_pause_requested=lambda: self._clock.paused,
+                )
+                with self._player_session_lock:
+                    self._player_session = player_session
         except Exception as exc:
             message = str(exc)
             _safe_callback(self._on_node_done, node_id, False, message)
@@ -853,8 +904,6 @@ class FlowEngine:
                 raise FlowError(message, node_done_reported=True) from exc
             return next_on_failure
 
-        with self._player_session_lock:
-            self._player_session = player_session
 
         # 재생 완료 또는 중단 신호까지 대기
         while not done_event.is_set() and not self._stop_flag.is_set():
@@ -864,11 +913,15 @@ class FlowEngine:
             callback_state["accepting"] = False
         if self._stop_flag.is_set():
             player.stop(player_session)
+            if player_session is not None:
+                player.wait_for_exit(player_session)
             with self._player_session_lock:
                 if self._player_session == player_session:
                     self._player_session = None
             return None
 
+        if player_session is not None:
+            player.wait_for_exit(player_session)
         with self._player_session_lock:
             if self._player_session == player_session:
                 self._player_session = None
@@ -896,18 +949,18 @@ class FlowEngine:
         deadline_ns = (
             None
             if timeout_ms == 0
-            else time.perf_counter_ns() + timeout_ms * 1_000_000
+            else int(self._clock.now() * 1_000_000_000) + timeout_ms * 1_000_000
         )
 
         matched = False
         while True:
-            if self._stop_flag.is_set():
+            if not self._clock.wait():
                 return None
-            now_ns = time.perf_counter_ns()
+            now_ns = int(self._clock.now() * 1_000_000_000)
             if deadline_ns is not None and now_ns >= deadline_ns:
                 break
             actual = get_pixel_color(x, y)
-            checked_ns = time.perf_counter_ns()
+            checked_ns = int(self._clock.now() * 1_000_000_000)
             if self._stop_flag.is_set():
                 return None
             if deadline_ns is not None and checked_ns >= deadline_ns:
@@ -921,7 +974,7 @@ class FlowEngine:
                 if remaining_s <= 0:
                     break
                 wait_s = min(wait_s, remaining_s)
-            if self._stop_flag.wait(wait_s):
+            if not self._clock.wait(wait_s):
                 return None
 
         msg = f"색 감지 {'성공' if matched else '타임아웃'}"

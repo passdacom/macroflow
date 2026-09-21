@@ -22,6 +22,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
+from macroflow.input_boundaries import deduplicate_event_ids, placement_releases
 from macroflow.types import (
     AnyEvent,
     ColorTriggerEvent,
@@ -784,6 +785,9 @@ def merge_macros(macros: list[tuple[MacroData, str]], gap_ms: int = 500) -> Macr
             ev.source_file = fname
         merged_events.extend(evs)
         previous_end_ns = max(ev.timestamp_ns for ev in evs)
+        merged_events.extend(placement_releases(evs))
+
+    deduplicate_event_ids(merged_events)
 
     # 첫 번째 매크로의 메타·설정을 기반으로 생성
     base_meta = macros[0][0].meta

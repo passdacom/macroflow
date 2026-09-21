@@ -25,11 +25,13 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor, QDragEnterEvent, QDropEvent, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFileDialog,
     QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QSpinBox,
     QSplitter,
@@ -64,6 +66,8 @@ from macroflow.sequence_model import (
     build_sequence_flow,
     project_sequence_flow,
 )
+from macroflow.sequence_run import SequenceRunSession
+from macroflow.sequence_selection import selected_flow
 from macroflow.types import (
     ColorTriggerEvent,
     MacroSettings,
@@ -340,6 +344,8 @@ class MacroSequencerWidget(QWidget):
     sequence_complete = pyqtSignal(str)   # status
     sequence_error = pyqtSignal(str)      # message
     sequence_progress = pyqtSignal(int, int)  # current, total macro step
+    partial_run_requested = pyqtSignal(object)
+    _cycle_started = pyqtSignal(int, int)
     open_in_editor = pyqtSignal(str)      # 더블클릭 시 파일 경로 전달
     merge_to_editor = pyqtSignal(object)  # 병합 결과 MacroData → 에디터로 전달
     dirty_changed = pyqtSignal(bool)      # 미저장 변경 상태
@@ -359,7 +365,10 @@ class MacroSequencerWidget(QWidget):
         super().__init__(parent)
         self._default_dir = Path.cwd() if default_dir is None else default_dir
         self._items: list[SequenceItem] = []
-        self._engine: FlowEngine | None = None
+        self._engine: SequenceRunSession | FlowEngine | None = None
+        self._model_generation = 0
+        self._pending_terminal: tuple[int, bool, str] | None = None
+        self._start_allowed: Callable[[], bool] | None = None
         self._run_generation = 0
         self._active_generation: int | None = None
         self._current_flow_path: Path | None = None
@@ -373,6 +382,7 @@ class MacroSequencerWidget(QWidget):
         self._node_finished.connect(self._apply_node_done)
         self._sequence_finished.connect(self._apply_sequence_complete)
         self._sequence_failed.connect(self._apply_sequence_error)
+        self._cycle_started.connect(self._apply_cycle)
         self._stop_watch_timer = QTimer(self)
         self._stop_watch_timer.setInterval(100)
         self._stop_watch_timer.timeout.connect(self._poll_stopping_engine)
@@ -487,6 +497,23 @@ class MacroSequencerWidget(QWidget):
         layout.addWidget(flow_toolbar)
         layout.addWidget(add_toolbar)
         layout.addWidget(manage_toolbar)
+        repeat_toolbar = QToolBar(self)
+        repeat_toolbar.addWidget(QLabel("플로우 반복: "))
+        self._flow_repeat_mode = QComboBox(self)
+        self._flow_repeat_mode.addItems(["1회", "지정 횟수", "중지할 때까지"])
+        repeat_toolbar.addWidget(self._flow_repeat_mode)
+        self._flow_repeat_count = QSpinBox(self)
+        self._flow_repeat_count.setRange(1, 9999)
+        repeat_toolbar.addWidget(self._flow_repeat_count)
+        repeat_toolbar.addWidget(QLabel("회차 사이 대기: "))
+        self._flow_repeat_gap = QSpinBox(self)
+        self._flow_repeat_gap.setRange(0, _MAX_GAP_MS)
+        self._flow_repeat_gap.setValue(1000)
+        self._flow_repeat_gap.setSuffix("ms")
+        repeat_toolbar.addWidget(self._flow_repeat_gap)
+        self._cycle_label = QLabel("1회 · 선택 구간은 항상 1회", self)
+        repeat_toolbar.addWidget(self._cycle_label)
+        layout.addWidget(repeat_toolbar)
 
         # 본문: 목록 + 실행 버튼 + 로그
         splitter = QSplitter(Qt.Orientation.Vertical, self)
@@ -504,6 +531,8 @@ class MacroSequencerWidget(QWidget):
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._list.itemSelectionChanged.connect(self._on_selection_changed)
         self._list.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._range_context_menu)
 
         # 파일 드래그앤드롭 지원
         self._list.setAcceptDrops(True)
@@ -522,6 +551,7 @@ class MacroSequencerWidget(QWidget):
         log_layout.setContentsMargins(4, 4, 4, 4)
         log_layout.addWidget(QLabel("실행 로그"))
         self._log = QTextEdit()
+        self._log.document().setMaximumBlockCount(300)
         self._log.setReadOnly(True)
         self._log.setMaximumHeight(160)
         log_layout.addWidget(self._log)
@@ -856,6 +886,7 @@ class MacroSequencerWidget(QWidget):
 
     def _set_dirty(self, dirty: bool) -> None:
         """미저장 상태를 변경하고 실제 전이만 알린다."""
+        self._model_generation += 1
         if self._is_dirty == dirty:
             return
         self._is_dirty = dirty
@@ -870,10 +901,10 @@ class MacroSequencerWidget(QWidget):
         """worker가 종료 확인되기 전까지 active run으로 간주한다."""
         return self._engine is not None
 
-    def run_sequence(self, speed: float = 1.0) -> bool:
+    def run_sequence(self, speed: float = 1.0, selected_rows: list[int] | None = None) -> bool:
         """외부(main_window)에서 시퀀스를 시작한다."""
         if self._items and self._engine is None:
-            return self._run_sequence(speed=speed)
+            return self._run_sequence(speed=speed, selected_rows=selected_rows)
         return False
 
     def stop_sequence(self) -> bool:
@@ -1233,15 +1264,74 @@ class MacroSequencerWidget(QWidget):
 
     # ── 시퀀스 실행 ───────────────────────────────────────────────────────────
 
-    def _run_sequence(self, speed: float = 1.0) -> bool:
+    def _range_context_menu(self, pos: Any) -> None:
+        if self._engine is not None:
+            return
+        rows = sorted(self._list.row(item) for item in self._list.selectedItems())
+        generation = self._model_generation
+        menu = QMenu(self)
+        action = menu.addAction("선택 플로우 구간 1회 실행")
+        assert action is not None
+        valid = bool(rows) and rows == list(range(rows[0], rows[-1] + 1))
+        action.setEnabled(valid)
+        action.setToolTip("실제 표시 행의 연속 구간만 실행합니다. 중간 인라인 동작·대기를 포함합니다.")
+        def request() -> None:
+            if generation == self._model_generation and self._engine is None:
+                self.partial_run_requested.emit(rows)
+        action.triggered.connect(request)
+        menu.exec(self._list.viewport().mapToGlobal(pos))
+
+    def _apply_cycle(self, generation: int, cycle: int) -> None:
+        if generation != self._active_generation:
+            return
+        total = getattr(self._engine, "total", 1)
+        self._cycle_label.setText(f"회차 {cycle}/{total if total is not None else '중지까지'}")
+
+    def toggle_pause(self) -> str:
+        engine = self._engine
+        if engine is None:
+            return "running"
+        if engine.pause_state() == "running":
+            engine.pause()
+        else:
+            engine.resume()
+        return engine.pause_state()
+
+    def _run_sequence(self, speed: float = 1.0, selected_rows: list[int] | None = None) -> bool:
         self.cancel_f6_capture()
         if not self._items or self._engine is not None:
             return False
 
-        errors = self.preflight_errors()
+        generation_before = self._model_generation
+        mode = self._flow_repeat_mode.currentIndex()
+        repeat_count = (1 if mode == 0 else self._flow_repeat_count.value() if mode == 1 else None)
+        if selected_rows is not None:
+            try:
+                selected_flow(self._items, selected_rows, Path("preview.macroflow"),
+                              macro_gap_ms=self._gap_spin.value())
+            except ValueError as exc:
+                QMessageBox.warning(self, "선택 구간", str(exc))
+                return False
+            first, last = min(selected_rows) + 1, max(selected_rows) + 1
+            prompt = (f"표시 행 {first}~{last} ({last-first+1}개 단계)만 1회 실행합니다.\n"
+                      "중간의 인라인 동작·대기도 포함됩니다.\n"
+                      "선택 밖의 선행 동작은 실행되지 않습니다. 대상 창과 작업 상태를 준비하세요.")
+            repeat_count = 1
+        elif repeat_count is None:
+            prompt = "전체 플로우를 중지할 때까지 반복합니다. 오류 시 중지합니다. 계속할까요?"
+        else:
+            prompt = ""
+        if prompt and QMessageBox.question(self, "플로우 실행 범위", prompt,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return False
+        if (self._engine is not None or self._model_generation != generation_before
+                or (self._start_allowed is not None and not self._start_allowed())):
+            return False
+        errors = self.preflight_errors() if selected_rows is None else []
         if errors:
             message = "\n".join(errors)
-            self._log_message(f"실행 전 검증 실패: {message}")
+            self._log_message("실행 전 검증 실패")
             QMessageBox.warning(self, "시퀀스 실행 전 검증 실패", message)
             self.sequence_error.emit(message)
             return False
@@ -1266,13 +1356,18 @@ class MacroSequencerWidget(QWidget):
             else Path.cwd()
         )
         temp_flow_path = flow_base / "__temp_sequence__.macroflow"
-        flow = self._build_flow(temp_flow_path)
+        flow = (self._build_flow(temp_flow_path) if selected_rows is None else
+                selected_flow(self._items, selected_rows, temp_flow_path,
+                              macro_gap_ms=self._gap_spin.value()))
 
         self._run_generation += 1
         generation = self._run_generation
         self._active_generation = generation
-        engine = FlowEngine(
+        engine = SequenceRunSession(
             str(temp_flow_path),
+            repeat_count=repeat_count,
+            interval_ms=self._flow_repeat_gap.value(),
+            on_cycle=lambda cycle, gen=generation: self._cycle_started.emit(gen, cycle),
             on_node_start=lambda node_id, label, gen=generation: self._node_started.emit(
                 gen, node_id, label
             ),
@@ -1291,12 +1386,14 @@ class MacroSequencerWidget(QWidget):
         self._update_buttons()
         try:
             engine.start(flow)
-        except Exception:
+        except Exception as exc:
             if self._engine is engine and self._active_generation == generation:
                 self._engine = None
                 self._active_generation = None
                 self._update_buttons()
-            raise
+            QMessageBox.warning(self, "플로우 실행 오류", str(exc))
+            self.sequence_error.emit(str(exc))
+            return False
         self._log_message(f"시퀀스 실행 시작 (속도 {speed:.1f}x)")
         return True
 
@@ -1306,7 +1403,10 @@ class MacroSequencerWidget(QWidget):
         if engine is None:
             return True
 
-        engine.stop()
+        if isinstance(engine, SequenceRunSession):
+            engine.request_stop()
+        else:
+            engine.stop()
         if self._engine is not engine:
             return True
         if engine.is_running():
@@ -1331,6 +1431,15 @@ class MacroSequencerWidget(QWidget):
             return
         if engine.is_running():
             return
+        terminal = self._pending_terminal
+        if terminal is not None:
+            self._pending_terminal = None
+            gen, success, message = terminal
+            if success:
+                self._apply_sequence_complete(gen, message)
+            else:
+                self._apply_sequence_error(gen, message)
+            return
         if generation is not None:
             self._finish_stopped_generation(generation)
         else:
@@ -1338,11 +1447,13 @@ class MacroSequencerWidget(QWidget):
             self._stop_watch_timer.stop()
             self._update_buttons()
         self._log_message("시퀀스 worker 종료 확인")
+        self.sequence_complete.emit("stopped")
 
     def _finish_stopped_generation(self, generation: int) -> bool:
         if generation != self._active_generation:
             return False
         self._stop_watch_timer.stop()
+        self._pending_terminal = None
         self._engine = None
         self._active_generation = None
         self._update_buttons()
@@ -1363,7 +1474,7 @@ class MacroSequencerWidget(QWidget):
             self._items[idx].message = ""
             self._refresh_list_item(idx)
             self.sequence_progress.emit(idx + 1, len(self._items))
-        self._log_message(f"실행: {label}")
+        self._log_message(f"실행: session={generation} step={node_id}")
 
     def _on_node_done(self, node_id: str, success: bool, message: str) -> None:
         generation = self._active_generation
@@ -1385,18 +1496,26 @@ class MacroSequencerWidget(QWidget):
             self._items[idx].message = message
             self._refresh_list_item(idx)
         status_str = "완료" if success else "오류"
-        self._log_message(f"{status_str}: {message}")
+        self._log_message(f"{status_str}: session={generation} step={node_id}")
 
     def _apply_sequence_complete(self, generation: int, status: str) -> None:
+        if generation == self._active_generation and self._engine is not None and self._engine.is_running():
+            self._pending_terminal = (generation, True, status)
+            self._stop_watch_timer.start()
+            return
         if not self._finish_stopped_generation(generation):
             return
         self._log_message(f"시퀀스 {status}")
         self.sequence_complete.emit(status)
 
     def _apply_sequence_error(self, generation: int, message: str) -> None:
+        if generation == self._active_generation and self._engine is not None and self._engine.is_running():
+            self._pending_terminal = (generation, False, message)
+            self._stop_watch_timer.start()
+            return
         if not self._finish_stopped_generation(generation):
             return
-        self._log_message(f"오류: {message}")
+        self._log_message(f"오류: session={generation}")
         QMessageBox.warning(self, "시퀀스 오류", message)
         self.sequence_error.emit(message)
 
@@ -1441,6 +1560,8 @@ class MacroSequencerWidget(QWidget):
     def _update_buttons(self) -> None:
         has_items = bool(self._items)
         editable = self._engine is None
+        for control in (self._flow_repeat_mode, self._flow_repeat_count, self._flow_repeat_gap):
+            control.setEnabled(editable)
         self._act_add.setEnabled(editable)
         self._act_add_text.setEnabled(editable)
         self._act_add_click.setEnabled(editable)

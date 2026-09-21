@@ -962,6 +962,17 @@ def play(
         return session
 
 
+def wait_for_exit(session: PlaybackSession, timeout: float | None = None) -> bool:
+    """Join only the worker owned by this handle, never a later playback."""
+    with _playback_lifecycle_lock:
+        if session != _playback_session:
+            return True
+        worker = _playback_thread
+    if worker is not None and worker is not threading.current_thread():
+        worker.join(timeout)
+    return worker is None or not worker.is_alive()
+
+
 def stop(session: PlaybackSession | None = None) -> bool:
     """Stop the current worker, optionally only when the caller owns its session."""
     global _playback_session, _pause_pending, _playback_stop_in_progress

@@ -558,7 +558,8 @@ def test_main_window_dirty_tab_and_close_cancel() -> None:
             ):
                 window.closeEvent(blocked_event)
             assert not blocked_event.isAccepted()
-            overlay_stop_mock.assert_called_once_with()
+            # Timeout retains overlay/stop ownership until the worker exits.
+            overlay_stop_mock.assert_not_called()
             confirm_mock.assert_not_called()
 
             recording_event = QCloseEvent()

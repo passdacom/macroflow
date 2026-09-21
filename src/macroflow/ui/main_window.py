@@ -252,6 +252,8 @@ class MainWindow(QMainWindow):
         # 시퀀서 실행 완료/오류 시 emergency hook 해제 + 툴바 갱신
         self._sequencer.sequence_complete.connect(self._on_sequence_done)
         self._sequencer.sequence_error.connect(self._on_sequence_done)
+        self._sequencer.partial_run_requested.connect(
+            lambda rows: self._toggle_sequencer(selected_rows=rows))
         self._sequencer.sequence_progress.connect(self._overlay.set_flow_progress)
         # F6 캡처 힌트 오버레이 연동
         self._editor.f6_capture_started.connect(self._reject_f6_capture_if_busy)
@@ -571,6 +573,8 @@ class MainWindow(QMainWindow):
             self._initialize_hotkeys()
 
     def closeEvent(self, event: QCloseEvent | None) -> None:  # noqa: N802
+        if self._state == "preparing":
+            self._emergency_stop()
         if self._state in {"recording", "stopping"}:
             if not self._stop_recording_before_close():
                 QMessageBox.warning(
@@ -1204,6 +1208,14 @@ class MainWindow(QMainWindow):
 
     def _toggle_pause(self) -> None:
         """F8: 현재 녹화 또는 일반 재생을 일시중지/재개한다."""
+        if self._state == "idle" and self._sequencer.is_running():
+            state = self._sequencer.toggle_pause()
+            self._paused = state != "running"
+            self._overlay.set_paused(state == "paused")
+            self._sb_state.setText({"running": "플로우 실행 중", "requested": "일시중지 요청됨 — 입력 해제 대기",
+                                   "paused": "플로우 일시중지"}[state])
+            self._update_toolbar()
+            return
         if self._state == "recording":
             if self._quick_text_session_active:
                 quick_text_key = _configured_hotkey_label(
@@ -1454,8 +1466,10 @@ class MainWindow(QMainWindow):
     def _stop_sequencer(self) -> bool:
         """시퀀서 worker와 관련 overlay/hook/UI 상태를 함께 정리한다."""
         stopped = self._sequencer.stop_sequence()
-        self._overlay.stop()
-        if sys.platform == "win32":
+        if stopped:
+            self._overlay.stop()
+            self._paused = False
+        if stopped and sys.platform == "win32":
             from macroflow.win32 import stop_emergency_hook
             stop_emergency_hook()
         self._update_toolbar()
@@ -1464,7 +1478,7 @@ class MainWindow(QMainWindow):
         )
         return stopped
 
-    def _toggle_sequencer(self) -> None:
+    def _toggle_sequencer(self, selected_rows: list[int] | None = None) -> None:
         """시퀀서 탭에서 F7: 시퀀스 실행 중이면 중지, 아니면 실행."""
         if self._sequencer.is_running():
             self._stop_sequencer()
@@ -1493,7 +1507,13 @@ class MainWindow(QMainWindow):
                 total=self._sequencer.item_count(),
             )
             try:
-                started = self._sequencer.run_sequence(speed=speed)
+                self._state = "flow_preparing"
+                self._flow_preparation_cancelled = False
+                self._sequencer._start_allowed = lambda: (
+                    self._state == "flow_preparing" and not self._flow_preparation_cancelled)
+                self._update_toolbar()
+                started = (self._sequencer.run_sequence(speed=speed) if selected_rows is None else
+                           self._sequencer.run_sequence(speed=speed, selected_rows=selected_rows))
             except Exception as exc:
                 self._overlay.stop()
                 if sys.platform == "win32":
@@ -1502,6 +1522,10 @@ class MainWindow(QMainWindow):
                 self._sb_state.setText(f"시퀀스 시작 오류: {exc}")
                 logger.exception("시퀀스 시작 오류")
                 return
+            finally:
+                self._state = "idle"
+                self._sequencer._start_allowed = None
+                self._update_toolbar()
             if started is False:
                 self._overlay.stop()
                 if sys.platform == "win32":
@@ -1512,8 +1536,16 @@ class MainWindow(QMainWindow):
                 return
             self._update_toolbar()
             self._sb_state.setText(f"▶ 시퀀스 실행 중 ({speed:.1f}x)")
+            self._paused = False
+            self._poll_timer.start()
 
     def _toggle_playback(self) -> None:
+        if self._state == "idle" and self._sequencer.is_running():
+            self._stop_sequencer()
+            return
+        if self._state == "preparing":
+            self._emergency_stop()
+            return
         if self._state == "playing":
             self._stop_playback()
             return
@@ -1551,6 +1583,7 @@ class MainWindow(QMainWindow):
         playback_macro: MacroData | None = None,
         source_label: str = "",
         forced_speed: float | None = None,
+        guard_external_focus: bool = False,
     ) -> None:
         macro = playback_macro if playback_macro is not None else self._macro
         if macro is None:
@@ -1625,6 +1658,10 @@ class MainWindow(QMainWindow):
         )
 
         def _on_event(idx: int, _event: object) -> None:
+            if guard_external_focus:
+                from macroflow.ui.range_preparation import external_target_ready
+                if not external_target_ready(check_modifiers=False):
+                    raise RuntimeError("대상 창을 확인할 수 없어 구간 재생을 중지했습니다.")
             self._sig_play_event.emit(repeat_session, idx)
 
         def _repeat_worker(
@@ -2161,6 +2198,8 @@ class MainWindow(QMainWindow):
 
     def _on_sequence_done(self, _msg: str = "") -> None:
         """시퀀스 완료/오류 시 emergency hook 해제 후 툴바·상태바를 갱신한다."""
+        self._paused = False
+        self._poll_timer.stop()
         if sys.platform == "win32":
             from macroflow.win32 import stop_emergency_hook
             stop_emergency_hook()
@@ -2183,7 +2222,7 @@ class MainWindow(QMainWindow):
         event_range = self._calc_event_range()
         if event_range is None:
             return
-        self._start_playback(options=range_playback_options(event_range))
+        self._on_play_event_range(*event_range)
 
     def _on_speed_combo_changed(self, idx: int) -> None:
         """속도 콤보 변경 처리. '직접 입력...' 선택 시 수동 입력 다이얼로그를 띄운다."""
@@ -2210,20 +2249,61 @@ class MainWindow(QMainWindow):
         """에디터에서 단일 이벤트 실행 요청 수신 시 해당 범위만 재생한다."""
         if self._state != "idle" or self._sequencer.is_running() or not self._macro:
             return
-        self._start_playback(forced_range=(start_idx, end_idx))
+        from macroflow.ui import range_preparation
+        from macroflow.ui.editor_selection import resolve_selection
+
+        macro = self._macro
+        try:
+            resolve_selection(macro.events, [list(range(start_idx, end_idx))], [0])
+        except ValueError as exc:
+            QMessageBox.warning(self, "선택 구간", str(exc))
+            return
+        generation = self._editor._model_generation
+        snapshot = copy.deepcopy(macro)
+        dialog = range_preparation.RangePreparationDialog(self, start_idx, end_idx)
+        self._range_preparation = dialog
+        self._range_preparation_cancelled = False
+        self._state = "preparing"
+        self._update_toolbar()
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+            valid = (self._state == "preparing" and not self._range_preparation_cancelled
+                     and self._macro is macro
+                     and self._editor._model_generation == generation)
+        finally:
+            dialog.timer.stop()
+            self._range_preparation = None
+            self._state = "idle"
+            self._update_toolbar()
+            dialog.deleteLater()
+        if not accepted or not valid:
+            return
+        if not range_preparation.external_target_ready():
+            QMessageBox.warning(self, "대상 창 확인",
+                                "외부 대상 창으로 전환하고 보조키를 놓은 뒤 다시 실행하세요.")
+            return
+        self._start_playback(options=range_playback_options((start_idx, end_idx)),
+                             playback_macro=snapshot, guard_external_focus=True)
 
     def _emergency_stop(self) -> None:
+        if self._state == "flow_preparing":
+            self._flow_preparation_cancelled = True
+            dialog = QApplication.activeModalWidget()
+            if isinstance(dialog, QDialog):
+                dialog.reject()
+            return
+        if self._state == "preparing":
+            self._range_preparation_cancelled = True
+            dialog = getattr(self, "_range_preparation", None)
+            if dialog is not None:
+                dialog.reject()
+            self._update_toolbar()
+            return
         logger.info("긴급 중지")
         # 시퀀서 실행 중이면 우선 중지
         if self._sequencer.is_running():
-            stopped = self._sequencer.stop_sequence()
-            self._overlay.stop()
-            if sys.platform == "win32":
-                from macroflow.win32 import stop_emergency_hook
-                stop_emergency_hook()
-            self._update_toolbar()
-            if not stopped:
-                self._sb_state.setText("긴급 중지 요청됨 — 시퀀스 worker 종료 대기 중")
+            self._stop_sequencer()
+            return
         if self._state in {"recording", "stopping"}:
             self._do_stop_recording()
         elif self._state == "playing":
@@ -2232,6 +2312,15 @@ class MainWindow(QMainWindow):
     # ── 폴링 타이머 ───────────────────────────────────────────────────────────
 
     def _poll_state(self) -> None:
+        if self._sequencer.is_running():
+            engine = self._sequencer._engine
+            if engine is not None:
+                state = engine.pause_state()
+                self._overlay.set_paused(state == "paused")
+                if state != "running":
+                    self._sb_state.setText("일시중지 요청됨 — 입력 해제 대기" if state == "requested"
+                                           else "플로우 일시중지")
+            return
         if self._state == "recording":
             from macroflow import recorder
             count = recorder.get_event_count()
@@ -2309,7 +2398,10 @@ class MainWindow(QMainWindow):
         )
 
         # 재생: 탭에 따라 텍스트와 활성화 조건이 달라짐
-        if is_seq_tab:
+        if seq_running:
+            self._act_play.setEnabled(True)
+            self._act_play.setText(f"⏹ 플로우 중지 ({play_key})")
+        elif is_seq_tab:
             self._act_play.setEnabled(
                 seq_running or (is_idle and bool(self._sequencer.has_items()))
             )
@@ -2329,8 +2421,9 @@ class MainWindow(QMainWindow):
                 f"⏹ 중지 ({play_key})" if is_play else f"▶ 재생 ({play_key})"
             )
 
-        self._act_stop.setEnabled(is_rec or is_play or is_stop or seq_running)
-        self._act_pause.setEnabled((is_rec or is_play) and not seq_running)
+        self._act_stop.setEnabled(is_rec or is_play or is_stop or seq_running
+                                  or self._state in {"preparing", "flow_preparing"})
+        self._act_pause.setEnabled(is_rec or is_play or seq_running)
         self._act_pause.setText(
             f"▶ 계속 ({pause_key})"
             if self._paused

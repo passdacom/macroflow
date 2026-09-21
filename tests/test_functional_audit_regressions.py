@@ -289,6 +289,8 @@ def test_flow_color_check_clamps_non_positive_poll_interval(
     monkeypatch.setattr(win32, "get_pixel_color", get_pixel)
     engine = FlowEngine(str(tmp_path / "sequence.macroflow"))
     engine._stop_flag = StopFlag()  # type: ignore[assignment]
+    monkeypatch.setattr(engine._clock, "wait", lambda seconds=0: (
+        waits.append(seconds) if seconds else None) or True)
     node = ColorCheckNode(
         id="color_000",
         label="color",
@@ -510,10 +512,12 @@ def test_regular_operations_are_blocked_while_sequence_runs() -> None:
             _is_favorites_tab=lambda: False,
             _is_quick_run_tab=lambda: False,
             _start_playback=MagicMock(),
+            _stop_sequencer=MagicMock(),
             _sb_state=status,
         )
         MainWindow._toggle_playback(playback_host)
         playback_host._start_playback.assert_not_called()
+        playback_host._stop_sequencer.assert_called_once_with()
         """
     )
 

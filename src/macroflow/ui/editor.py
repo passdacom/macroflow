@@ -38,6 +38,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from macroflow.event_fragments import EventFragment, copy_fragment, paste_fragment
 from macroflow.event_insertions import (
     _insert_click_events,
     _insert_color_trigger_event,
@@ -65,7 +66,7 @@ from macroflow.types import (
     TextInputEvent,
 )
 from macroflow.ui import editor_table as _editor_table
-from macroflow.ui.editor_actions import delete_after_group, range_from_group_to_end
+from macroflow.ui.editor_actions import delete_after_group
 from macroflow.ui.editor_dialogs import (
     create_capture_controls,
     create_delay_spin,
@@ -102,6 +103,7 @@ from macroflow.ui.editor_rows import (
     delay_input_to_override,
     delay_override_to_input,
 )
+from macroflow.ui.editor_selection import resolve_selection
 from macroflow.ui.editor_summary import _summary_text
 from macroflow.ui.editor_table import (
     COL_CONTENT,
@@ -390,6 +392,7 @@ class EventEditorWidget(QWidget):
 
     def load_macro(self, macro: MacroData) -> None:
         """MacroData를 테이블에 로드한다."""
+        self._event_fragment: EventFragment | None = None
         self._macro = macro
         self._model_generation += 1
         self._undo_stack.clear()
@@ -607,20 +610,11 @@ class EventEditorWidget(QWidget):
         Returns:
             (start_event_idx, end_event_idx_exclusive) 또는 범위가 유효하지 않으면 None.
         """
-        if not self._rows:
+        try:
+            return self._resolve_rows(list(range(start_row - 1, end_row)))
+        except ValueError as exc:
+            QMessageBox.warning(self, "선택 구간", str(exc))
             return None
-        # 1-based → 0-based
-        s = max(0, start_row - 1)
-        e = min(len(self._rows), end_row)
-        if s >= e:
-            return None
-        selected_rows = self._rows[s:e]
-        all_indices: list[int] = []
-        for row in selected_rows:
-            all_indices.extend(row.event_indices)
-        if not all_indices:
-            return None
-        return (min(all_indices), max(all_indices) + 1)
 
     def row_count(self) -> int:
         """현재 표시 행 수를 반환한다."""
@@ -670,6 +664,10 @@ class EventEditorWidget(QWidget):
                 is_edited=self._macro.is_edited,
             )
         )
+        repaired = sum(isinstance(event, KeyEvent) and event.type == "key_up"
+                       and event.remark == "병합 경계에서 열린 키 해제" for event in events)
+        if repaired:
+            self._summary.setText(self._summary.text() + f" · 병합 경계 키 해제: {repaired}개")
 
     def _fit_content_column(self) -> None:
         """내용 열을 대표 색상 행 정도로 줄이되, 더 긴 내용은 자동으로 맞춘다."""
@@ -906,6 +904,36 @@ class EventEditorWidget(QWidget):
             return
 
         menu = QMenu(self)
+        generation = self._model_generation
+
+        def guarded(callback: Callable[[], None]) -> None:
+            if generation == self._model_generation:
+                self._dispatch_shortcut_edit(callback)
+
+        try:
+            self._resolve_rows(rows)
+            reason = ""
+        except ValueError as exc:
+            reason = str(exc)
+        for text, callback in (
+            ("선택 구간 1회 재생", lambda: self._play_selected_rows(rows)),
+            ("동작 복사", lambda: self._copy_selected_rows(rows)),
+        ):
+            action = menu.addAction(text)
+            action.setEnabled(not reason)
+            action.setToolTip(reason)
+            action.triggered.connect(lambda _checked=False, cb=callback: guarded(cb))
+        if getattr(self, "_event_fragment", None) is not None:
+            for text, position in (
+                ("문서 처음에 동작 붙여넣기", 0),
+                ("문서 끝에 동작 붙여넣기", len(self._macro.events)),
+                ("선택 행 뒤에 동작 붙여넣기", max(
+                    i for row in rows for i in self._rows[row].event_indices) + 1),
+            ):
+                action = menu.addAction(text)
+                action.triggered.connect(
+                    lambda _checked=False, at=position: guarded(lambda: self._paste_fragment(at)))
+        menu.addSeparator()
 
         if len(rows) == 1:
             self._add_single_row_context_actions(menu, rows[0])
@@ -918,6 +946,55 @@ class EventEditorWidget(QWidget):
         else:
             global_pos = self._table.viewport().mapToGlobal(QPoint(0, 0))
         menu.exec(global_pos)
+
+    def _resolve_rows(self, rows: list[int]) -> tuple[int, int]:
+        if self._macro is None:
+            raise ValueError("문서가 없습니다.")
+        return resolve_selection(self._macro.events,
+                                 [row.event_indices for row in self._rows], rows)
+
+    def _play_selected_rows(self, rows: list[int]) -> None:
+        try:
+            start, end = self._resolve_rows(rows)
+        except ValueError as exc:
+            QMessageBox.warning(self, "선택 구간", str(exc))
+            return
+        self.play_event_range.emit(start, end)
+
+    def _copy_selected_rows(self, rows: list[int]) -> None:
+        if self._macro is None:
+            return
+        try:
+            start, end = self._resolve_rows(rows)
+            self._event_fragment = copy_fragment(self._macro.events, start, end)
+        except ValueError as exc:
+            QMessageBox.warning(self, "동작 복사", str(exc))
+
+    def _paste_fragment(self, insert_at: int) -> None:
+        if self._macro is None or getattr(self, "_event_fragment", None) is None:
+            return
+
+        def commit() -> None:
+            assert self._macro is not None and self._event_fragment is not None
+            try:
+                events = paste_fragment(self._macro.events, self._macro.raw_events,
+                                        self._event_fragment, insert_at)
+            except ValueError as exc:
+                QMessageBox.warning(self, "동작 붙여넣기", str(exc))
+                return
+            previous_ids = {event.id for event in self._macro.events}
+            self._push_undo()
+            self._apply_inserted_events(events, previous_event_ids=previous_ids)
+            selection = self._table.selectionModel()
+            if selection is not None:
+                from PyQt6.QtCore import QItemSelectionModel
+                self._table.clearSelection()
+                for index, row in enumerate(self._rows):
+                    if any(events[i].id not in previous_ids for i in row.event_indices):
+                        selection.select(self._table.model().index(index, 0),
+                                         QItemSelectionModel.SelectionFlag.Select |
+                                         QItemSelectionModel.SelectionFlag.Rows)
+        self._dispatch_shortcut_edit(commit)
 
     def _on_double_click(self, row: int, col: int) -> None:
         if row >= len(self._rows) or self._macro is None:
@@ -1799,23 +1876,9 @@ class EventEditorWidget(QWidget):
 
     def _play_single_event(self, row: int) -> None:
         """지정 행의 이벤트만 실행하도록 신호를 방출한다."""
-        if self._macro is None or row >= len(self._rows):
-            return
-        display_row = self._rows[row]
-        indices = display_row.event_indices
-        if not indices:
-            return
-        start_idx = min(indices)
-        end_idx = max(indices) + 1
-        self.play_event_range.emit(start_idx, end_idx)
+        self._play_selected_rows([row])
 
     def _play_from_row_to_end(self, row: int) -> None:
         """선택한 논리 동작부터 매크로 끝까지 기존 range 경로로 1회 재생한다."""
-        if self._macro is None or row >= len(self._rows):
-            return
-        start_idx, end_idx = range_from_group_to_end(
-            self._rows[row].event_indices,
-            total_events=len(self._macro.events),
-        )
-        self.play_event_range.emit(start_idx, end_idx)
+        self._play_selected_rows(list(range(row, len(self._rows))))
 
