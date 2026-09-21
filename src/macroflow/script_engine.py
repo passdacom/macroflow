@@ -609,6 +609,7 @@ class FlowEngine:
         self._clock = FlowClock(self._stop_flag)
         self._thread: threading.Thread | None = None
         self._lifecycle_lock = threading.Lock()
+        self._pause_generation = 0
         self._stopping = False
         self._stop_calls_in_progress = 0
         self._player_session: PlaybackSession | None = None
@@ -670,6 +671,7 @@ class FlowEngine:
     def pause(self) -> None:
         from macroflow import player
         with self._lifecycle_lock:
+            self._pause_generation += 1
             self._clock.pause()
             with self._player_session_lock:
                 if self._player_session is not None:
@@ -678,6 +680,7 @@ class FlowEngine:
     def resume(self) -> None:
         from macroflow import player
         with self._lifecycle_lock:
+            self._pause_generation += 1
             with self._player_session_lock:
                 if self._player_session is not None:
                     player.resume()
@@ -689,7 +692,8 @@ class FlowEngine:
             if not self._clock.paused:
                 return "running"
             with self._player_session_lock:
-                if self._player_session is not None and not player.is_paused():
+                if (self._player_session is not None and player.is_playing()
+                        and player.pause_state() != "paused"):
                     return "requested"
             return "paused"
 
@@ -928,6 +932,8 @@ class FlowEngine:
 
         ok = bool(callback_state["ok"])
         message = str(callback_state["msg"])
+        if not self._clock.wait():
+            return None
         _safe_callback(self._on_node_done, node_id, ok, message)
 
         if not ok and next_on_failure is None:
@@ -956,18 +962,30 @@ class FlowEngine:
         while True:
             if not self._clock.wait():
                 return None
-            now_ns = int(self._clock.now() * 1_000_000_000)
-            if deadline_ns is not None and now_ns >= deadline_ns:
-                break
+            with self._lifecycle_lock:
+                if self._stop_flag.is_set():
+                    return None
+                if self._clock.paused:
+                    continue
+                generation = self._pause_generation
+                now_ns = int(self._clock.now() * 1_000_000_000)
+                if deadline_ns is not None and now_ns >= deadline_ns:
+                    break
+            # Never hold an orchestration lock across native screen sampling.
             actual = get_pixel_color(x, y)
-            checked_ns = int(self._clock.now() * 1_000_000_000)
-            if self._stop_flag.is_set():
-                return None
-            if deadline_ns is not None and checked_ns >= deadline_ns:
-                break
-            if _color_matches(actual, target, node.tolerance):
-                matched = True
-                break
+            with self._lifecycle_lock:
+                if self._stop_flag.is_set():
+                    return None
+                # Both validation and committing the result serialize with
+                # pause/resume/stop. A boolean alone misses pause-resume ABA.
+                if self._clock.paused or generation != self._pause_generation:
+                    continue
+                checked_ns = int(self._clock.now() * 1_000_000_000)
+                if deadline_ns is not None and checked_ns >= deadline_ns:
+                    break
+                if _color_matches(actual, target, node.tolerance):
+                    matched = True
+                    break
             wait_s = interval_s
             if deadline_ns is not None:
                 remaining_s = (deadline_ns - checked_ns) / 1_000_000_000
@@ -977,6 +995,10 @@ class FlowEngine:
             if not self._clock.wait(wait_s):
                 return None
 
+        # The decision is committed above; notification must not hold locks.
+        # A later pause delays delivery, and a later stop suppresses it.
+        if not self._clock.wait():
+            return None
         msg = f"색 감지 {'성공' if matched else '타임아웃'}"
         _safe_callback(self._on_node_done, node.id, matched, msg)
 

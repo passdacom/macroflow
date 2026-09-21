@@ -1045,6 +1045,16 @@ def is_paused() -> bool:
     return is_playing() and paused
 
 
+def pause_state() -> str:
+    """Distinguish a release-boundary request from the actual clock gate."""
+    with _input_state_lock:
+        if not is_playing():
+            return "running"
+        if _playback_clock.is_paused():
+            return "paused"
+        return "requested" if _pause_pending else "running"
+
+
 def get_progress() -> float:
     """선택된 재생 구간에서 실행 완료된 이벤트 비율을 반환한다 (0.0~1.0)."""
     if _total_events == 0:
