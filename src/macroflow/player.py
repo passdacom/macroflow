@@ -608,7 +608,12 @@ def _wait_for_click_color_check(
 
 
 def _nudge_cursor_if_due(x: int, y: int, now_ns: int, next_nudge_ns: int) -> int:
-    """색 대기 중 hover 영역 밖으로 잠시 이동 후 원위치한다."""
+    """Offset briefly, then return through the same pause/stop input gate.
+
+    Dwell uses active time and never holds the input lock while waiting.
+    Stop cancels the return too: the cursor may remain offset. The fixed
+    distance does not guarantee leaving any particular target rectangle.
+    """
     if now_ns < next_nudge_ns:
         return next_nudge_ns
     adjacent_x = (
@@ -616,9 +621,16 @@ def _nudge_cursor_if_due(x: int, y: int, now_ns: int, next_nudge_ns: int) -> int
         if x >= _COLOR_WAIT_NUDGE_DISTANCE_PX
         else x + _COLOR_WAIT_NUDGE_DISTANCE_PX
     )
-    send_mouse_move(adjacent_x, y)
-    _stop_flag.wait(_COLOR_WAIT_NUDGE_DWELL_S)
-    send_mouse_move(x, y)
+    with _input_boundary() as ready:
+        if not ready:
+            return next_nudge_ns
+        send_mouse_move(adjacent_x, y)
+    if not _wait_active(_COLOR_WAIT_NUDGE_DWELL_S):
+        return next_nudge_ns
+    with _input_boundary() as ready:
+        if not ready:
+            return next_nudge_ns
+        send_mouse_move(x, y)
     return now_ns + _COLOR_WAIT_NUDGE_INTERVAL_NS
 
 
@@ -648,7 +660,10 @@ def _wait_for_color(event: ColorTriggerEvent) -> None:
     """
     x, y = ratio_to_pixel(event.x_ratio, event.y_ratio)
     # hover 효과 트리거: 색 체크 전 마우스를 해당 위치로 이동
-    send_mouse_move(x, y)
+    with _input_boundary() as ready:
+        if not ready:
+            return
+        send_mouse_move(x, y)
     if not _wait_active(0.05):
         return
     target = _hex_to_rgb(event.target_color)

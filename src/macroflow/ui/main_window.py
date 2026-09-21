@@ -1648,7 +1648,8 @@ class MainWindow(QMainWindow):
 
         range_str = ""
         if event_range is not None:
-            range_str = f" [구간 {self._range_start_spin.value()}~{self._range_end_spin.value()}]"
+            # Player bounds are zero-based / end-exclusive, not grouped editor rows.
+            range_str = f" [원본 이벤트 {event_range[0] + 1}~{event_range[1]}]"
         source_str = f" [{source_label}]" if source_label else ""
         self._sb_state.setText(f"▶ 재생 중 ({speed:.1f}x){source_str}{range_str}")
         self._sb_count.setText(f"이벤트: {len(macro.events)}")

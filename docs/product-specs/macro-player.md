@@ -137,6 +137,24 @@ def classify_mouse_action(
 
 ## 6. color_trigger 재생
 
+### 색 대기 커서 이동의 pause/stop 경계
+
+- 색 체크 클릭 및 독립 ColorTriggerEvent의 초기 이동과 nudge 왕복 이동은
+  최종 입력 gate를 통과해야 한다. 좌표 계산 이후에도 pause/stop을 재확인한다.
+- nudge는 목표 좌표에서 가로 8px 이동하고 active time 50ms 대기 후 복귀한다.
+  이 고정 거리는 특정 버튼/대상 사각형의 안이나 밖에 있음을 보장하지 않는다.
+- pause 동안 남은 active dwell은 줄어들지 않으며, 복귀는 resume 뒤에만 실행한다.
+  pause를 위해 held key/button을 합성 release하지 않는다. 기존 원래 release까지
+  기다리는 pending-pause 정책과 stop/error의 held cleanup은 변경하지 않는다.
+- stop 요청이 최종 입력 gate보다 먼저 관측되면 새 이동을 보내지 않는다.
+  복귀도 예외 cleanup이 아니므로, away와 return 사이에 중지하면 커서가 offset
+  위치에 남을 수 있다. 이미 gate를 통과한 입력을 소급 취소하는 보장은 아니다.
+- dwell/resume 대기 동안 input-state lock을 보유하지 않는다. 두 색 polling 경로는
+  dwell 뒤 active elapsed를 다시 읽어 남은 deadline budget을 계산한다.
+- 정상적인 interruptible dwell/pause 중 public stop은 소유 worker 종료를 확인한 뒤
+  반환한다. 무기한 native 호출의 강제 종료를 보장하지 않으며 기존 bounded join 및
+  살아 있는 worker 소유권/재시작 차단 계약은 그대로다. Windows native 검증은 별도다.
+
 ```python
 def wait_for_color(event: ColorTriggerEvent, hooks: Win32Hooks) -> bool:
     target = hex_to_rgb(event.target_color)

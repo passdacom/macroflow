@@ -144,6 +144,7 @@ def _macro_with_event(event: AnyEvent) -> MacroData:
 def _make_widget(editor_module, macro: MacroData):
     widget = editor_module.EventEditorWidget.__new__(editor_module.EventEditorWidget)
     widget._macro = macro
+    widget._model_generation = 0
     widget._rows = _build_rows(macro.events, show_moves=False)
     widget._undo_stack = deque(maxlen=50)
     widget._redo_stack = []

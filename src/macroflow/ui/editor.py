@@ -826,10 +826,16 @@ class EventEditorWidget(QWidget):
         )
         menu.addSeparator()
 
+        generation = self._model_generation
+
+        def edit_delay() -> None:
+            if generation == self._model_generation:
+                self._dispatch_shortcut_edit(lambda: self._edit_delay(row_idx))
+
         self._add_context_action(
             menu,
             "재생 대기 설정(&D)...",
-            lambda: self._insert_click_dialog(row_idx),
+            edit_delay,
         )
 
         if row.kind == KIND_KEY_PRESS and isinstance(primary, KeyEvent):
@@ -1031,8 +1037,9 @@ class EventEditorWidget(QWidget):
         )
 
     def _edit_delay(self, row: int) -> None:
-        if self._macro is None or row >= len(self._rows):
+        if self._macro is None or not self.isEnabled() or row >= len(self._rows):
             return
+        generation = self._model_generation
         display_row = self._rows[row]
         primary = self._macro.events[display_row.primary_idx]
         current = delay_override_to_input(primary.delay_override_ms)
@@ -1051,20 +1058,26 @@ class EventEditorWidget(QWidget):
         )
         if not ok:
             return
-        self._push_undo()
-        try:
-            new_macro = set_delay_single(
-                self._macro,
-                primary.id,
-                delay_input_to_override(val),
-            )
-        except KeyError:
-            self._undo_stack.pop()
-            QMessageBox.warning(self, "오류", "이벤트를 찾을 수 없습니다.")
-            return
-        self._macro = new_macro
-        self._refresh()
-        self.macro_changed.emit(self._macro)
+
+        def commit() -> None:
+            if self._macro is None or generation != self._model_generation:
+                return
+            self._push_undo()
+            try:
+                new_macro = set_delay_single(
+                    self._macro,
+                    primary.id,
+                    delay_input_to_override(val),
+                )
+            except KeyError:
+                self._undo_stack.pop()
+                QMessageBox.warning(self, "오류", "이벤트를 찾을 수 없습니다.")
+                return
+            self._macro = new_macro
+            self._refresh()
+            self.macro_changed.emit(self._macro)
+
+        self._dispatch_shortcut_edit(commit)
 
     def _edit_key(self, row: int) -> None:
         """키 입력 행의 키 값을 변경한다."""
