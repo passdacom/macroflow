@@ -573,7 +573,7 @@ class MainWindow(QMainWindow):
             self._initialize_hotkeys()
 
     def closeEvent(self, event: QCloseEvent | None) -> None:  # noqa: N802
-        if self._state == "preparing":
+        if self._state in {"preparing", "flow_preparing"}:
             self._emergency_stop()
         if self._state in {"recording", "stopping"}:
             if not self._stop_recording_before_close():
