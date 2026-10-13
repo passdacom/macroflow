@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
+from macroflow.playback_validation import validate_playback
 from macroflow.types import (
     AnyEvent,
     ColorTriggerEvent,
@@ -1044,6 +1045,7 @@ def play(
 ) -> PlaybackSession:
     """Start MacroData playback and return an ownership handle for this worker."""
     global _playback_thread, _playback_session, _pause_pending
+    validate_playback(macro, speed)
     with _playback_lifecycle_lock:
         if _playback_stop_in_progress:
             raise PlaybackError("이전 재생 중지 정리가 진행 중입니다.")
