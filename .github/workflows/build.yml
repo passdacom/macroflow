@@ -4,7 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - build/macroflow-1.11.0-integrated
+      - fix/mf01-playback-session-safety
+      - fix/mf02-recording-event-order
+      - fix/mf03-playback-value-validation
   workflow_dispatch:
 
 permissions:

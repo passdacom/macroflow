@@ -675,7 +675,7 @@ class FlowEngine:
             self._clock.pause()
             with self._player_session_lock:
                 if self._player_session is not None:
-                    player.pause()
+                    player.pause(self._player_session)
 
     def resume(self) -> None:
         from macroflow import player
@@ -683,7 +683,7 @@ class FlowEngine:
             self._pause_generation += 1
             with self._player_session_lock:
                 if self._player_session is not None:
-                    player.resume()
+                    player.resume(self._player_session)
             self._clock.resume()
 
     def pause_state(self) -> str:
@@ -911,18 +911,16 @@ class FlowEngine:
 
         # 재생 완료 또는 중단 신호까지 대기
         while not done_event.is_set() and not self._stop_flag.is_set():
+            # The owned worker publishes an outcome even if a host callback or
+            # an unexpected timing/cleanup failure prevents notification.
+            if isinstance(player_session, player.PlaybackSession) and player_session.done:
+                break
             self._stop_flag.wait(0.05)
 
         with callback_lock:
             callback_state["accepting"] = False
         if self._stop_flag.is_set():
             player.stop(player_session)
-            if player_session is not None:
-                player.wait_for_exit(player_session)
-            with self._player_session_lock:
-                if self._player_session == player_session:
-                    self._player_session = None
-            return None
 
         if player_session is not None:
             player.wait_for_exit(player_session)
@@ -932,7 +930,18 @@ class FlowEngine:
 
         ok = bool(callback_state["ok"])
         message = str(callback_state["msg"])
+        failed = not ok
+        if isinstance(player_session, player.PlaybackSession) and player_session.done:
+            ok = player_session.result == "completed"
+            failed = player_session.result == "failed"
+            message = str(player_session.error) if player_session.error is not None else (
+                "" if ok else "Playback stopped"
+            )
         if not self._clock.wait():
+            # Cancellation suppresses success, not a failed input release.
+            # This also covers stop arriving during the owned worker join.
+            if failed:
+                raise FlowError(message or f"노드 실행 실패: {node_id}")
             return None
         _safe_callback(self._on_node_done, node_id, ok, message)
 
