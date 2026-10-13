@@ -485,7 +485,6 @@ def test_main_window_dirty_tab_and_close_cancel() -> None:
 
         from PyQt6.QtGui import QCloseEvent
         from PyQt6.QtWidgets import QApplication, QMessageBox
-        from macroflow import player
         from macroflow.ui.main_window import MainWindow
 
         app = QApplication.instance() or QApplication([])
@@ -506,12 +505,10 @@ def test_main_window_dirty_tab_and_close_cancel() -> None:
             event = QCloseEvent()
             order = []
             window._state = "playing"
+            controller = Mock(outcome=None)
+            controller.stop.side_effect = lambda: order.append("stop_playback") or True
+            window._playback_controller = controller
             with (
-                patch.object(
-                    player,
-                    "stop",
-                    side_effect=lambda: order.append("stop_playback"),
-                ),
                 patch("macroflow.win32.stop_emergency_hook"),
                 patch.object(window._sequencer, "is_running", return_value=True),
                 patch.object(
@@ -617,9 +614,10 @@ def test_main_window_dirty_tab_and_close_cancel() -> None:
             playback_event = QCloseEvent()
             playback_confirm = Mock(return_value=False)
             window._state = "playing"
+            controller = Mock(outcome=None)
+            controller.stop.return_value = False
+            window._playback_controller = controller
             with (
-                patch.object(player, "stop"),
-                patch.object(player, "is_playing", return_value=True),
                 patch.object(window._sequencer, "is_running", return_value=False),
                 patch.object(
                     window._sequencer,
