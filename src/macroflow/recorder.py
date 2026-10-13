@@ -528,7 +528,7 @@ def inject_color_trigger(
     timeout_ms: int = 0,
     check_interval_ms: int = 50,
 ) -> None:
-    """녹화 중 현재 시각에 ColorTriggerEvent를 이벤트 버퍼에 직접 삽입한다.
+    """녹화 중 현재 시각에 ColorTriggerEvent를 ordered capture stream으로 삽입한다.
 
     녹화 중이 아니면 무시된다.
 
@@ -539,7 +539,7 @@ def inject_color_trigger(
         timeout_ms: 최대 대기 시간. 0 이하면 무제한 대기.
         check_interval_ms: 픽셀 색 폴링 주기.
     """
-    if not _recording:
+    if not _recording or _raw_queue is None:
         return
     ts_ns = _project_recording_timestamp_ns(time.perf_counter_ns())
     if ts_ns is None:
@@ -556,8 +556,9 @@ def inject_color_trigger(
         check_interval_ms=check_interval_ms,
         on_timeout="skip",
     )
-    with _event_buffer_lock:
-        _event_buffer.append(event)
+    # Raw/text events already in the queue must be consumed before this trigger.
+    # Only the consumer writes captured events to the output buffer.
+    _raw_queue.append(event)
     logger.info(f"ColorTriggerEvent 삽입: {color_hex} @ ({x_ratio:.3f}, {y_ratio:.3f})")
 
 
