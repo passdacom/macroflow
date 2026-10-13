@@ -167,3 +167,18 @@ def test_actions_are_sha_pinned_and_tokens_are_least_privilege() -> None:
         for step in job["steps"]:
             if step.get("uses", "").startswith("actions/checkout@"):
                 assert step["with"]["persist-credentials"] is False
+
+
+def test_safety_stack_prs_run_ci_without_expanding_release_triggers() -> None:
+    workflow = _workflow()
+    assert workflow["on"]["push"]["branches"] == ["main"]
+    assert workflow["on"]["pull_request"]["branches"] == [
+        "main",
+        "build/macroflow-1.11.0-integrated",
+        "fix/mf01-playback-session-safety",
+        "fix/mf02-recording-event-order",
+        "fix/mf03-playback-value-validation",
+    ]
+    assert workflow["jobs"]["release"]["if"] == (
+        "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'"
+    )

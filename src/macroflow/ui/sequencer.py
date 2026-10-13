@@ -1415,6 +1415,10 @@ class MacroSequencerWidget(QWidget):
             self._update_buttons()
             return False
 
+        error = getattr(engine, "terminal_error", None)
+        if generation is not None and error is not None:
+            self._apply_sequence_error(generation, error)
+            return True
         if generation is not None:
             self._finish_stopped_generation(generation)
         else:
@@ -1430,6 +1434,12 @@ class MacroSequencerWidget(QWidget):
             self._stop_watch_timer.stop()
             return
         if engine.is_running():
+            return
+        # Worker exit can precede delivery of its queued error signal. Read the
+        # retained outcome before invalidating its generation, exactly once.
+        error = getattr(engine, "terminal_error", None)
+        if generation is not None and error is not None:
+            self._apply_sequence_error(generation, error)
             return
         terminal = self._pending_terminal
         if terminal is not None:

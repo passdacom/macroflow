@@ -55,11 +55,45 @@ class PlaybackError(Exception):
     """재생 중 복구 불가 오류."""
 
 
+@dataclasses.dataclass
+class _SessionState:
+    terminal: threading.Event = dataclasses.field(default_factory=threading.Event)
+    lock: threading.Lock = dataclasses.field(default_factory=threading.Lock)
+    worker: threading.Thread | None = None
+    result: str | None = None
+    error: Exception | None = None
+    stopping: bool = False
+    committed: bool = False
+
+
 @dataclasses.dataclass(frozen=True)
 class PlaybackSession:
-    """Opaque ownership handle for one player worker."""
+    """Ownership handle and terminal outcome for one playback worker.
+
+    ``done``/``wait`` include cleanup and terminal callback delivery. They do
+    not replace ``wait_for_exit``, which guarantees the actual worker exited.
+    A terminal callback exception is a failed outcome, not a second callback.
+    """
 
     _token: object = dataclasses.field(default_factory=object, repr=False)
+    _state: _SessionState = dataclasses.field(
+        default_factory=_SessionState, repr=False, compare=False,
+    )
+
+    @property
+    def done(self) -> bool:
+        return self._state.terminal.is_set()
+
+    @property
+    def result(self) -> str | None:
+        return self._state.result if self.done else None
+
+    @property
+    def error(self) -> Exception | None:
+        return self._state.error if self.done else None
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return self._state.terminal.wait(timeout)
 
 
 class _PlaybackClock:
@@ -156,6 +190,7 @@ class _PlayState:
     # 색 체크 불일치로 down을 스킵한 경우, 대응하는 up도 스킵하기 위한 버튼명
     color_check_skip_button: str | None = None
     speed: float = 1.0
+    release_errors: list[Exception] = dataclasses.field(default_factory=list)
     pressed_keys: set[int] = dataclasses.field(default_factory=set)
     pressed_mouse: dict[str, tuple[int, int]] = dataclasses.field(default_factory=dict)
 
@@ -165,6 +200,7 @@ _playback_thread: threading.Thread | None = None
 _playback_session: PlaybackSession | None = None
 _playback_lifecycle_lock = threading.RLock()
 _playback_stop_in_progress = False
+_worker_context = threading.local()
 _stop_flag: threading.Event = threading.Event()
 _playback_clock = _PlaybackClock()
 _input_state_lock = threading.RLock()
@@ -189,10 +225,13 @@ def _wait_active(seconds: float) -> bool:
 
 
 def _release_active_inputs() -> None:
-    """stop/error/종료 시 열린 SendInput key/button을 정확히 한 번 release한다."""
+    """Release all tracked inputs, retaining failures for the terminal outcome."""
     state = _active_play_state
-    if state is None:
-        return
+    if state is not None:
+        _release_inputs(state)
+
+
+def _release_inputs(state: _PlayState) -> None:
     with _input_state_lock:
         keys = tuple(state.pressed_keys)
         mouse = tuple(state.pressed_mouse.items())
@@ -202,13 +241,38 @@ def _release_active_inputs() -> None:
         for vk_code in keys:
             try:
                 send_key(vk_code, is_down=False)
-            except Exception:
+            except BaseException as exc:
+                state.release_errors.append(_playback_exception(exc))
                 logger.exception("Failed to release playback key %d", vk_code)
         for button, (x, y) in mouse:
             try:
                 send_mouse_button(x, y, button, down=False)
-            except Exception:
+            except BaseException as exc:
+                state.release_errors.append(_playback_exception(exc))
                 logger.exception("Failed to release playback mouse button %s", button)
+
+
+def _playback_exception(exc: BaseException) -> Exception:
+    return exc if isinstance(exc, Exception) else PlaybackError(f"{type(exc).__name__}: {exc}")
+
+
+def _cleanup_playback_inputs(state: _PlayState | None) -> list[Exception]:
+    errors: list[Exception] = []
+    try:
+        _release_active_inputs()
+    except BaseException as exc:
+        error = _playback_exception(exc)
+        if state is not None:
+            with _input_state_lock:
+                state.release_errors.append(error)
+            # Preserve best-effort release even if a cleanup hook itself fails.
+            _release_inputs(state)
+        else:
+            errors.append(error)
+    if state is not None:
+        with _input_state_lock:
+            errors.extend(state.release_errors)
+    return errors
 
 
 def _apply_pending_pause_if_safe(state: _PlayState) -> None:
@@ -753,7 +817,7 @@ def _wait_for_window(event: WindowTriggerEvent) -> None:
 
 # ── 재생 루프 ─────────────────────────────────────────────────────────────────
 
-def _play_loop(
+def _play_events(
     macro: MacroData,
     speed: float,
     on_event: Callable[[int, AnyEvent], None] | None,
@@ -840,15 +904,8 @@ def _play_loop(
 
         # UI에는 이벤트 완료가 아니라 실제 실행 시작 시점을 알린다. 색 체크·대기처럼
         # 한 이벤트가 오래 막히거나 오류로 중단되어도 현재 행이 정확히 남아야 한다.
-        try:
-            if on_event_start:
-                on_event_start(orig_idx, event)
-        except Exception as e:
-            logger.exception(f"Playback start callback error: {e}")
-            _release_active_inputs()
-            if on_error:
-                on_error(e)
-            return
+        if on_event_start:
+            on_event_start(orig_idx, event)
         if _stop_flag.is_set():
             return
         # ``on_event_start`` may synchronously request pause.  Re-check the
@@ -857,20 +914,7 @@ def _play_loop(
             return
 
         execute_start_ns = _active_now_ns()
-        try:
-            _execute_event(event, macro.settings, state)
-        except PlaybackError as e:
-            logger.error(f"Playback error: {e}")
-            _release_active_inputs()
-            if on_error:
-                on_error(e)
-            return
-        except Exception as e:
-            logger.exception(f"Unexpected error during playback: {e}")
-            _release_active_inputs()
-            if on_error:
-                on_error(e)
-            return
+        _execute_event(event, macro.settings, state)
 
         _apply_pending_pause_if_safe(state)
         if _stop_flag.is_set():
@@ -878,14 +922,7 @@ def _play_loop(
 
         _current_event_position = play_idx + 1
         if on_event:
-            try:
-                on_event(orig_idx, event)
-            except Exception as e:
-                logger.exception(f"Playback completion callback error: {e}")
-                _release_active_inputs()
-                if on_error:
-                    on_error(e)
-                return
+            on_event(orig_idx, event)
 
         last_event_end_ns = _active_now_ns()
 
@@ -915,10 +952,82 @@ def _play_loop(
                     f"Event timer compensated: +{timing_compensation_ns / 1_000_000:.1f}ms"
                 )
 
-    if not _stop_flag.is_set():
-        _release_active_inputs()
-        if on_complete:
-            on_complete()
+def _run_session(
+    session: PlaybackSession,
+    run: Callable[[], None],
+    on_complete: Callable[[], None] | None,
+    on_error: Callable[[Exception], None] | None,
+) -> None:
+    """Own every worker exit path, including startup, timing and host failures."""
+    global _active_play_state
+    errors: list[Exception] = []
+    _worker_context.session = session
+    try:
+        run()
+    except BaseException as exc:
+        errors.append(_playback_exception(exc))
+        logger.exception("Playback worker failed")
+    finally:
+        try:
+            errors.extend(_cleanup_playback_inputs(_active_play_state))
+            # Serialize stop vs terminal notification admission, without holding
+            # a lifecycle/input lock across arbitrary host callback code.
+            with session._state.lock:
+                session._state.committed = True
+                stopped = session._state.stopping or _stop_flag.is_set()
+            error = _combine_playback_errors(errors)
+            if error is not None:
+                # Keep the exact reported exception as the owned outcome unless
+                # callback delivery itself adds another failure.
+                errors[:] = [error]
+                if on_error is not None:
+                    on_error(error)
+            elif not stopped and on_complete is not None:
+                on_complete()
+        except BaseException as exc:
+            errors.append(_playback_exception(exc))
+            logger.exception("Playback cleanup or terminal callback failed")
+        finally:
+            _active_play_state = None
+            with session._state.lock:
+                session._state.committed = True
+                session._state.error = _combine_playback_errors(errors)
+                session._state.result = (
+                    "failed" if errors else
+                    "stopped" if session._state.stopping or _stop_flag.is_set() else
+                    "completed"
+                )
+            _worker_context.session = None
+            session._state.terminal.set()
+
+
+def _combine_playback_errors(errors: list[Exception]) -> Exception | None:
+    if not errors:
+        return None
+    if len(errors) == 1:
+        return errors[0]
+    return ExceptionGroup("Playback failed", errors)
+
+
+def _play_loop(
+    macro: MacroData,
+    speed: float,
+    on_event: Callable[[int, AnyEvent], None] | None,
+    on_complete: Callable[[], None] | None,
+    on_error: Callable[[Exception], None] | None,
+    event_range: tuple[int, int] | None,
+    on_event_start: Callable[[int, AnyEvent], None] | None = None,
+    start_pause_requested: Callable[[], bool] | None = None,
+) -> None:
+    """Compatibility entry point; direct calls receive the same cleanup guard."""
+    def run() -> None:
+        _play_events(macro, speed, on_event, on_complete, on_error, event_range,
+                     on_event_start, start_pause_requested)
+
+    if getattr(_worker_context, "session", None) is not None:
+        run()
+    else:
+        _run_session(PlaybackSession(), run, on_complete, on_error)
 
 
 # ── 공개 인터페이스 ───────────────────────────────────────────────────────────
@@ -952,25 +1061,26 @@ def play(
 
         session = PlaybackSession()
         worker = threading.Thread(
-            target=_play_loop,
+            target=_run_session,
             args=(
-                macro,
-                speed,
-                on_event,
+                session,
+                lambda: _play_loop(macro, speed, on_event, on_complete, on_error,
+                                   event_range, on_event_start, start_pause_requested),
                 on_complete,
                 on_error,
-                event_range,
-                on_event_start,
-                start_pause_requested,
             ),
             daemon=True,
             name="PlaybackThread",
         )
+        session._state.worker = worker
         _playback_thread = worker
         _playback_session = session
         try:
             worker.start()
-        except Exception:
+        except Exception as exc:
+            session._state.error = exc
+            session._state.result = "failed"
+            session._state.terminal.set()
             _playback_thread = None
             _playback_session = None
             raise
@@ -979,10 +1089,7 @@ def play(
 
 def wait_for_exit(session: PlaybackSession, timeout: float | None = None) -> bool:
     """Join only the worker owned by this handle, never a later playback."""
-    with _playback_lifecycle_lock:
-        if session != _playback_session:
-            return True
-        worker = _playback_thread
+    worker = session._state.worker
     if worker is not None and worker is not threading.current_thread():
         worker.join(timeout)
     return worker is None or not worker.is_alive()
@@ -999,13 +1106,21 @@ def stop(session: PlaybackSession | None = None) -> bool:
         worker = _playback_thread
         if session is not None and (worker is None or not worker.is_alive()):
             return False
+        owned_session = _playback_session
+        if owned_session is not None:
+            with owned_session._state.lock:
+                if owned_session._state.committed:
+                    if worker is not None and worker.is_alive():
+                        return False
+                else:
+                    owned_session._state.stopping = True
         _playback_stop_in_progress = True
         _stop_flag.set()
     try:
         _playback_clock.notify_stop()
         with _input_state_lock:
             _pause_pending = False
-        _release_active_inputs()
+        _cleanup_playback_inputs(_active_play_state)
         if worker is not None and worker is not threading.current_thread():
             worker.join(timeout=3.0)
     finally:
@@ -1021,31 +1136,37 @@ def stop(session: PlaybackSession | None = None) -> bool:
     return True
 
 
-def pause() -> bool:
+def pause(session: PlaybackSession | None = None) -> bool:
     """안전한 입력 경계에서 재생을 일시정지하도록 요청한다."""
     global _pause_pending
-    if not is_playing():
-        return False
-    with _input_state_lock:
-        if _pause_pending or _playback_clock.is_paused():
+    with _playback_lifecycle_lock:
+        if session is not None and session != _playback_session:
             return False
-        state = _active_play_state
-        if state is not None and (state.pressed_keys or state.pressed_mouse):
-            _pause_pending = True
-            return True
-        return _playback_clock.pause()
+        if not is_playing():
+            return False
+        with _input_state_lock:
+            if _pause_pending or _playback_clock.is_paused():
+                return False
+            state = _active_play_state
+            if state is not None and (state.pressed_keys or state.pressed_mouse):
+                _pause_pending = True
+                return True
+            return _playback_clock.pause()
 
 
-def resume() -> bool:
+def resume(session: PlaybackSession | None = None) -> bool:
     """일시정지된 재생을 재개한다. 상태가 바뀌면 True를 반환한다."""
     global _pause_pending
-    if not is_playing():
-        return False
-    with _input_state_lock:
-        if _pause_pending:
-            _pause_pending = False
-            return True
-        return _playback_clock.resume()
+    with _playback_lifecycle_lock:
+        if session is not None and session != _playback_session:
+            return False
+        if not is_playing():
+            return False
+        with _input_state_lock:
+            if _pause_pending:
+                _pause_pending = False
+                return True
+            return _playback_clock.resume()
 
 
 def is_playing() -> bool:
