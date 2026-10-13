@@ -44,6 +44,7 @@ class SequenceRunSession:
         self._engine: FlowEngine | None = None
         self.cycle = 0
         self._used = False
+        self._terminal_error: str | None = None
 
     def start(self, flow: MacroFlow) -> None:
         with self._gate:
@@ -96,10 +97,13 @@ class SequenceRunSession:
                 engine.join()
                 with self._gate:
                     self._engine = None
+                # Cleanup failures are terminal even for an explicitly stopped run.
+                if errors:
+                    raise RuntimeError(errors[0])
                 if self._stop.is_set():
                     return
-                if errors or result != ["success"]:
-                    raise RuntimeError(errors[0] if errors else "플로우가 성공 종료되지 않았습니다.")
+                if result != ["success"]:
+                    raise RuntimeError("플로우가 성공 종료되지 않았습니다.")
                 if self.total is not None and self.cycle >= self.total:
                     break
                 # Cooperative yield for empty/zero-gap infinite runs; bounded thread count.
@@ -108,8 +112,16 @@ class SequenceRunSession:
             if self.on_complete and not self._stop.is_set():
                 self.on_complete("success")
         except Exception as exc:
-            if self.on_error and not self._stop.is_set():
+            with self._gate:
+                self._terminal_error = str(exc)
+            if self.on_error:
                 self.on_error(str(exc))
+
+    @property
+    def terminal_error(self) -> str | None:
+        """Retain failure independently of queued GUI callback delivery."""
+        with self._gate:
+            return self._terminal_error
 
     def pause(self) -> None:
         with self._gate:
