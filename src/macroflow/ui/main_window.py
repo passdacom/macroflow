@@ -53,6 +53,7 @@ from macroflow.hotkey_config import (
     save_hotkey_config,
     validate_hotkey_config,
 )
+from macroflow.playback_controller import PlaybackController, PlaybackOutcome
 from macroflow.quick_run import (
     QuickRunSlot,
     arm_quick_run_recovery,
@@ -162,7 +163,7 @@ class MainWindow(QMainWindow):
         self._recording_generation: int = 0
         self._hotkey_settings_active: bool = False
         self._quick_run_hotkey_editing: bool = False
-        self._playback_pause_event = threading.Event()
+        self._playback_controller: PlaybackController | None = None
         self._recording_stop_thread: threading.Thread | None = None
 
         # ESC×3 감지 (앱 포커스 상태에서만)
@@ -1237,15 +1238,14 @@ class MainWindow(QMainWindow):
             self._set_recording_paused_ui(not self._paused)
             return
         elif self._state == "playing":
-            from macroflow import player
-
+            controller = self._playback_controller
+            if controller is None:
+                return
             if self._paused:
-                self._playback_pause_event.clear()
-                player.resume()
+                controller.resume()
                 self._paused = False
             else:
-                self._playback_pause_event.set()
-                player.pause()
+                controller.pause()
                 self._paused = True
             self._overlay.set_paused(self._paused)
             self._sb_state.setText("Ⅱ 재생 일시중지" if self._paused else "▶ 재생 중")
@@ -1585,6 +1585,9 @@ class MainWindow(QMainWindow):
         forced_speed: float | None = None,
         guard_external_focus: bool = False,
     ) -> None:
+        # A prior request must finish cleanup before another owner can start.
+        if self._playback_controller is not None:
+            return
         macro = playback_macro if playback_macro is not None else self._macro
         if macro is None:
             return
@@ -1638,10 +1641,31 @@ class MainWindow(QMainWindow):
         self._paused = False
         self._playback_highlights_editor = playback_macro is None
         self._playback_source_label = source_label
-        self._playback_pause_event.clear()
-        repeat_session = RepeatPlaybackSession(total=repeat_count)
+
+        def _on_event(idx: int, _event: object) -> None:
+            if guard_external_focus:
+                from macroflow.ui.range_preparation import external_target_ready
+                if not external_target_ready(check_modifiers=False):
+                    raise RuntimeError("대상 창을 확인할 수 없어 구간 재생을 중지했습니다.")
+            self._sig_play_event.emit(repeat_session, idx)
+
+        def _on_finished(outcome: PlaybackOutcome) -> None:
+            if outcome.error is not None:
+                self._sig_playback_error.emit(repeat_session, str(outcome.error))
+            else:
+                self._sig_play_complete.emit(repeat_session)
+
+        controller = PlaybackController(
+            macro, speed=speed, repeat_count=repeat_count, interval_ms=interval_ms,
+            event_range=event_range, on_event=_on_event,
+            on_cycle=lambda current, total: self._sig_repeat_cycle.emit(
+                repeat_session, current, total
+            ),
+            on_finished=_on_finished,
+        )
+        repeat_session = controller.session
         self._repeat_session = repeat_session
-        repeat_session.mark_started()
+        self._playback_controller = controller
         self._overlay.start_playing(speed, repeat_current=1, repeat_total=repeat_count)
         self._poll_timer.start()
         self._update_toolbar()
@@ -1658,88 +1682,7 @@ class MainWindow(QMainWindow):
             f"interval={interval_ms}ms range={event_range} source={source_label or 'editor'}"
         )
 
-        def _on_event(idx: int, _event: object) -> None:
-            if guard_external_focus:
-                from macroflow.ui.range_preparation import external_target_ready
-                if not external_target_ready(check_modifiers=False):
-                    raise RuntimeError("대상 창을 확인할 수 없어 구간 재생을 중지했습니다.")
-            self._sig_play_event.emit(repeat_session, idx)
-
-        def _repeat_worker(
-            _range: tuple[int, int] | None = event_range,
-        ) -> None:
-            from macroflow import player
-            for i in range(repeat_count):
-                if not repeat_session.should_start_cycle(i):
-                    break
-                while self._playback_pause_event.is_set():
-                    if repeat_session.was_stopped:
-                        return
-                    time.sleep(0.02)
-                repeat_session.mark_cycle_started(i)
-                self._sig_repeat_cycle.emit(repeat_session, i + 1, repeat_count)
-
-                done_event = threading.Event()
-                error_holder: list[str] = []
-
-                def _on_complete(_ev: threading.Event = done_event) -> None:
-                    _ev.set()
-
-                def _on_error(exc: Exception, _ev: threading.Event = done_event, _eh: list[str] = error_holder) -> None:
-                    _eh.append(str(exc))
-                    _ev.set()
-
-                try:
-                    started = repeat_session.start_player_if_allowed(
-                        lambda: player.play(
-                            macro,
-                            speed=speed,
-                            on_event_start=_on_event,
-                            on_complete=_on_complete,
-                            on_error=_on_error,
-                            event_range=_range,
-                            start_pause_requested=self._playback_pause_event.is_set,
-                        )
-                    )
-                except Exception as exc:
-                    self._sig_playback_error.emit(repeat_session, str(exc))
-                    return
-                if not started:
-                    return
-
-                # 재생 완료 대기
-                while not done_event.is_set():
-                    if repeat_session.was_stopped:
-                        return
-                    time.sleep(0.05)
-
-                if error_holder:
-                    self._sig_playback_error.emit(repeat_session, error_holder[0])
-                    return
-
-                # 마지막 반복이 아니면 interval 대기
-                if i < repeat_count - 1 and interval_ms > 0:
-                    repeat_session.mark_between_cycles()
-                    remaining_s = interval_ms / 1000.0
-                    last_active = time.monotonic()
-                    while remaining_s > 0:
-                        if repeat_session.was_stopped:
-                            return
-                        now = time.monotonic()
-                        if self._playback_pause_event.is_set():
-                            last_active = now
-                            time.sleep(0.02)
-                            continue
-                        remaining_s -= now - last_active
-                        last_active = now
-                        time.sleep(min(0.05, max(0.0, remaining_s)))
-
-            repeat_session.mark_finished()
-            self._sig_play_complete.emit(repeat_session)
-
-        threading.Thread(
-            target=_repeat_worker, daemon=True, name="RepeatPlayWorker"
-        ).start()
+        controller.start()
 
     def _normalize_range_spinboxes(self) -> None:
         """빈 구간 입력을 0 sentinel로 되돌려 '처음'/'끝' 표시를 복원한다."""
@@ -1761,22 +1704,23 @@ class MainWindow(QMainWindow):
         return self._editor.get_event_range_for_rows(effective_start, effective_end)
 
     def _stop_playback(self) -> bool:
-        from macroflow import player
         from macroflow.win32 import stop_emergency_hook
-        if self._repeat_session is not None:
-            self._repeat_session.request_stop()
-        self._playback_pause_event.clear()
+        controller = self._playback_controller
+        stopped = controller is None or controller.stop()
         self._paused = False
-        player.stop()
         stop_emergency_hook()
-        stopped = not player.is_playing()
         self._overlay.stop()
         if not stopped:
             self._sb_state.setText("재생 중지 요청됨 — worker 종료 대기 중")
             self._update_toolbar()
             return False
-        if self._repeat_session is not None:
-            self._repeat_session.mark_finished()
+        if controller is not None and controller.outcome is not None:
+            if controller.outcome.error is not None:
+                # stop() joined the controller while Qt queued its error signal.
+                # Render it before retiring the owner; the queued copy is fenced out.
+                self._on_session_play_error(controller.session, str(controller.outcome.error))
+                return True
+        self._playback_controller = None
         self._repeat_session = None
         self._state = "idle"
         self._playback_highlights_editor = True
@@ -1792,10 +1736,8 @@ class MainWindow(QMainWindow):
             return
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
-        if self._repeat_session is not None:
-            self._repeat_session.mark_finished()
+        self._playback_controller = None
         self._repeat_session = None
-        self._playback_pause_event.clear()
         self._paused = False
         source_label = self._playback_source_label
         self._playback_highlights_editor = True
@@ -1823,10 +1765,8 @@ class MainWindow(QMainWindow):
                     logger.error("녹화 종료 오류 후 빠른 실행 단축키 복구 실패")
         from macroflow.win32 import stop_emergency_hook
         stop_emergency_hook()
-        if self._repeat_session is not None:
-            self._repeat_session.mark_finished()
+        self._playback_controller = None
         self._repeat_session = None
-        self._playback_pause_event.clear()
         self._paused = False
         self._playback_highlights_editor = True
         self._playback_source_label = ""
@@ -2337,10 +2277,9 @@ class MainWindow(QMainWindow):
                     self._repeat_session.cycle_index + 1,
                     self._repeat_session.total,
                 )
-                if self._repeat_session.should_poll_wait_for_worker(
-                    player_is_playing=is_player_playing
-                ):
-                    return
+                # Only the owned controller's terminal signal can finish this request.
+                # Polling player idleness races queued error signals and cycle gaps.
+                return
             if not is_player_playing:
                 self._on_play_complete()
 

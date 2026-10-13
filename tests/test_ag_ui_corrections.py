@@ -115,9 +115,11 @@ QDialog.exec = lambda self: QDialog.DialogCode.Accepted
 seen, started, finished = [], threading.Event(), threading.Event()
 def play(data, **kw):
     seen.append(kw["event_range"])
-    kw["on_complete"]()
+    session = player.PlaybackSession()
+    session._state.result = "completed"
+    session._state.terminal.set()
     started.set()
-    return player.PlaybackSession()
+    return session
 player.play = play
 window._sig_play_complete.connect(lambda *a: finished.set())
 window._editor._table.selectRow(1)

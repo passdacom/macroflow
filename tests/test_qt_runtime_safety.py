@@ -737,84 +737,29 @@ def test_quick_text_from_old_recording_cannot_commit_after_stop_and_restart() ->
 
 
 def test_stale_repeat_completion_cannot_finish_a_new_playback() -> None:
+    # The controller now joins its worker before allowing a replacement. Queued
+    # Qt signals can still arrive late, and must retain the original owner fence.
     result = _run_offscreen(
         """
-        import os
-        import tempfile
-        import threading
-        import time
-        from unittest.mock import Mock, patch
-
-        from PyQt6.QtCore import QSettings
-        from PyQt6.QtWidgets import QApplication
-        from macroflow.types import MacroData, MacroMeta, MacroSettings, WaitEvent
+        from unittest.mock import Mock
         from macroflow.ui.main_window import MainWindow
-        from macroflow.ui.playback_repeat import PlaybackStartOptions, RepeatPlaybackSession
+        from macroflow.ui.playback_repeat import RepeatPlaybackSession
 
-        app = QApplication.instance() or QApplication([])
-        original_cwd = os.getcwd()
-        with tempfile.TemporaryDirectory() as directory:
-            try:
-                os.chdir(directory)
-                QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-                QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, directory)
-                MainWindow._restore_settings = lambda self: None
-                window = MainWindow()
-                event = WaitEvent(id="wait", type="wait", timestamp_ns=0, duration_ms=1)
-                window._macro = MacroData(
-                    meta=MacroMeta(
-                        version="1", app_version="test", created_at="now",
-                        screen_width=1920, screen_height=1080, dpi_scale=1.0,
-                    ),
-                    settings=MacroSettings(), raw_events=[event], events=[event],
-                )
-
-                first_terminal_entered = threading.Event()
-                release_first_terminal = threading.Event()
-                second_started = threading.Event()
-                play_calls = [0]
-                original_mark_finished = RepeatPlaybackSession.mark_finished
-
-                def blocked_mark_finished(session):
-                    if threading.current_thread().name == "RepeatPlayWorker" and not first_terminal_entered.is_set():
-                        first_terminal_entered.set()
-                        assert release_first_terminal.wait(2)
-                    return original_mark_finished(session)
-
-                def fake_play(_macro, **kwargs):
-                    play_calls[0] += 1
-                    if play_calls[0] == 1:
-                        kwargs["on_complete"]()
-                    else:
-                        second_started.set()
-                    return Mock()
-
-                with patch("macroflow.win32.start_emergency_hook"), \
-                     patch("macroflow.win32.stop_emergency_hook"), \
-                     patch("macroflow.player.play", side_effect=fake_play), \
-                     patch("macroflow.player.stop", return_value=True), \
-                     patch("macroflow.player.is_playing", return_value=False), \
-                     patch.object(RepeatPlaybackSession, "mark_finished", blocked_mark_finished):
-                    options = PlaybackStartOptions(event_range=None, repeat_count=1, confirm_repeat=False)
-                    window._start_playback(options=options)
-                    assert first_terminal_entered.wait(1)
-                    assert window._stop_playback()
-                    window._start_playback(options=options)
-                    assert second_started.wait(1)
-                    release_first_terminal.set()
-                    deadline = time.monotonic() + 1
-                    while time.monotonic() < deadline:
-                        app.processEvents()
-                        time.sleep(0.005)
-                    assert window._state == "playing"
-
-                    assert window._repeat_session is not None
-                    window._repeat_session.request_stop()
-                window._saved_macro = window._macro  # synthetic fixture is not an unsaved edit
-                window.close()
-            finally:
-                os.chdir(original_cwd)
+        old = RepeatPlaybackSession(total=1)
+        current = RepeatPlaybackSession(total=2)
+        host = Mock()
+        host._repeat_session = current
+        host._state = "playing"
+        MainWindow._on_play_complete(host, old)
+        MainWindow._on_session_play_event(host, old, 7)
+        MainWindow._on_session_repeat_cycle(host, old, 1, 1)
+        MainWindow._on_session_play_error(host, old, "stale error")
+        assert host._repeat_session is current
+        assert host._state == "playing"
+        host._overlay.stop.assert_not_called()
+        host._overlay.set_repeat.assert_not_called()
+        host._on_play_event.assert_not_called()
+        host._on_play_error.assert_not_called()
         """
     )
-
     assert result.returncode == 0, result.stderr
